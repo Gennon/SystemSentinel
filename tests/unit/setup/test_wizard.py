@@ -10,7 +10,6 @@ from system_sentinel.setup.wizard import (
     WizardStepResult,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -89,9 +88,7 @@ class TestWizardContext:
         ctx_a = WizardContext()
         ctx_b = WizardContext()
         ctx_a.enabled_features.append("gpu")
-        assert ctx_b.enabled_features == [], (
-            "Mutable default must not be shared between instances"
-        )
+        assert ctx_b.enabled_features == [], "Mutable default must not be shared between instances"
 
 
 # ---------------------------------------------------------------------------
@@ -168,9 +165,7 @@ class TestSetupWizardRun:
 
         def capturing_runner(ctx: WizardContext) -> WizardStepResult:
             received.append(ctx)
-            return WizardStepResult(
-                step_name="capture", outcome=StepOutcome.SUCCESS, message="ok"
-            )
+            return WizardStepResult(step_name="capture", outcome=StepOutcome.SUCCESS, message="ok")
 
         step = WizardStep(
             name="capture",
@@ -212,9 +207,9 @@ class TestSetupWizardCheckOnly:
         ]
         wizard, _ = _make_wizard(*steps)
         results = wizard.run(WizardContext(check_only=True))
-        assert results[0].outcome == StepOutcome.SUCCESS   # safe: ran
-        assert results[1].outcome == StepOutcome.SKIPPED   # unsafe: skipped
-        assert results[2].outcome == StepOutcome.SUCCESS   # safe: ran
+        assert results[0].outcome == StepOutcome.SUCCESS  # safe: ran
+        assert results[1].outcome == StepOutcome.SKIPPED  # unsafe: skipped
+        assert results[2].outcome == StepOutcome.SUCCESS  # safe: ran
 
     def test_skipped_step_does_not_halt_execution(self) -> None:
         steps = [
