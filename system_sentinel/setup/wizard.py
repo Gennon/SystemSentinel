@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Callable, IO
+from enum import StrEnum
+import sys
+from typing import IO, ClassVar
 
 
-class StepOutcome(str, Enum):
+class StepOutcome(StrEnum):
     SUCCESS = "success"
     FAILURE = "failure"
     SKIPPED = "skipped"
@@ -50,7 +51,7 @@ class SetupWizard:
     recorded as StepOutcome.SKIPPED.
     """
 
-    STEP_ICON: dict[StepOutcome, str] = {
+    STEP_ICON: ClassVar[dict[StepOutcome, str]] = {
         StepOutcome.SUCCESS: "✓",
         StepOutcome.FAILURE: "✗",
         StepOutcome.SKIPPED: "-",
