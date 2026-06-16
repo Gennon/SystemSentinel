@@ -2,13 +2,44 @@
 
 A Linux system management daemon that autonomously handles updates, security hardening, monitoring, and user communication — surfacing insights and alerts via chat and a local LLM assistant.
 
-## Quick start
+## Installation
+
+**Prerequisites:** curl (pre-installed on most Linux distributions)
+
+### One-command installation (recommended)
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/Gennon/SystemSentinel/main/install.sh | bash
+```
+
+This will:
+1. Check and install Python 3.11+ (if needed)
+2. Check and install git (if needed)
+3. Clone the repository
+4. Create a Python virtualenv
+5. Install SystemSentinel and dependencies
+6. Launch the interactive setup wizard
+
+### Manual installation
+
+If you prefer to install step-by-step:
+
+```bash
+git clone https://github.com/Gennon/SystemSentinel.git
+cd SystemSentinel
+python3.11 -m venv .venv
+source .venv/bin/activate
 pip install -e ".[discord]"
-cp config/config.example.yaml config.yaml   # edit tokens and thresholds
-sentinel setup                              # first-time wizard
-sentinel run                                # start the daemon
+sentinel setup                 # first-time wizard
+sentinel run                   # start the daemon
+```
+
+### Dry-run mode
+
+To see what the installer will do without making changes:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Gennon/SystemSentinel/main/install.sh | bash -s -- --dry-run
 ```
 
 ## Documentation
