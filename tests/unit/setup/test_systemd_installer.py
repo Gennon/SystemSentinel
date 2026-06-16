@@ -102,18 +102,14 @@ class TestInstallSystemdServiceStep:
 
     def test_check_only_service_file_present(self) -> None:
         with patch("system_sentinel.setup.systemd_installer.Path.exists", return_value=True):
-            results, _ = _run_step(
-                install_systemd_service_step, WizardContext(check_only=True)
-            )
+            results, _ = _run_step(install_systemd_service_step, WizardContext(check_only=True))
 
         assert results[0].outcome == StepOutcome.SUCCESS
         assert "found" in results[0].message.lower()
 
     def test_check_only_service_file_absent(self) -> None:
         with patch("system_sentinel.setup.systemd_installer.Path.exists", return_value=False):
-            results, _ = _run_step(
-                install_systemd_service_step, WizardContext(check_only=True)
-            )
+            results, _ = _run_step(install_systemd_service_step, WizardContext(check_only=True))
 
         assert results[0].outcome == StepOutcome.FAILURE
         assert "not found" in results[0].message.lower()
@@ -294,11 +290,13 @@ class TestStartSystemdServiceStep:
         assert mock_cmd.call_count == 1
 
     def test_start_then_becomes_active(self) -> None:
-        responses = iter([
-            CommandResult(returncode=1, stdout="inactive\n", stderr=""),  # initial is-active
-            CommandResult(returncode=0, stdout="", stderr=""),             # start
-            CommandResult(returncode=0, stdout="active\n", stderr=""),    # poll is-active
-        ])
+        responses = iter(
+            [
+                CommandResult(returncode=1, stdout="inactive\n", stderr=""),  # initial is-active
+                CommandResult(returncode=0, stdout="", stderr=""),  # start
+                CommandResult(returncode=0, stdout="active\n", stderr=""),  # poll is-active
+            ]
+        )
 
         with patch(
             "system_sentinel.setup.systemd_installer.run_command",
@@ -337,6 +335,7 @@ class TestStartSystemdServiceStep:
             results, _ = _run_step(start_systemd_service_step)
 
         assert results[0].outcome == StepOutcome.FAILURE
-        assert "timed out" in results[0].message.lower() or "timed out" in (
-            results[0].error or ""
-        ).lower()
+        assert (
+            "timed out" in results[0].message.lower()
+            or "timed out" in (results[0].error or "").lower()
+        )
