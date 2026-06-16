@@ -1,0 +1,22 @@
+supported_platforms:
+  os:
+    - Linux
+  architectures:
+    - x86_64
+    - aarch64
+
+system_packages:
+  - iproute2
+  - sqlite3
+  - curl
+
+python_modules:
+  - pydantic
+  - apscheduler
+  - aiosqlite
+  - psutil
+  - watchdog
+  - click
+  - yaml
+  - httpx
+  - plotext
