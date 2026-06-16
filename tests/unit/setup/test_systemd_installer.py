@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import io
-from pathlib import Path
-from unittest.mock import call, patch
+from typing import TYPE_CHECKING
+from unittest.mock import patch
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from system_sentinel.setup.dependency_installer import CommandResult
 from system_sentinel.setup.systemd_installer import (
