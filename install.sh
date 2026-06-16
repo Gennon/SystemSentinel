@@ -3,6 +3,7 @@ set -euo pipefail
 
 DRY_RUN=false
 PYTHON_BIN=""
+PACKAGE_MANAGER=""
 REPO_URL="${REPO_URL:-https://github.com/Gennon/SystemSentinel.git}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/system-sentinel}"
 
@@ -145,7 +146,16 @@ setup_venv() {
     fi
 
     log_info "Creating Python virtualenv..."
-    "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
+    if ! "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv" 2>/dev/null; then
+        log_warn "venv creation failed, installing python venv package..."
+        ver=$("$PYTHON_BIN" --version 2>&1 | awk '{print $2}' | cut -d. -f1,2)
+        case "$PACKAGE_MANAGER" in
+            apt)    sudo apt-get install -y "python${ver}-venv" ;;
+            dnf)    sudo dnf install -y "python${ver}-venv" ;;
+            pacman) sudo pacman -S --noconfirm python ;;
+        esac
+        "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
+    fi
     log_info "Virtualenv created"
 }
 
@@ -193,19 +203,19 @@ main() {
     fi
 
     log_section "Step 1: Checking prerequisites"
-    pm=$(detect_package_manager)
-    if [[ "$pm" == "unknown" ]]; then
+    PACKAGE_MANAGER=$(detect_package_manager)
+    if [[ "$PACKAGE_MANAGER" == "unknown" ]]; then
         log_error "Unsupported package manager. Supported: apt-get, dnf, pacman"
         exit 1
     fi
-    log_info "Detected package manager: $pm"
+    log_info "Detected package manager: $PACKAGE_MANAGER"
 
     if ! check_python; then
-        install_python "$pm"
+        install_python "$PACKAGE_MANAGER"
     fi
 
     if ! check_git; then
-        install_git "$pm"
+        install_git "$PACKAGE_MANAGER"
     fi
 
     log_section "Step 2: Cloning repository"
