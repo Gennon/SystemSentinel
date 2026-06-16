@@ -46,9 +46,16 @@ def setup(
     """
     click.echo("SystemSentinel Setup Wizard")
     click.echo("=" * 40)
+    click.echo("This wizard will:")
+    click.echo("  1. Validate your platform and install dependencies")
+    click.echo("  2. Create a dedicated system user (sentinel)")
+    click.echo("  3. Install and start the SystemSentinel daemon")
 
     if check_only:
-        click.echo("Mode: check-only (no changes will be made)\n")
+        click.echo("\nMode: check-only (no changes will be made)")
+    if unattended:
+        click.echo("\nMode: unattended (applying defaults)")
+    click.echo("")
 
     ctx = WizardContext(
         check_only=check_only,
@@ -58,6 +65,13 @@ def setup(
 
     wizard = build_wizard()
     results = wizard.run(ctx)
+
+    click.echo("")
+    click.echo("Setup Summary")
+    click.echo("=" * 40)
+    for result in results:
+        icon = SetupWizard.STEP_ICON[result.outcome]
+        click.echo(f"  {icon} {result.step_name}: {result.message}")
 
     click.echo("")
     if SetupWizard.succeeded(results):
