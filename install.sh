@@ -2,6 +2,7 @@
 set -euo pipefail
 
 DRY_RUN=false
+PYTHON_BIN=""
 REPO_URL="${REPO_URL:-https://github.com/Gennon/SystemSentinel.git}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/system-sentinel}"
 
@@ -47,15 +48,20 @@ detect_package_manager() {
     fi
 }
 
-# Check Python version
+# Check Python version (3.11+)
 check_python() {
     if command -v python3 &> /dev/null; then
-        python_version=$(python3 --version 2>&1 | awk '{print $2}')
-        log_info "Python $python_version detected"
-        return 0
-    else
-        return 1
+        ver=$(python3 --version 2>&1 | awk '{print $2}')
+        major=$(echo "$ver" | cut -d. -f1)
+        minor=$(echo "$ver" | cut -d. -f2)
+        if [[ "$major" -ge 3 && "$minor" -ge 11 ]]; then
+            PYTHON_BIN="python3"
+            log_info "Python $ver detected"
+            return 0
+        fi
+        log_warn "Python $ver found but 3.11+ is required"
     fi
+    return 1
 }
 
 # Check git
@@ -139,7 +145,7 @@ setup_venv() {
     fi
 
     log_info "Creating Python virtualenv..."
-    python3.11 -m venv "$INSTALL_DIR/.venv"
+    "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
     log_info "Virtualenv created"
 }
 
