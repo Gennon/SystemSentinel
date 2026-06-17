@@ -145,12 +145,17 @@ setup_venv() {
         return 0
     fi
 
+    # On apt systems, python3-venv is a separate package that must be installed first.
+    # On dnf/pacman, venv is bundled with Python so we only install on failure.
+    ver=$("$PYTHON_BIN" --version 2>&1 | awk '{print $2}' | cut -d. -f1,2)
+    if [[ "$PACKAGE_MANAGER" == "apt" ]]; then
+        sudo apt-get install -y "python${ver}-venv"
+    fi
+
     log_info "Creating Python virtualenv..."
-    if ! "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv" 2>/dev/null; then
-        log_warn "venv creation failed, installing python venv package..."
-        ver=$("$PYTHON_BIN" --version 2>&1 | awk '{print $2}' | cut -d. -f1,2)
+    if ! "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"; then
+        log_warn "venv creation failed, attempting to install venv package..."
         case "$PACKAGE_MANAGER" in
-            apt)    sudo apt-get install -y "python${ver}-venv" ;;
             dnf)    sudo dnf install -y "python${ver}-venv" ;;
             pacman) sudo pacman -S --noconfirm python ;;
         esac
@@ -201,6 +206,18 @@ main() {
         echo -e "${YELLOW}[DRY RUN MODE]${NC} No changes will be made."
         echo ""
     fi
+
+    echo "This installer will:"
+    echo "  1. Check and install Python 3.11+ and git if needed"
+    echo "  2. Clone the SystemSentinel repository to $INSTALL_DIR"
+    echo "  3. Create a Python virtualenv"
+    echo "  4. Install SystemSentinel and its Python packages"
+    echo "  5. Run the setup wizard to configure the daemon"
+    echo ""
+    echo -e "${YELLOW}⚠${NC}  Some steps require sudo to install system packages and configure systemd."
+    echo ""
+    read -p "Press Enter to continue or Ctrl+C to abort..." -r
+    echo ""
 
     log_section "Step 1: Checking prerequisites"
     PACKAGE_MANAGER=$(detect_package_manager)
