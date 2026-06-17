@@ -15,6 +15,6 @@ As a user I want to choose which optional features to enable during setup, with 
   - **Metrics export** — Prometheus-compatible `/metrics` endpoint (US-028)
 - [x] Each feature shows whether its required tool is already installed
 - [x] The user selects features via a numbered toggle menu; the default is none selected
-- [ ] Selected features are installed and enabled in `config.yaml` automatically
+- [x] Selected features are installed and enabled in `config.yaml` automatically
 - [x] Skipped features can be enabled at any time by re-running `sentinel setup`
 - [x] In `--unattended` mode, no optional features are installed unless explicitly passed as flags (e.g. `--enable gpu,lynis`)

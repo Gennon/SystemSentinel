@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import io
+import subprocess
+from typing import TYPE_CHECKING
 from unittest.mock import patch
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from system_sentinel.setup.optional_features import (
     OPTIONAL_FEATURES,
     Feature,
+    install_optional_features_step,
     select_features_step,
 )
 from system_sentinel.setup.wizard import (
@@ -186,3 +192,140 @@ class TestSelectFeaturesStepInteractive:
         captured = capsys.readouterr().out
         for feature in OPTIONAL_FEATURES:
             assert feature.display_name in captured
+
+
+# ---------------------------------------------------------------------------
+# install_optional_features_step
+# ---------------------------------------------------------------------------
+
+
+def _run_install_step(ctx: WizardContext):
+    buf = io.StringIO()
+    wizard = SetupWizard(steps=[install_optional_features_step()], output=buf)
+    results = wizard.run(ctx)
+    return results, buf.getvalue()
+
+
+class TestInstallOptionalFeaturesStep:
+    def test_step_is_not_check_safe(self) -> None:
+        assert install_optional_features_step().check_safe is False
+
+    def test_no_features_selected_succeeds_without_installing(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        ctx = WizardContext(enabled_features=[])
+        with (
+            patch("system_sentinel.setup.optional_features.CONFIG_PATH", config_path),
+            patch("system_sentinel.setup.optional_features.subprocess.run") as mock_run,
+        ):
+            results, _ = _run_install_step(ctx)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        mock_run.assert_not_called()
+
+    def test_feature_with_pip_extra_installs_it(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        ctx = WizardContext(enabled_features=["gpu"])
+
+        with (
+            patch(
+                "system_sentinel.setup.optional_features.CONFIG_PATH",
+                config_path,
+            ),
+            patch("system_sentinel.setup.optional_features.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="", stderr=""
+            )
+            results, _ = _run_install_step(ctx)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        calls = [str(c) for c in mock_run.call_args_list]
+        assert any("gpu" in c for c in calls)
+
+    def test_pip_install_failure_returns_failure(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        ctx = WizardContext(enabled_features=["gpu"])
+
+        with (
+            patch(
+                "system_sentinel.setup.optional_features.CONFIG_PATH",
+                config_path,
+            ),
+            patch("system_sentinel.setup.optional_features.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=1, stdout="", stderr="pip error"
+            )
+            results, _ = _run_install_step(ctx)
+
+        assert results[0].outcome == StepOutcome.FAILURE
+        assert results[0].error is not None
+
+    def test_feature_without_pip_extra_skips_pip(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        ctx = WizardContext(enabled_features=["harden"])
+
+        with (
+            patch(
+                "system_sentinel.setup.optional_features.CONFIG_PATH",
+                config_path,
+            ),
+            patch("system_sentinel.setup.optional_features.subprocess.run") as mock_run,
+        ):
+            results, _ = _run_install_step(ctx)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        mock_run.assert_not_called()
+
+    def test_writes_config_yaml_with_selected_features(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        ctx = WizardContext(enabled_features=["gpu", "prometheus"])
+
+        with (
+            patch(
+                "system_sentinel.setup.optional_features.CONFIG_PATH",
+                config_path,
+            ),
+            patch("system_sentinel.setup.optional_features.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="", stderr=""
+            )
+            results, _ = _run_install_step(ctx)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        assert config_path.exists()
+        content = config_path.read_text()
+        assert "gpu" in content
+        assert "prometheus" in content
+
+    def test_config_yaml_created_even_with_no_pip_features(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        ctx = WizardContext(enabled_features=["harden"])
+
+        with patch(
+            "system_sentinel.setup.optional_features.CONFIG_PATH",
+            config_path,
+        ):
+            results, _ = _run_install_step(ctx)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        assert config_path.exists()
+
+    def test_check_only_skips_install_and_write(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        ctx = WizardContext(check_only=True, enabled_features=["gpu"])
+
+        with (
+            patch(
+                "system_sentinel.setup.optional_features.CONFIG_PATH",
+                config_path,
+            ),
+            patch("system_sentinel.setup.optional_features.subprocess.run") as mock_run,
+        ):
+            results, _ = _run_install_step(ctx)
+
+        # check_safe=False so wizard marks as SKIPPED in check-only mode
+        assert results[0].outcome == StepOutcome.SKIPPED
+        mock_run.assert_not_called()
+        assert not config_path.exists()

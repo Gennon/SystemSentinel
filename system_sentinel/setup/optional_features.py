@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 import shutil
+import subprocess
+import sys
+from typing import cast
+
+import yaml
 
 from system_sentinel.setup.wizard import StepOutcome, WizardContext, WizardStep, WizardStepResult
+
+CONFIG_PATH = Path("/etc/sentinel/config.yaml")
 
 
 @dataclass
@@ -110,4 +118,93 @@ def select_features_step() -> WizardStep:
         description="Select optional features to enable",
         runner=runner,
         check_safe=True,
+    )
+
+
+# Config keys that each feature maps to for enabling in config.yaml
+_FEATURE_CONFIG: dict[str, dict[str, object]] = {
+    "gpu": {"monitors": {"gpu": {"enabled": True}}},
+    "harden": {"tools": {"harden": {"enabled": True}}},
+    "snapshot": {"tools": {"snapshot": {"enabled": True}}},
+    "vulnscan": {"tools": {"vulnscan": {"enabled": True}}},
+    "prometheus": {"metrics_export": {"prometheus": {"enabled": True}}},
+}
+
+
+def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
+    """Recursively merge override into base, returning the result."""
+    result = dict(base)
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(cast("dict[str, object]", result[key]), value)
+        else:
+            result[key] = value
+    return result
+
+
+def install_optional_features_step() -> WizardStep:
+    """Return a WizardStep that installs pip extras and writes config.yaml."""
+
+    def runner(ctx: WizardContext) -> WizardStepResult:
+        if ctx.check_only:
+            return WizardStepResult(
+                step_name="install_optional_features",
+                outcome=StepOutcome.SUCCESS,
+                message="Check-only mode: skipping optional feature installation.",
+            )
+
+        if not ctx.enabled_features:
+            CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            if not CONFIG_PATH.exists():
+                CONFIG_PATH.write_text("{}\n")
+            return WizardStepResult(
+                step_name="install_optional_features",
+                outcome=StepOutcome.SUCCESS,
+                message="No optional features selected; config.yaml unchanged.",
+            )
+
+        # Install pip extras for features that require them
+        extras: list[str] = [
+            extra
+            for key in ctx.enabled_features
+            if key in _FEATURE_BY_KEY and (extra := _FEATURE_BY_KEY[key].pip_extra) is not None
+        ]
+        if extras:
+            package = f"system-sentinel[{','.join(extras)}]"
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", package],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                return WizardStepResult(
+                    step_name="install_optional_features",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Failed to install pip extras: {', '.join(extras)}",
+                    error=result.stderr.strip(),
+                )
+
+        # Write enabled features to config.yaml
+        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        config: dict[str, object] = {}
+        if CONFIG_PATH.exists():
+            config = yaml.safe_load(CONFIG_PATH.read_text()) or {}
+
+        for key in ctx.enabled_features:
+            if key in _FEATURE_CONFIG:
+                config = _deep_merge(config, _FEATURE_CONFIG[key])
+
+        CONFIG_PATH.write_text(yaml.dump(config, default_flow_style=False))
+
+        return WizardStepResult(
+            step_name="install_optional_features",
+            outcome=StepOutcome.SUCCESS,
+            message=f"Installed and enabled: {', '.join(ctx.enabled_features)}.",
+        )
+
+    return WizardStep(
+        name="install_optional_features",
+        description="Install and configure optional features",
+        runner=runner,
+        check_safe=False,
     )
