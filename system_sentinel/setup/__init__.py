@@ -5,6 +5,7 @@ from system_sentinel.setup.dependency_installer import (
     install_python_packages_step,
     install_system_packages_step,
 )
+from system_sentinel.setup.optional_features import select_features_step
 from system_sentinel.setup.systemd_installer import (
     create_sentinel_user_step,
     enable_systemd_service_step,
@@ -20,6 +21,7 @@ def build_wizard() -> SetupWizard:
         check_platform_step(),
         install_system_packages_step(),
         install_python_packages_step(),
+        select_features_step(),
         create_sentinel_user_step(),
         install_systemd_service_step(),
         enable_systemd_service_step(),
