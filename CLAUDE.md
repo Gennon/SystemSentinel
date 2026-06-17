@@ -13,5 +13,6 @@ Specific User Stories will define the detailed requirements for each feature or 
 4. Ensure code is well-documented and follows the project's [coding standards and architectural guidelines](ARCHITECTURE.md).
 5. Mark the user story as "In Progress" in the user story map when development starts, and update it to "Done" once the feature is implemented and tested.
 6. Update acceptance criteria in the user story as needed based on any implementations, changes or discoveries during development.
+7. Always run all tests, linting, and formatting checks before merging code to the main branch. Using this command: `.venv/bin/pytest tests/ -q && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy --strict system_sentinel/ 2>&1`
 
 
