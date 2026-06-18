@@ -8,7 +8,7 @@ As a user I want a single command (`sentinel setup`) that launches a friendly in
 
 ## Acceptance Criteria
 - [x] Running `sentinel setup` displays a welcome banner and a brief description of what it will do before making any changes
-- [ ] The wizard runs through the steps defined in US-036 (dependency install), US-037 (optional features), and US-038 (guided config) in sequence
+- [x] The wizard runs through the steps defined in US-036 (dependency install), US-037 (optional features), and US-038 (guided config) in sequence
 - [x] Each step shows a clear progress indicator and a ✓ / ✗ result
 - [x] If any step fails, the wizard stops, explains what went wrong, and suggests a manual fix before exiting with a non-zero code
 - [x] On success, the wizard installs and enables the systemd service, starts the daemon, and confirms it is running
