@@ -30,7 +30,7 @@ A Linux system management daemon that autonomously handles updates, security har
 - [x] As a user I want all mandatory dependencies installed automatically during setup so the daemon works out of the box. **(US-036)**
 - [x] As a user I want to choose which optional features to enable during setup so I only install what I need.
 - [x] As a user I want the setup wizard to walk me through the minimum required configuration so I don't have to manually edit a config file to get started. **(US-038)**
-- [ ] As a user I want the system to auto-apply security patches on a configurable schedule so the machine stays up to date without manual intervention.
+- [x] As a user I want the system to auto-apply security patches on a configurable schedule so the machine stays up to date without manual intervention. **(US-001)**
 - [ ] As a user I want to define a list of required packages that are always installed so the system self-heals if software goes missing.
 
 ### Security & Hardening
