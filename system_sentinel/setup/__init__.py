@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from system_sentinel.setup.config_wizard import configure_chat_step
 from system_sentinel.setup.dependency_installer import (
     check_platform_step,
     install_python_packages_step,
@@ -26,6 +27,7 @@ def build_wizard() -> SetupWizard:
         install_python_packages_step(),
         select_features_step(),
         install_optional_features_step(),
+        configure_chat_step(),
         create_sentinel_user_step(),
         install_systemd_service_step(),
         enable_systemd_service_step(),

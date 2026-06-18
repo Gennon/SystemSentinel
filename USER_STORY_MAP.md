@@ -29,7 +29,7 @@ A Linux system management daemon that autonomously handles updates, security har
 - [x] As a user I want a single setup command that launches a friendly wizard so I can go from a fresh Linux machine to a running daemon without prior knowledge. **(US-035)**
 - [x] As a user I want all mandatory dependencies installed automatically during setup so the daemon works out of the box. **(US-036)**
 - [x] As a user I want to choose which optional features to enable during setup so I only install what I need.
-- [ ] As a user I want the setup wizard to walk me through the minimum required configuration so I don't have to manually edit a config file to get started.
+- [x] As a user I want the setup wizard to walk me through the minimum required configuration so I don't have to manually edit a config file to get started. **(US-038)**
 - [ ] As a user I want the system to auto-apply security patches on a configurable schedule so the machine stays up to date without manual intervention.
 - [ ] As a user I want to define a list of required packages that are always installed so the system self-heals if software goes missing.
 
