@@ -60,6 +60,12 @@ class FakeBackend(PackageBackend):
     def parse_upgraded_packages(self, stdout: bytes) -> list[str]:
         return self._packages
 
+    async def is_installed(self, package: str) -> bool:
+        return True
+
+    async def install(self, package: str) -> tuple[bytes, bytes, int]:
+        return b"", b"", 0
+
 
 def _make_tool(
     config: dict[str, Any] | None = None,
