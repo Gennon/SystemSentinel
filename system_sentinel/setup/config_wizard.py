@@ -2,11 +2,24 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+import sys
 from typing import Any
 
 import yaml
 
 from system_sentinel.setup.wizard import StepOutcome, WizardContext, WizardStep, WizardStepResult
+
+
+def _tty_input(prompt: str) -> str:
+    """Read a line from /dev/tty so it works even when stdin is a pipe."""
+    try:
+        with open("/dev/tty") as tty:
+            sys.stdout.write(prompt)
+            sys.stdout.flush()
+            return tty.readline().rstrip("\n")
+    except OSError:
+        return input(prompt)
+
 
 # Default path used by the canonical wizard; tests inject a temp path.
 _DEFAULT_CONFIG_PATH = Path("/etc/sentinel/config.yaml")
@@ -66,7 +79,7 @@ def _prompt_field(field: str, description: str, token: str | None, validator: Va
     """Prompt the user for a single field, retrying until validation passes."""
     while True:
         print(f"\n  {description}")
-        value = input(f"  Enter {field}: ").strip()
+        value = _tty_input(f"  Enter {field}: ").strip()
         error = validator(field, value, token)
         if error is None:
             return value

@@ -11,6 +11,18 @@ import yaml
 
 from system_sentinel.setup.wizard import StepOutcome, WizardContext, WizardStep, WizardStepResult
 
+
+def _tty_input(prompt: str) -> str:
+    """Read a line from /dev/tty so it works even when stdin is a pipe."""
+    try:
+        with open("/dev/tty") as tty:
+            sys.stdout.write(prompt)
+            sys.stdout.flush()
+            return tty.readline().rstrip("\n")
+    except OSError:
+        return input(prompt)
+
+
 CONFIG_PATH = Path("/etc/sentinel/config.yaml")
 
 
@@ -101,7 +113,7 @@ def select_features_step() -> WizardStep:
         for feature in OPTIONAL_FEATURES:
             status = "✓ installed" if feature.tool_present() else "not installed"
             print(f"\n  {feature.display_name} — {feature.description} [{status}]")
-            answer = input("  Enable? (y/n): ").strip().lower()
+            answer = _tty_input("  Enable? (y/n): ").strip().lower()
             if answer == "y":
                 selected.append(feature.key)
 
