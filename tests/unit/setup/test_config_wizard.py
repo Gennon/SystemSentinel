@@ -322,7 +322,7 @@ class TestConfigAlreadyExists:
         }
         config_path.write_text(yaml.dump(data))
 
-        ctx = WizardContext()
+        ctx = WizardContext(check_only=True)
         results, _ = _run_step(ctx, config_path)
 
         assert results[0].outcome == StepOutcome.FAILURE
@@ -334,7 +334,7 @@ class TestConfigAlreadyExists:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(yaml.dump({"updates": {"enabled": True}}))
 
-        ctx = WizardContext()
+        ctx = WizardContext(check_only=True)
         results, _ = _run_step(ctx, config_path)
 
         assert results[0].outcome == StepOutcome.FAILURE
@@ -351,7 +351,7 @@ class TestConfigAlreadyExists:
         }
         config_path.write_text(yaml.dump(data))
 
-        ctx = WizardContext()
+        ctx = WizardContext(check_only=True)
         results, _ = _run_step(ctx, config_path)
 
         assert results[0].outcome == StepOutcome.FAILURE
@@ -364,7 +364,7 @@ class TestConfigAlreadyExists:
         config_path.write_text(yaml.dump(data))
         original = config_path.read_text()
 
-        ctx = WizardContext()
+        ctx = WizardContext(check_only=True)
         _run_step(ctx, config_path)
 
         assert config_path.read_text() == original

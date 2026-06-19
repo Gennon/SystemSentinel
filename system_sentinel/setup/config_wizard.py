@@ -113,20 +113,23 @@ def configure_chat_step(
         if config_path.exists():
             raw = yaml.safe_load(config_path.read_text()) or {}
             errors = _validate_existing_config(raw)
-            if errors:
+            if not errors:
+                return WizardStepResult(
+                    step_name="configure_chat",
+                    outcome=StepOutcome.SUCCESS,
+                    message="Existing config.yaml is valid.",
+                )
+            # In non-interactive modes, report the validation failure
+            if ctx.check_only or ctx.unattended:
                 return WizardStepResult(
                     step_name="configure_chat",
                     outcome=StepOutcome.FAILURE,
                     message="Existing config.yaml has missing or invalid fields.",
                     error="; ".join(errors),
                 )
-            return WizardStepResult(
-                step_name="configure_chat",
-                outcome=StepOutcome.SUCCESS,
-                message="Existing config.yaml is valid.",
-            )
+            # Interactive: fall through to prompt for the missing fields
 
-        # No config.yaml yet — cannot proceed without interaction
+        # No config.yaml (or existing one is incomplete) — cannot proceed without interaction
         if ctx.check_only:
             return WizardStepResult(
                 step_name="configure_chat",
