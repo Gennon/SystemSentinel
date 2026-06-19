@@ -21,6 +21,21 @@ from system_sentinel.setup.wizard import (
 )
 
 
+def _make_sudo_run(returncode: int = 0):
+    """Return a subprocess.run side_effect that simulates sudo tee writing files."""
+
+    def _side_effect(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "tee" in cmd:
+            path = cmd[-1]
+            content = kwargs.get("input", "")
+            import pathlib
+
+            pathlib.Path(path).write_text(str(content))
+        return subprocess.CompletedProcess(args=cmd, returncode=returncode, stdout="", stderr="")
+
+    return _side_effect
+
+
 def _run_step(ctx: WizardContext, inputs: list[str] | None = None):
     buf = io.StringIO()
     wizard = SetupWizard(steps=[select_features_step()], output=buf)
@@ -215,12 +230,14 @@ class TestInstallOptionalFeaturesStep:
         ctx = WizardContext(enabled_features=[])
         with (
             patch("system_sentinel.setup.optional_features.CONFIG_PATH", config_path),
-            patch("system_sentinel.setup.optional_features.subprocess.run") as mock_run,
+            patch(
+                "system_sentinel.setup.optional_features.subprocess.run",
+                side_effect=_make_sudo_run(),
+            ),
         ):
             results, _ = _run_install_step(ctx)
 
         assert results[0].outcome == StepOutcome.SUCCESS
-        mock_run.assert_not_called()
 
     def test_feature_with_pip_extra_installs_it(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
@@ -231,11 +248,11 @@ class TestInstallOptionalFeaturesStep:
                 "system_sentinel.setup.optional_features.CONFIG_PATH",
                 config_path,
             ),
-            patch("system_sentinel.setup.optional_features.subprocess.run") as mock_run,
+            patch(
+                "system_sentinel.setup.optional_features.subprocess.run",
+                side_effect=_make_sudo_run(),
+            ) as mock_run,
         ):
-            mock_run.return_value = subprocess.CompletedProcess(
-                args=[], returncode=0, stdout="", stderr=""
-            )
             results, _ = _run_install_step(ctx)
 
         assert results[0].outcome == StepOutcome.SUCCESS
@@ -251,11 +268,11 @@ class TestInstallOptionalFeaturesStep:
                 "system_sentinel.setup.optional_features.CONFIG_PATH",
                 config_path,
             ),
-            patch("system_sentinel.setup.optional_features.subprocess.run") as mock_run,
+            patch(
+                "system_sentinel.setup.optional_features.subprocess.run",
+                side_effect=_make_sudo_run(returncode=1),
+            ),
         ):
-            mock_run.return_value = subprocess.CompletedProcess(
-                args=[], returncode=1, stdout="", stderr="pip error"
-            )
             results, _ = _run_install_step(ctx)
 
         assert results[0].outcome == StepOutcome.FAILURE
@@ -270,12 +287,18 @@ class TestInstallOptionalFeaturesStep:
                 "system_sentinel.setup.optional_features.CONFIG_PATH",
                 config_path,
             ),
-            patch("system_sentinel.setup.optional_features.subprocess.run") as mock_run,
+            patch(
+                "system_sentinel.setup.optional_features.subprocess.run",
+                side_effect=_make_sudo_run(),
+            ) as mock_run,
         ):
             results, _ = _run_install_step(ctx)
 
         assert results[0].outcome == StepOutcome.SUCCESS
-        mock_run.assert_not_called()
+        # Only sudo mkdir and sudo tee should run — no pip install
+        for call in mock_run.call_args_list:
+            cmd = call.args[0] if call.args else call.kwargs.get("cmd", [])
+            assert not ("-m" in cmd and "pip" in cmd)
 
     def test_writes_config_yaml_with_selected_features(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
@@ -286,11 +309,11 @@ class TestInstallOptionalFeaturesStep:
                 "system_sentinel.setup.optional_features.CONFIG_PATH",
                 config_path,
             ),
-            patch("system_sentinel.setup.optional_features.subprocess.run") as mock_run,
+            patch(
+                "system_sentinel.setup.optional_features.subprocess.run",
+                side_effect=_make_sudo_run(),
+            ),
         ):
-            mock_run.return_value = subprocess.CompletedProcess(
-                args=[], returncode=0, stdout="", stderr=""
-            )
             results, _ = _run_install_step(ctx)
 
         assert results[0].outcome == StepOutcome.SUCCESS
@@ -303,9 +326,15 @@ class TestInstallOptionalFeaturesStep:
         config_path = tmp_path / "config.yaml"
         ctx = WizardContext(enabled_features=["harden"])
 
-        with patch(
-            "system_sentinel.setup.optional_features.CONFIG_PATH",
-            config_path,
+        with (
+            patch(
+                "system_sentinel.setup.optional_features.CONFIG_PATH",
+                config_path,
+            ),
+            patch(
+                "system_sentinel.setup.optional_features.subprocess.run",
+                side_effect=_make_sudo_run(),
+            ),
         ):
             results, _ = _run_install_step(ctx)
 

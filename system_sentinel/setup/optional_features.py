@@ -26,6 +26,14 @@ def _tty_input(prompt: str) -> str:
 CONFIG_PATH = Path("/etc/sentinel/config.yaml")
 
 
+def _sudo_mkdir(path: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["sudo", "mkdir", "-p", str(path)], capture_output=True, text=True)
+
+
+def _sudo_write(path: Path, content: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["sudo", "tee", str(path)], input=content, capture_output=True, text=True)
+
+
 @dataclass
 class Feature:
     key: str
@@ -166,9 +174,9 @@ def install_optional_features_step() -> WizardStep:
             )
 
         if not ctx.enabled_features:
-            CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            _sudo_mkdir(CONFIG_PATH.parent)
             if not CONFIG_PATH.exists():
-                CONFIG_PATH.write_text("{}\n")
+                _sudo_write(CONFIG_PATH, "{}\n")
             return WizardStepResult(
                 step_name="install_optional_features",
                 outcome=StepOutcome.SUCCESS,
@@ -197,7 +205,7 @@ def install_optional_features_step() -> WizardStep:
                 )
 
         # Write enabled features to config.yaml
-        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _sudo_mkdir(CONFIG_PATH.parent)
         config: dict[str, object] = {}
         if CONFIG_PATH.exists():
             config = yaml.safe_load(CONFIG_PATH.read_text()) or {}
@@ -206,7 +214,7 @@ def install_optional_features_step() -> WizardStep:
             if key in _FEATURE_CONFIG:
                 config = _deep_merge(config, _FEATURE_CONFIG[key])
 
-        CONFIG_PATH.write_text(yaml.dump(config, default_flow_style=False))
+        _sudo_write(CONFIG_PATH, yaml.dump(config, default_flow_style=False))
 
         return WizardStepResult(
             step_name="install_optional_features",

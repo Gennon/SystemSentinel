@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import io
+import pathlib
 from pathlib import Path
+import subprocess
 from unittest.mock import patch
 
 import yaml
@@ -15,6 +17,18 @@ from system_sentinel.setup.wizard import (
     StepOutcome,
     WizardContext,
 )
+
+
+def _make_sudo_run(returncode: int = 0):
+    """Return a subprocess.run side_effect that simulates sudo tee writing files."""
+
+    def _side_effect(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "tee" in cmd:
+            content = kwargs.get("input", "")
+            pathlib.Path(cmd[-1]).write_text(str(content))
+        return subprocess.CompletedProcess(args=cmd, returncode=returncode, stdout="", stderr="")
+
+    return _side_effect
 
 
 def _run_step(
@@ -34,11 +48,15 @@ def _run_step(
     step = configure_chat_step(config_path=config_path, validator=mock_validator)
     wizard = SetupWizard(steps=[step], output=buf)
 
-    if inputs is not None:
-        with patch("builtins.input", side_effect=inputs):
+    with patch(
+        "system_sentinel.setup.config_wizard.subprocess.run",
+        side_effect=_make_sudo_run(),
+    ):
+        if inputs is not None:
+            with patch("builtins.input", side_effect=inputs):
+                results = wizard.run(ctx)
+        else:
             results = wizard.run(ctx)
-    else:
-        results = wizard.run(ctx)
 
     return results, buf.getvalue()
 
@@ -186,7 +204,13 @@ class TestValidationRetry:
         buf = io.StringIO()
         step = configure_chat_step(config_path=config_path, validator=validator)
         wizard = SetupWizard(steps=[step], output=buf)
-        with patch("builtins.input", side_effect=inputs):
+        with (
+            patch("builtins.input", side_effect=inputs),
+            patch(
+                "system_sentinel.setup.config_wizard.subprocess.run",
+                side_effect=_make_sudo_run(),
+            ),
+        ):
             results = wizard.run(ctx)
 
         assert results[0].outcome == StepOutcome.SUCCESS
@@ -217,7 +241,13 @@ class TestValidationRetry:
         buf = io.StringIO()
         step = configure_chat_step(config_path=config_path, validator=validator)
         wizard = SetupWizard(steps=[step], output=buf)
-        with patch("builtins.input", side_effect=inputs):
+        with (
+            patch("builtins.input", side_effect=inputs),
+            patch(
+                "system_sentinel.setup.config_wizard.subprocess.run",
+                side_effect=_make_sudo_run(),
+            ),
+        ):
             results = wizard.run(ctx)
 
         assert results[0].outcome == StepOutcome.SUCCESS
@@ -242,7 +272,13 @@ class TestValidationRetry:
         buf = io.StringIO()
         step = configure_chat_step(config_path=config_path, validator=validator)
         wizard = SetupWizard(steps=[step], output=buf)
-        with patch("builtins.input", side_effect=inputs):
+        with (
+            patch("builtins.input", side_effect=inputs),
+            patch(
+                "system_sentinel.setup.config_wizard.subprocess.run",
+                side_effect=_make_sudo_run(),
+            ),
+        ):
             wizard.run(ctx)
 
         captured = capsys.readouterr().out

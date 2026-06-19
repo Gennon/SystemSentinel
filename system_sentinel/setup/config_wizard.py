@@ -2,12 +2,21 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+import subprocess
 import sys
 from typing import Any
 
 import yaml
 
 from system_sentinel.setup.wizard import StepOutcome, WizardContext, WizardStep, WizardStepResult
+
+
+def _sudo_mkdir(path: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["sudo", "mkdir", "-p", str(path)], capture_output=True, text=True)
+
+
+def _sudo_write(path: Path, content: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["sudo", "tee", str(path)], input=content, capture_output=True, text=True)
 
 
 def _tty_input(prompt: str) -> str:
@@ -152,8 +161,8 @@ def configure_chat_step(
         for key, val in _SAFE_DEFAULTS.items():
             config.setdefault(key, val)
 
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(yaml.dump(config, default_flow_style=False))
+        _sudo_mkdir(config_path.parent)
+        _sudo_write(config_path, yaml.dump(config, default_flow_style=False))
 
         print(f"\nConfig saved to {config_path}. Edit it any time to adjust settings.")
 
