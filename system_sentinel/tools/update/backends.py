@@ -86,6 +86,7 @@ class AptBackend(PackageBackend):
 
     async def install(self, package: str) -> tuple[bytes, bytes, int]:
         proc = await asyncio.create_subprocess_exec(
+            "sudo",
             _APT_GET_BIN,
             "install",
             "-y",
@@ -99,7 +100,7 @@ class AptBackend(PackageBackend):
 
 class DnfBackend(PackageBackend):
     async def upgrade(self, *, dry_run: bool = False) -> tuple[bytes, bytes, int]:
-        args = [_DNF_BIN, "upgrade", "--security", "-y"]
+        args = ["sudo", _DNF_BIN, "upgrade", "--security", "-y"]
         if dry_run:
             args.append("--dry-run")
         proc = await asyncio.create_subprocess_exec(
@@ -147,6 +148,7 @@ class DnfBackend(PackageBackend):
 
     async def install(self, package: str) -> tuple[bytes, bytes, int]:
         proc = await asyncio.create_subprocess_exec(
+            "sudo",
             _DNF_BIN,
             "install",
             "-y",
@@ -184,6 +186,7 @@ class PacmanBackend(PackageBackend):
 
     async def install(self, package: str) -> tuple[bytes, bytes, int]:
         proc = await asyncio.create_subprocess_exec(
+            "sudo",
             _PACMAN_BIN,
             "-S",
             "--noconfirm",

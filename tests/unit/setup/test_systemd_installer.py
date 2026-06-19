@@ -115,9 +115,16 @@ class TestInstallSystemdServiceStep:
         assert "not found" in results[0].message.lower()
 
     def test_installs_service_file_with_exec_path(self, tmp_path: Path) -> None:
+        import subprocess as _sp
+
         service_template = tmp_path / "sentinel.service"
         service_template.write_text("[Service]\nExecStart={exec_path} run\n")
         dest = tmp_path / "sentinel.service.installed"
+
+        def fake_tee(cmd: list[str], input: str, **kwargs: object) -> _sp.CompletedProcess[str]:
+            # Simulate sudo tee writing to dest
+            dest.write_text(input)
+            return _sp.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
 
         with (
             patch(
@@ -132,6 +139,7 @@ class TestInstallSystemdServiceStep:
                 "system_sentinel.setup.systemd_installer.shutil.which",
                 return_value="/usr/local/bin/sentinel",
             ),
+            patch("system_sentinel.setup.systemd_installer.subprocess.run", side_effect=fake_tee),
             patch("system_sentinel.setup.systemd_installer.run_command") as mock_cmd,
         ):
             mock_cmd.return_value = CommandResult(returncode=0, stdout="", stderr="")

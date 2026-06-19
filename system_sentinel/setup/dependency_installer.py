@@ -90,9 +90,9 @@ def _check_package_installed(manager: str, package: str) -> bool:
 def _install_packages(manager: str, packages: list[str]) -> CommandResult:
     """Install packages using the detected package manager."""
     if "apt-get" in manager or "dnf" in manager:
-        cmd = [manager, "install", "-y", *packages]
+        cmd = ["sudo", manager, "install", "-y", *packages]
     elif "pacman" in manager:
-        cmd = [manager, "-S", "--noconfirm", *packages]
+        cmd = ["sudo", manager, "-S", "--noconfirm", *packages]
     else:
         return CommandResult(returncode=1, stdout="", stderr="Unknown package manager")
     return run_command(cmd)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import shutil
+import subprocess
 import time
 
 from system_sentinel.setup.dependency_installer import run_command
@@ -44,6 +45,7 @@ def create_sentinel_user_step() -> WizardStep:
 
         result = run_command(
             [
+                "sudo",
                 "/usr/sbin/useradd",
                 "--system",
                 "--no-create-home",
@@ -103,9 +105,21 @@ def install_systemd_service_step() -> WizardStep:
 
         template = SERVICE_TEMPLATE_PATH.read_text()
         unit_content = template.replace("{exec_path}", exec_path)
-        SERVICE_INSTALL_PATH.write_text(unit_content)
+        tee = subprocess.run(
+            ["sudo", "tee", str(SERVICE_INSTALL_PATH)],
+            input=unit_content,
+            capture_output=True,
+            text=True,
+        )
+        if tee.returncode != 0:
+            return WizardStepResult(
+                step_name="install_systemd_service",
+                outcome=StepOutcome.FAILURE,
+                message="Failed to write service file.",
+                error=tee.stderr.strip(),
+            )
 
-        reload = run_command(["/usr/bin/systemctl", "daemon-reload"])
+        reload = run_command(["sudo", "/usr/bin/systemctl", "daemon-reload"])
         if reload.returncode != 0:
             return WizardStepResult(
                 step_name="install_systemd_service",
@@ -156,7 +170,7 @@ def enable_systemd_service_step() -> WizardStep:
                 message="Service sentinel already enabled.",
             )
 
-        result = run_command(["/usr/bin/systemctl", "enable", "sentinel"])
+        result = run_command(["sudo", "/usr/bin/systemctl", "enable", "sentinel"])
         if result.returncode != 0:
             return WizardStepResult(
                 step_name="enable_systemd_service",
@@ -207,7 +221,7 @@ def start_systemd_service_step() -> WizardStep:
                 message="Service sentinel already active.",
             )
 
-        start = run_command(["/usr/bin/systemctl", "start", "sentinel"])
+        start = run_command(["sudo", "/usr/bin/systemctl", "start", "sentinel"])
         if start.returncode != 0:
             return WizardStepResult(
                 step_name="start_systemd_service",
