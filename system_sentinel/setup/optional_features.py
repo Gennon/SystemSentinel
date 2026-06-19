@@ -5,6 +5,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import termios
+import tty
 from typing import cast
 
 import yaml
@@ -15,12 +17,32 @@ from system_sentinel.setup.wizard import StepOutcome, WizardContext, WizardStep,
 def _tty_input(prompt: str) -> str:
     """Read a line from /dev/tty so it works even when stdin is a pipe."""
     try:
-        with open("/dev/tty") as tty:
+        with open("/dev/tty") as tty_file:
             sys.stdout.write(prompt)
             sys.stdout.flush()
-            return tty.readline().rstrip("\n")
+            return tty_file.readline().rstrip("\n")
     except OSError:
         return input(prompt)
+
+
+def _tty_read_char(prompt: str) -> str:
+    """Print prompt and return a single keypress without requiring Enter."""
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
+    try:
+        with open("/dev/tty") as tty_file:
+            fd = tty_file.fileno()
+            old = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                ch = tty_file.read(1)
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        return ch
+    except OSError:
+        return input().strip()[:1]
 
 
 CONFIG_PATH = Path("/etc/sentinel/config.yaml")
@@ -121,7 +143,7 @@ def select_features_step() -> WizardStep:
         for feature in OPTIONAL_FEATURES:
             status = "✓ installed" if feature.tool_present() else "not installed"
             print(f"\n  {feature.display_name} — {feature.description} [{status}]")
-            answer = _tty_input("  Enable? (y/n): ").strip().lower()
+            answer = _tty_read_char("  Enable? (y/n): ").strip().lower()
             if answer == "y":
                 selected.append(feature.key)
 
