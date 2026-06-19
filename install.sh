@@ -216,7 +216,7 @@ main() {
     echo ""
     echo -e "${YELLOW}⚠${NC}  Some steps require sudo to install system packages and configure systemd."
     echo ""
-    read -p "Press Enter to continue or Ctrl+C to abort..." -r
+    read -p "Press Enter to continue or Ctrl+C to abort..." -r < /dev/tty
     echo ""
 
     log_section "Step 1: Checking prerequisites"
@@ -251,7 +251,7 @@ main() {
     log_section "Step 5: Running setup wizard"
     log_warn "The setup wizard will guide you through the initial configuration."
     log_warn "You may be prompted for your sudo password."
-    read -p "Continue with setup wizard? (y/n) " -n 1 -r
+    read -p "Continue with setup wizard? (y/n) " -n 1 -r < /dev/tty
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         run_setup_wizard
