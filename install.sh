@@ -239,7 +239,13 @@ main() {
     if [[ ! -d "$INSTALL_DIR" ]]; then
         clone_repo
     else
-        log_info "Directory $INSTALL_DIR already exists, skipping clone"
+        log_info "Directory $INSTALL_DIR already exists, pulling latest changes..."
+        if [[ "$DRY_RUN" == "true" ]]; then
+            echo "  [DRY RUN] Would run git pull in $INSTALL_DIR"
+        else
+            git -C "$INSTALL_DIR" pull
+            log_info "Repository updated"
+        fi
     fi
 
     log_section "Step 3: Setting up Python environment"
