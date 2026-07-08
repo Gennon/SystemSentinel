@@ -34,8 +34,8 @@ A Linux system management daemon that autonomously handles updates, security har
 - [x] As a user I want to define a list of required packages that are always installed so the system self-heals if software goes missing. **(US-002)**
 
 ### Security & Hardening
-- [ ] As a user I want failed SSH login attempts logged with IP address, timestamp, and username so I can see who is trying to get in.
-- [ ] As a user I want an alert when a new unknown IP connects to an open port so I am aware of unexpected network access.
+- [x] As a user I want failed SSH login attempts logged with IP address, timestamp, and username so I can see who is trying to get in. **(US-003)**
+- [x] As a user I want an alert when a new unknown IP connects to an open port so I am aware of unexpected network access. **(US-004)**
 
 ### Monitoring & Metrics
 - [ ] As a user I want CPU, RAM, disk, and network usage metrics collected at a configurable interval so I have a continuous picture of system health.

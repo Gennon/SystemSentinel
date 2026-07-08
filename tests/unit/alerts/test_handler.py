@@ -4,7 +4,11 @@ import logging
 
 import pytest
 
-from system_sentinel.alerts.handler import AlertHandler, _format_brute_force
+from system_sentinel.alerts.handler import (
+    AlertHandler,
+    _format_brute_force,
+    _format_unknown_connection,
+)
 from system_sentinel.chat.base import AlertSeverity, OutboundMessage
 from system_sentinel.chat.router import ChatRouter
 from system_sentinel.core.event_bus import InProcessEventBus
@@ -34,6 +38,77 @@ def _make_router() -> tuple[ChatRouter, list[OutboundMessage]]:
 
     router.register(_RecordingAdapter())  # type: ignore[arg-type]
     return router, broadcast_calls
+
+
+_UNKNOWN_CONNECTION_PAYLOAD = {
+    "src_ip": "8.8.8.8",
+    "dest_port": 22,
+    "protocol": "tcp",
+    "timestamp": "2024-01-01T00:00:00+00:00",
+}
+
+
+# ---------------------------------------------------------------------------
+# _format_unknown_connection unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_format_unknown_connection_title() -> None:
+    msg = _format_unknown_connection(_UNKNOWN_CONNECTION_PAYLOAD)
+    assert "Unknown" in (msg.title or "")
+
+
+def test_format_unknown_connection_severity_is_warning() -> None:
+    msg = _format_unknown_connection(_UNKNOWN_CONNECTION_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+
+
+def test_format_unknown_connection_includes_src_ip() -> None:
+    msg = _format_unknown_connection(_UNKNOWN_CONNECTION_PAYLOAD)
+    assert "8.8.8.8" in msg.text
+
+
+def test_format_unknown_connection_includes_port_and_protocol() -> None:
+    msg = _format_unknown_connection(_UNKNOWN_CONNECTION_PAYLOAD)
+    assert "22" in msg.text
+    assert "tcp" in msg.text
+
+
+def test_format_unknown_connection_fields_populated() -> None:
+    msg = _format_unknown_connection(_UNKNOWN_CONNECTION_PAYLOAD)
+    assert msg.fields is not None
+    assert msg.fields["Source IP"] == "8.8.8.8"
+    assert msg.fields["Destination Port"] == "22"
+
+
+# ---------------------------------------------------------------------------
+# AlertHandler integration tests — unknown connection
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_unknown_connection_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.connection.unknown_ip_detected", _UNKNOWN_CONNECTION_PAYLOAD)
+
+    assert len(calls) == 1
+    assert "8.8.8.8" in calls[0].text
+
+
+@pytest.mark.asyncio
+async def test_handler_unknown_connection_message_severity_is_warning() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.connection.unknown_ip_detected", _UNKNOWN_CONNECTION_PAYLOAD)
+
+    assert calls[0].severity == AlertSeverity.WARNING
 
 
 _BRUTE_FORCE_PAYLOAD = {
