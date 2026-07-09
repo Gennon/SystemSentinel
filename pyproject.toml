@@ -52,30 +52,18 @@ sentinel = "system_sentinel.cli.main:cli"
 
 [project.entry-points."sentinel.tools"]
 security_update = "system_sentinel.tools.update.tool:SecurityUpdateTool"
-harden          = "system_sentinel.tools.harden.tool:HardenTool"
-cleanup         = "system_sentinel.tools.cleanup.tool:CleanupTool"
 packages        = "system_sentinel.tools.packages.tool:RequiredPackagesTool"
-snapshot        = "system_sentinel.tools.snapshot.tool:SnapshotTool"
-firewall        = "system_sentinel.tools.firewall.tool:FirewallTool"
-storage         = "system_sentinel.tools.storage.tool:StorageTool"
-vulnscan        = "system_sentinel.tools.vulnscan.tool:VulnScanTool"
 
 [project.entry-points."sentinel.monitors"]
 cpu            = "system_sentinel.monitors.cpu:CpuMonitor"
 ram            = "system_sentinel.monitors.ram:RamMonitor"
 disk           = "system_sentinel.monitors.disk:DiskMonitor"
 network        = "system_sentinel.monitors.network:NetworkMonitor"
-gpu            = "system_sentinel.monitors.gpu:GpuMonitor"
 logins         = "system_sentinel.monitors.logins:LoginMonitor"
 connections    = "system_sentinel.monitors.connections:ConnectionMonitor"
-services       = "system_sentinel.monitors.services:ServiceMonitor"
-file_integrity = "system_sentinel.monitors.file_integrity:FileIntegrityMonitor"
 
 [project.entry-points."sentinel.chat_adapters"]
 discord = "system_sentinel.chat.adapters.discord.adapter:DiscordAdapter"
-
-[project.entry-points."sentinel.llm_providers"]
-ollama = "system_sentinel.llm.providers.ollama.provider:OllamaProvider"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
