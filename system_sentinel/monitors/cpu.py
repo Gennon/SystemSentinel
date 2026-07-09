@@ -58,7 +58,29 @@ class CpuMonitor(BaseMonitor):
     def _sample(self) -> dict[str, Any]:
         overall = psutil.cpu_percent(interval=1)
         per_core = psutil.cpu_percent(interval=None, percpu=True)
+        top_procs = self._sample_top_processes()
         return {
             "overall_percent": overall,
             "per_core_percent": per_core,
+            "top_processes": top_procs,
         }
+
+    def _sample_top_processes(self) -> list[dict[str, Any]]:
+        """Return up to 10 processes sorted by CPU usage (descending)."""
+        procs: list[dict[str, Any]] = []
+        for proc in psutil.process_iter(["name", "pid", "cpu_percent", "memory_info"]):
+            try:
+                info = proc.info
+                ram_bytes = info["memory_info"].rss if info["memory_info"] else 0
+                procs.append(
+                    {
+                        "name": info["name"] or "unknown",
+                        "pid": info["pid"],
+                        "cpu_percent": info["cpu_percent"] or 0.0,
+                        "ram_bytes": ram_bytes,
+                    }
+                )
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+        procs.sort(key=lambda p: float(p["cpu_percent"]), reverse=True)
+        return procs[:10]
