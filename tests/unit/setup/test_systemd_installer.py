@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 from system_sentinel.setup.dependency_installer import CommandResult
 from system_sentinel.setup.systemd_installer import (
+    create_data_dir_step,
     create_sentinel_user_step,
     enable_systemd_service_step,
     fix_install_dir_permissions_step,
@@ -243,6 +244,125 @@ class TestFixInstallDirPermissionsStep:
         # Only the recursive o+rX call should be present; no o+x ancestor calls
         traverse_calls = [c for c in chmod_calls if "o+x" in c and "-R" not in c]
         assert len(traverse_calls) == 0
+
+
+# ---------------------------------------------------------------------------
+# create_data_dir_step
+# ---------------------------------------------------------------------------
+
+
+class TestCreateDataDirStep:
+    def test_step_is_check_safe(self) -> None:
+        assert create_data_dir_step().check_safe is True
+
+    def test_check_only_both_dirs_exist(self, tmp_path) -> None:
+        with (
+            patch(
+                "system_sentinel.setup.systemd_installer.DATA_DIR",
+                tmp_path / "sentinel",
+            ),
+            patch(
+                "system_sentinel.setup.systemd_installer.CONFIG_DIR",
+                tmp_path / "etc-sentinel",
+            ),
+        ):
+            (tmp_path / "sentinel").mkdir()
+            (tmp_path / "etc-sentinel").mkdir()
+            results, _ = _run_step(create_data_dir_step, WizardContext(check_only=True))
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+
+    def test_check_only_missing_dir_fails(self, tmp_path) -> None:
+        with (
+            patch(
+                "system_sentinel.setup.systemd_installer.DATA_DIR",
+                tmp_path / "sentinel",
+            ),
+            patch(
+                "system_sentinel.setup.systemd_installer.CONFIG_DIR",
+                tmp_path / "etc-sentinel",
+            ),
+        ):
+            # Neither directory exists
+            results, _ = _run_step(create_data_dir_step, WizardContext(check_only=True))
+
+        assert results[0].outcome == StepOutcome.FAILURE
+        assert "missing" in results[0].message.lower()
+
+    def test_creates_and_chowns_both_dirs(self, tmp_path) -> None:
+        cmds: list[list[str]] = []
+
+        def mock_run(cmd, timeout=300):
+            cmds.append(list(cmd))
+            return CommandResult(returncode=0, stdout="", stderr="")
+
+        with (
+            patch(
+                "system_sentinel.setup.systemd_installer.DATA_DIR",
+                tmp_path / "sentinel",
+            ),
+            patch(
+                "system_sentinel.setup.systemd_installer.CONFIG_DIR",
+                tmp_path / "etc-sentinel",
+            ),
+            patch("system_sentinel.setup.systemd_installer.run_command", side_effect=mock_run),
+        ):
+            results, _ = _run_step(create_data_dir_step)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        mkdir_cmds = [c for c in cmds if any(s.endswith("mkdir") for s in c)]
+        chown_cmds = [c for c in cmds if any(s.endswith("chown") for s in c)]
+        mkdir_targets = [c[3] for c in mkdir_cmds]
+        chown_targets = [c[3] for c in chown_cmds]
+        assert any("sentinel" in t for t in mkdir_targets)
+        assert any("etc-sentinel" in t for t in mkdir_targets)
+        assert any("sentinel" in t for t in chown_targets)
+        chown_owners = [c[2] for c in chown_cmds]
+        assert all(o == "sentinel:sentinel" for o in chown_owners)
+
+    def test_mkdir_failure_returns_failure(self, tmp_path) -> None:
+        def mock_run(cmd, timeout=300):
+            if any(s.endswith("mkdir") for s in cmd):
+                return CommandResult(returncode=1, stdout="", stderr="permission denied")
+            return CommandResult(returncode=0, stdout="", stderr="")
+
+        with (
+            patch(
+                "system_sentinel.setup.systemd_installer.DATA_DIR",
+                tmp_path / "sentinel",
+            ),
+            patch(
+                "system_sentinel.setup.systemd_installer.CONFIG_DIR",
+                tmp_path / "etc-sentinel",
+            ),
+            patch("system_sentinel.setup.systemd_installer.run_command", side_effect=mock_run),
+        ):
+            results, _ = _run_step(create_data_dir_step)
+
+        assert results[0].outcome == StepOutcome.FAILURE
+        assert results[0].error is not None
+
+    def test_chown_failure_returns_failure(self, tmp_path) -> None:
+        def mock_run(cmd, timeout=300):
+            if any("chown" in s for s in cmd):
+                return CommandResult(returncode=1, stdout="", stderr="permission denied")
+            return CommandResult(returncode=0, stdout="", stderr="")
+
+        with (
+            patch(
+                "system_sentinel.setup.systemd_installer.DATA_DIR",
+                tmp_path / "sentinel",
+            ),
+            patch(
+                "system_sentinel.setup.systemd_installer.CONFIG_DIR",
+                tmp_path / "etc-sentinel",
+            ),
+            patch("system_sentinel.setup.systemd_installer.run_command", side_effect=mock_run),
+        ):
+            results, _ = _run_step(create_data_dir_step)
+
+        assert results[0].outcome == StepOutcome.FAILURE
+        assert results[0].error is not None
 
 
 # ---------------------------------------------------------------------------

@@ -77,7 +77,6 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
 
     config = _load_config(config_path)
 
-    db_path.parent.mkdir(parents=True, exist_ok=True)
     db = DatabaseConnection(db_path)
     await db.connect()
 

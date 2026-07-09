@@ -11,6 +11,9 @@ from system_sentinel.setup.wizard import StepOutcome, WizardContext, WizardStep,
 SERVICE_TEMPLATE_PATH = Path(__file__).resolve().parents[2] / "packaging" / "sentinel.service"
 SERVICE_INSTALL_PATH = Path("/etc/systemd/system/sentinel.service")
 
+DATA_DIR = Path("/var/lib/sentinel")
+CONFIG_DIR = Path("/etc/sentinel")
+
 _POLL_INTERVAL = 1
 _POLL_MAX_ATTEMPTS = 10
 
@@ -174,6 +177,60 @@ def fix_install_dir_permissions_step() -> WizardStep:
     return WizardStep(
         name="fix_install_dir_permissions",
         description="Grant sentinel user access to install directory",
+        runner=runner,
+        check_safe=True,
+    )
+
+
+def create_data_dir_step() -> WizardStep:
+    """Return a WizardStep that creates /var/lib/sentinel and /etc/sentinel,
+    owned by the sentinel user, so the daemon can write its database and read
+    its config without elevated privileges at runtime.
+    """
+
+    def runner(ctx: WizardContext) -> WizardStepResult:
+        if ctx.check_only:
+            missing = [str(d) for d in (DATA_DIR, CONFIG_DIR) if not d.exists()]
+            if not missing:
+                return WizardStepResult(
+                    step_name="create_data_dir",
+                    outcome=StepOutcome.SUCCESS,
+                    message=f"{DATA_DIR} and {CONFIG_DIR} exist.",
+                )
+            return WizardStepResult(
+                step_name="create_data_dir",
+                outcome=StepOutcome.FAILURE,
+                message=f"Missing directories: {', '.join(missing)}.",
+                error="Run sentinel setup to create them.",
+            )
+
+        for directory in (DATA_DIR, CONFIG_DIR):
+            mkdir = run_command(["sudo", "/bin/mkdir", "-p", str(directory)])
+            if mkdir.returncode != 0:
+                return WizardStepResult(
+                    step_name="create_data_dir",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Failed to create {directory}.",
+                    error=mkdir.stderr.strip() or mkdir.stdout.strip(),
+                )
+            chown = run_command(["sudo", "/bin/chown", "sentinel:sentinel", str(directory)])
+            if chown.returncode != 0:
+                return WizardStepResult(
+                    step_name="create_data_dir",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Failed to set ownership on {directory}.",
+                    error=chown.stderr.strip() or chown.stdout.strip(),
+                )
+
+        return WizardStepResult(
+            step_name="create_data_dir",
+            outcome=StepOutcome.SUCCESS,
+            message=f"Created {DATA_DIR} and {CONFIG_DIR}, owned by sentinel.",
+        )
+
+    return WizardStep(
+        name="create_data_dir",
+        description="Create /var/lib/sentinel and /etc/sentinel data directories",
         runner=runner,
         check_safe=True,
     )
