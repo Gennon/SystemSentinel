@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 
 import click
 
+from system_sentinel.core.daemon import run_daemon
+from system_sentinel.core.exceptions import ConfigError
 from system_sentinel.setup import build_wizard
 from system_sentinel.setup.wizard import SetupWizard, WizardContext
 
@@ -11,6 +14,21 @@ from system_sentinel.setup.wizard import SetupWizard, WizardContext
 @click.group()
 def cli() -> None:
     """SystemSentinel — automated Linux system maintenance and monitoring."""
+
+
+@cli.command()
+def run() -> None:
+    """Start the SystemSentinel daemon.
+
+    Loads /etc/sentinel/config.yaml, wires all components, and runs
+    until SIGINT or SIGTERM is received. Intended to be called by
+    the systemd service unit.
+    """
+    try:
+        asyncio.run(run_daemon())
+    except ConfigError as exc:
+        click.echo(f"Configuration error: {exc}", err=True)
+        sys.exit(1)
 
 
 @cli.command()
