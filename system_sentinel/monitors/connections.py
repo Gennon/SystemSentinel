@@ -92,7 +92,7 @@ class ConnectionMonitor(BaseMonitor):
         self._conn_repo = conn_repo
         self._startup_warning_logged = False
 
-    def _get_conn_repo(self) -> ConnectionRepository:
+    async def _get_conn_repo(self) -> ConnectionRepository:
         if self._conn_repo is not None:
             return self._conn_repo
         from system_sentinel.db.connection import DatabaseConnection
@@ -100,6 +100,7 @@ class ConnectionMonitor(BaseMonitor):
 
         data_dir: str = self.config.get("data_dir", "/var/lib/sentinel")
         db = DatabaseConnection(f"{data_dir}/sentinel.db")
+        await db.connect()
         repo = _Repo(db)
         self._conn_repo = repo
         return repo
@@ -117,7 +118,7 @@ class ConnectionMonitor(BaseMonitor):
             self._startup_warning_logged = True
 
         cooldown_hours: int = int(self.config.get("cooldown_hours", 1))
-        repo = self._get_conn_repo()
+        repo = await self._get_conn_repo()
         now = datetime.now(UTC)
 
         try:

@@ -33,7 +33,7 @@ class NetworkMonitor(BaseMonitor):
         self._prev_bytes_sent: int | None = None
         self._prev_bytes_recv: int | None = None
 
-    def _get_metrics_repo(self) -> MetricsRepository:
+    async def _get_metrics_repo(self) -> MetricsRepository:
         if self._metrics_repo is not None:
             return self._metrics_repo
         from system_sentinel.db.connection import DatabaseConnection
@@ -41,6 +41,7 @@ class NetworkMonitor(BaseMonitor):
 
         data_dir: str = self.config.get("data_dir", "/var/lib/sentinel")
         db = DatabaseConnection(f"{data_dir}/sentinel.db")
+        await db.connect()
         repo = _Repo(db)
         self._metrics_repo = repo
         return repo
@@ -84,6 +85,7 @@ class NetworkMonitor(BaseMonitor):
         }
 
         try:
-            await self._get_metrics_repo().insert("network", data)
+            repo = await self._get_metrics_repo()
+            await repo.insert("network", data)
         except Exception:
             self.logger.exception("Failed to persist network metrics")

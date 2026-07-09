@@ -30,7 +30,7 @@ class DiskMonitor(BaseMonitor):
         super().__init__(config, app_ctx)
         self._metrics_repo = metrics_repo
 
-    def _get_metrics_repo(self) -> MetricsRepository:
+    async def _get_metrics_repo(self) -> MetricsRepository:
         if self._metrics_repo is not None:
             return self._metrics_repo
         from system_sentinel.db.connection import DatabaseConnection
@@ -38,6 +38,7 @@ class DiskMonitor(BaseMonitor):
 
         data_dir: str = self.config.get("data_dir", "/var/lib/sentinel")
         db = DatabaseConnection(f"{data_dir}/sentinel.db")
+        await db.connect()
         repo = _Repo(db)
         self._metrics_repo = repo
         return repo
@@ -51,7 +52,8 @@ class DiskMonitor(BaseMonitor):
             return
 
         try:
-            await self._get_metrics_repo().insert("disk", data)
+            repo = await self._get_metrics_repo()
+            await repo.insert("disk", data)
         except Exception:
             self.logger.exception("Failed to persist disk metrics")
 

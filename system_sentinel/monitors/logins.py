@@ -56,7 +56,7 @@ class LoginMonitor(BaseMonitor):
         self._login_repo = login_repo
         self._alerted_ips: set[str] = set()
 
-    def _get_login_repo(self) -> LoginRepository:
+    async def _get_login_repo(self) -> LoginRepository:
         if self._login_repo is not None:
             return self._login_repo
         # Deferred import to avoid circular dependency at module level.
@@ -65,13 +65,14 @@ class LoginMonitor(BaseMonitor):
 
         data_dir: str = self.config.get("data_dir", "/var/lib/sentinel")
         db = DatabaseConnection(f"{data_dir}/sentinel.db")
+        await db.connect()
         repo = _Repo(db)
         self._login_repo = repo
         return repo
 
     async def collect(self) -> None:
         """Read new auth log entries, store them, and fire alert events as needed."""
-        repo = self._get_login_repo()
+        repo = await self._get_login_repo()
         alert_count: int = int(self.config.get("failed_login_alert_count", 5))
         window_minutes: int = int(self.config.get("failed_login_window_minutes", 10))
         now = datetime.now(UTC)
