@@ -11,6 +11,7 @@ from system_sentinel.setup.optional_features import (
     select_features_step,
 )
 from system_sentinel.setup.systemd_installer import (
+    add_sentinel_to_log_groups_step,
     create_data_dir_step,
     create_sentinel_user_step,
     enable_systemd_service_step,
@@ -31,6 +32,7 @@ def build_wizard() -> SetupWizard:
         configure_chat_step(),
         install_optional_features_step(),
         create_sentinel_user_step(),
+        add_sentinel_to_log_groups_step(),
         fix_install_dir_permissions_step(),
         create_data_dir_step(),
         install_systemd_service_step(),

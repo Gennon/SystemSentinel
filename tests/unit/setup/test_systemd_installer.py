@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 from system_sentinel.setup.dependency_installer import CommandResult
 from system_sentinel.setup.systemd_installer import (
+    add_sentinel_to_log_groups_step,
     create_data_dir_step,
     create_sentinel_user_step,
     enable_systemd_service_step,
@@ -91,6 +92,108 @@ class TestCreateSentinelUserStep:
 
         assert results[0].outcome == StepOutcome.FAILURE
         assert "not found" in results[0].message.lower()
+
+
+# ---------------------------------------------------------------------------
+# add_sentinel_to_log_groups_step
+# ---------------------------------------------------------------------------
+
+
+class TestAddSentinelToLogGroupsStep:
+    def test_step_is_check_safe(self) -> None:
+        assert add_sentinel_to_log_groups_step().check_safe is True
+
+    def _make_run(
+        self,
+        groups_exist: set[str] | None = None,
+        already_member: set[str] | None = None,
+        usermod_fails: bool = False,
+    ):
+        """Build a mock run_command side-effect for this step's command pattern."""
+        if groups_exist is None:
+            groups_exist = {"systemd-journal", "adm"}
+        if already_member is None:
+            already_member = set()
+
+        def _has(cmd: list[str], token: str) -> bool:
+            return any(token in part for part in cmd)
+
+        def mock_run(cmd, timeout=300):
+            if _has(cmd, "getent"):
+                group = cmd[-1]
+                return CommandResult(
+                    returncode=0 if group in groups_exist else 1, stdout="", stderr=""
+                )
+            if _has(cmd, "/usr/bin/id"):
+                return CommandResult(returncode=0, stdout=" ".join(already_member), stderr="")
+            if _has(cmd, "usermod"):
+                if usermod_fails:
+                    return CommandResult(returncode=1, stdout="", stderr="permission denied")
+                return CommandResult(returncode=0, stdout="", stderr="")
+            return CommandResult(returncode=0, stdout="", stderr="")
+
+        return mock_run
+
+    def test_adds_to_both_groups(self) -> None:
+        with patch(
+            "system_sentinel.setup.systemd_installer.run_command",
+            side_effect=self._make_run(),
+        ) as mock_cmd:
+            results, _ = _run_step(add_sentinel_to_log_groups_step)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        usermod_calls = [c for c in mock_cmd.call_args_list if "usermod" in str(c)]
+        assert len(usermod_calls) == 2
+
+    def test_skips_nonexistent_groups(self) -> None:
+        with patch(
+            "system_sentinel.setup.systemd_installer.run_command",
+            side_effect=self._make_run(groups_exist=set()),
+        ) as mock_cmd:
+            results, _ = _run_step(add_sentinel_to_log_groups_step)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        usermod_calls = [c for c in mock_cmd.call_args_list if "usermod" in str(c)]
+        assert len(usermod_calls) == 0
+
+    def test_skips_already_member_groups(self) -> None:
+        with patch(
+            "system_sentinel.setup.systemd_installer.run_command",
+            side_effect=self._make_run(already_member={"systemd-journal", "adm"}),
+        ) as mock_cmd:
+            results, _ = _run_step(add_sentinel_to_log_groups_step)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        usermod_calls = [c for c in mock_cmd.call_args_list if "usermod" in str(c)]
+        assert len(usermod_calls) == 0
+
+    def test_usermod_failure_returns_failure(self) -> None:
+        with patch(
+            "system_sentinel.setup.systemd_installer.run_command",
+            side_effect=self._make_run(usermod_fails=True),
+        ):
+            results, _ = _run_step(add_sentinel_to_log_groups_step)
+
+        assert results[0].outcome == StepOutcome.FAILURE
+        assert results[0].error is not None
+
+    def test_check_only_already_member_succeeds(self) -> None:
+        with patch(
+            "system_sentinel.setup.systemd_installer.run_command",
+            side_effect=self._make_run(already_member={"systemd-journal", "adm"}),
+        ):
+            results, _ = _run_step(add_sentinel_to_log_groups_step, WizardContext(check_only=True))
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+
+    def test_check_only_not_member_fails(self) -> None:
+        with patch(
+            "system_sentinel.setup.systemd_installer.run_command",
+            side_effect=self._make_run(already_member=set()),
+        ):
+            results, _ = _run_step(add_sentinel_to_log_groups_step, WizardContext(check_only=True))
+
+        assert results[0].outcome == StepOutcome.FAILURE
 
 
 # ---------------------------------------------------------------------------

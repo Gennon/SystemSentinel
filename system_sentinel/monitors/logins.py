@@ -132,11 +132,16 @@ class LoginMonitor(BaseMonitor):
         try:
             return await asyncio.to_thread(self._read_journald)
         except Exception:
-            self.logger.debug("journald not available, falling back to auth.log")
+            self.logger.debug("journald not available, falling back to auth.log", exc_info=True)
         try:
             return await asyncio.to_thread(self._read_auth_log)
         except Exception:
-            self.logger.warning("Could not read any SSH auth log source.")
+            self.logger.warning(
+                "Could not read any SSH auth log source. "
+                "Ensure the sentinel user is a member of the 'systemd-journal' "
+                "and 'adm' groups (run `sentinel setup` to fix).",
+                exc_info=True,
+            )
             return []
 
     def _read_journald(self) -> list[str]:

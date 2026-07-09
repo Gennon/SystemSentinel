@@ -83,6 +83,79 @@ def create_sentinel_user_step() -> WizardStep:
     )
 
 
+# Groups that allow the sentinel user to read system logs.
+# systemd-journal: read journald entries.
+# adm: read /var/log/auth.log on Debian/Ubuntu systems.
+_LOG_GROUPS = ("systemd-journal", "adm")
+
+
+def add_sentinel_to_log_groups_step() -> WizardStep:
+    """Return a WizardStep that adds sentinel to log-reading groups.
+
+    The sentinel user needs membership of ``systemd-journal`` to query
+    journald and ``adm`` (Debian/Ubuntu) to read ``/var/log/auth.log``.
+    Groups that do not exist on the current system are skipped gracefully.
+    """
+
+    def runner(ctx: WizardContext) -> WizardStepResult:
+        added: list[str] = []
+        skipped: list[str] = []
+
+        for group in _LOG_GROUPS:
+            group_exists = run_command(["/usr/bin/getent", "group", group]).returncode == 0
+            if not group_exists:
+                skipped.append(group)
+                continue
+
+            already_member = run_command(["/usr/bin/id", "-Gn", "sentinel"])
+            if already_member.returncode == 0 and group in already_member.stdout.split():
+                skipped.append(f"{group} (already member)")
+                continue
+
+            if ctx.check_only:
+                return WizardStepResult(
+                    step_name="add_sentinel_to_log_groups",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"sentinel is not a member of {group}.",
+                    error="Run sentinel setup to add the user to log groups.",
+                )
+
+            result = run_command(["sudo", "/usr/sbin/usermod", "-aG", group, "sentinel"])
+            if result.returncode != 0:
+                return WizardStepResult(
+                    step_name="add_sentinel_to_log_groups",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Failed to add sentinel to group {group}.",
+                    error=result.stderr.strip() or result.stdout.strip(),
+                )
+            added.append(group)
+
+        if ctx.check_only:
+            return WizardStepResult(
+                step_name="add_sentinel_to_log_groups",
+                outcome=StepOutcome.SUCCESS,
+                message="sentinel is a member of all required log groups.",
+            )
+
+        parts: list[str] = []
+        if added:
+            parts.append(f"Added to: {', '.join(added)}.")
+        if skipped:
+            parts.append(f"Skipped: {', '.join(skipped)}.")
+        return WizardStepResult(
+            step_name="add_sentinel_to_log_groups",
+            outcome=StepOutcome.SUCCESS,
+            message=" ".join(parts) or "No group changes needed.",
+        )
+
+    return WizardStep(
+        name="add_sentinel_to_log_groups",
+        description="Add sentinel user to systemd-journal and adm log groups",
+        runner=runner,
+        check_safe=True,
+    )
+
+
 def fix_install_dir_permissions_step() -> WizardStep:
     """Return a WizardStep that ensures the sentinel user can access the install directory.
 
