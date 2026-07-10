@@ -137,6 +137,7 @@ def test_is_whitelisted_ipv6() -> None:
 
 
 SS_ESTAB_UNKNOWN = "ESTAB   0   0   0.0.0.0:22   8.8.8.8:54321"
+SS_ESTAB_UNKNOWN_ALT_PORT = "ESTAB   0   0   0.0.0.0:80   8.8.8.8:54322"
 SS_ESTAB_WHITELISTED = "ESTAB   0   0   0.0.0.0:22   10.0.5.1:54321"
 SS_LISTEN = "LISTEN  0   128   0.0.0.0:22   0.0.0.0:*"
 
@@ -274,3 +275,40 @@ async def test_collect_handles_ss_failure_gracefully(
         await monitor.collect()  # must not raise
 
     ctx.event_bus.publish.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_collect_default_scope_alerts_same_ip_on_different_ports(
+    conn_repo: ConnectionRepository, default_config: dict
+) -> None:
+    ctx = _make_ctx()
+    monitor = ConnectionMonitor(default_config, ctx, conn_repo=conn_repo)
+
+    with patch.object(
+        monitor,
+        "_run_ss",
+        side_effect=[[SS_ESTAB_UNKNOWN], [SS_ESTAB_UNKNOWN_ALT_PORT]],
+    ):
+        await monitor.collect()
+        await monitor.collect()
+
+    assert ctx.event_bus.publish.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_collect_ip_scope_suppresses_same_ip_across_ports(
+    conn_repo: ConnectionRepository, default_config: dict
+) -> None:
+    config = {**default_config, "cooldown_scope": "ip"}
+    ctx = _make_ctx()
+    monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
+
+    with patch.object(
+        monitor,
+        "_run_ss",
+        side_effect=[[SS_ESTAB_UNKNOWN], [SS_ESTAB_UNKNOWN_ALT_PORT]],
+    ):
+        await monitor.collect()
+        await monitor.collect()
+
+    assert ctx.event_bus.publish.call_count == 1

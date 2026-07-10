@@ -27,6 +27,21 @@ class ConnectionRepository:
             return datetime.fromisoformat(row[0])
         return None
 
+    async def get_last_alerted_for_ip(
+        self, ip_address: str, protocol: str = "tcp"
+    ) -> datetime | None:
+        """Return latest last_alerted timestamp for this (ip, protocol), across all ports."""
+        cursor = await self._db.connection.execute(
+            "SELECT last_alerted FROM known_connections "
+            "WHERE ip_address = ? AND protocol = ? "
+            "ORDER BY last_alerted DESC LIMIT 1",
+            (ip_address, protocol),
+        )
+        row = await cursor.fetchone()
+        if row and row[0]:
+            return datetime.fromisoformat(row[0])
+        return None
+
     async def upsert(
         self,
         ip_address: str,

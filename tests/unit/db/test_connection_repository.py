@@ -59,3 +59,17 @@ async def test_different_ips_are_independent(repo: ConnectionRepository) -> None
     now = datetime.now(UTC)
     await repo.upsert("1.2.3.4", 22, "tcp", now)
     assert await repo.get_last_alerted("5.6.7.8", 22, "tcp") is None
+
+
+@pytest.mark.asyncio
+async def test_get_last_alerted_for_ip_returns_latest_across_ports(
+    repo: ConnectionRepository,
+) -> None:
+    t1 = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+    t2 = datetime(2024, 1, 1, 2, 0, 0, tzinfo=UTC)
+    await repo.upsert("1.2.3.4", 22, "tcp", t1)
+    await repo.upsert("1.2.3.4", 443, "tcp", t2)
+
+    result = await repo.get_last_alerted_for_ip("1.2.3.4", "tcp")
+    assert result is not None
+    assert abs((result - t2).total_seconds()) < 1

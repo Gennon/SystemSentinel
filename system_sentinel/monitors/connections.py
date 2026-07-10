@@ -91,6 +91,21 @@ class ConnectionMonitor(BaseMonitor):
         super().__init__(config, app_ctx)
         self._conn_repo = conn_repo
         self._startup_warning_logged = False
+        self._invalid_cooldown_scope_logged = False
+
+    def _cooldown_scope(self) -> str:
+        """Return cooldown scope: ``ip_port`` (default) or ``ip``."""
+        raw = str(self.config.get("cooldown_scope", "ip_port")).strip().lower()
+        if raw in {"ip_port", "ip"}:
+            return raw
+        if not self._invalid_cooldown_scope_logged:
+            self.logger.warning(
+                "Invalid cooldown scope %r configured; falling back to 'ip_port'. "
+                "Valid values: 'ip_port', 'ip'.",
+                raw,
+            )
+            self._invalid_cooldown_scope_logged = True
+        return "ip_port"
 
     async def _get_conn_repo(self) -> ConnectionRepository:
         if self._conn_repo is not None:
@@ -118,6 +133,7 @@ class ConnectionMonitor(BaseMonitor):
             self._startup_warning_logged = True
 
         cooldown_hours: int = int(self.config.get("cooldown_hours", 1))
+        cooldown_scope = self._cooldown_scope()
         repo = await self._get_conn_repo()
         now = datetime.now(UTC)
 
@@ -145,7 +161,10 @@ class ConnectionMonitor(BaseMonitor):
             if is_whitelisted(src_ip, whitelist):
                 continue
 
-            last_alerted = await repo.get_last_alerted(src_ip, dest_port, protocol)
+            if cooldown_scope == "ip":
+                last_alerted = await repo.get_last_alerted_for_ip(src_ip, protocol)
+            else:
+                last_alerted = await repo.get_last_alerted(src_ip, dest_port, protocol)
             cooldown_cutoff = now - timedelta(hours=cooldown_hours)
 
             if last_alerted is not None and last_alerted > cooldown_cutoff:
