@@ -49,6 +49,7 @@ curl -fsSL https://raw.githubusercontent.com/Gennon/SystemSentinel/main/install.
 | [USER_STORY_MAP.md](USER_STORY_MAP.md) | What we're building and why — source of truth for features and releases |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Package structure, plugin interfaces, coding standards, and how to add tools/adapters/providers |
 | [user_stories/](user_stories/) | Detailed acceptance criteria per feature |
+| [docs/chat-adapters.md](docs/chat-adapters.md) | How to set up Discord (and future) chat adapters |
 
 ## Tech stack
 
