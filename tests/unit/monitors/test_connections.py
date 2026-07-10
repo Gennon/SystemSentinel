@@ -50,7 +50,10 @@ def default_config() -> dict:
     return {
         "enabled": True,
         "whitelist": ["10.0.0.0/8", "192.168.1.50"],
+        "repeat_alert_count": 3,
+        "repeat_alert_window_minutes": 10,
         "cooldown_hours": 1,
+        "daily_report_time_utc": "23:59",
     }
 
 
@@ -143,30 +146,40 @@ SS_LISTEN = "LISTEN  0   128   0.0.0.0:22   0.0.0.0:*"
 
 
 @pytest.mark.asyncio
-async def test_collect_fires_alert_for_unknown_ip(
+async def test_collect_fires_threshold_alert_for_repeated_attempts(
     conn_repo: ConnectionRepository, default_config: dict
 ) -> None:
+    config = {
+        **default_config,
+        "repeat_alert_count": 3,
+        "repeat_alert_window_minutes": 10,
+        "daily_report_time_utc": "23:59",
+    }
     ctx = _make_ctx()
-    monitor = ConnectionMonitor(default_config, ctx, conn_repo=conn_repo)
+    monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
 
     with patch.object(monitor, "_run_ss", return_value=[SS_ESTAB_UNKNOWN]):
+        await monitor.collect()
+        await monitor.collect()
         await monitor.collect()
 
     ctx.event_bus.publish.assert_called_once()
     event_type, payload = ctx.event_bus.publish.call_args[0]
-    assert event_type == "alert.connection.unknown_ip_detected"
+    assert event_type == "alert.connection.repeated_attempts_detected"
     assert payload["src_ip"] == "8.8.8.8"
-    assert payload["dest_port"] == 22
-    assert payload["protocol"] == "tcp"
+    assert payload["attempt_count"] == 3
+    assert payload["window_minutes"] == 10
+    assert payload["ports"] == [22]
     assert "timestamp" in payload
 
 
 @pytest.mark.asyncio
-async def test_collect_silently_ignores_whitelisted_ip(
+async def test_collect_silently_ignores_whitelisted_ip_for_thresholding(
     conn_repo: ConnectionRepository, default_config: dict
 ) -> None:
+    config = {**default_config, "repeat_alert_count": 1, "daily_report_time_utc": "23:59"}
     ctx = _make_ctx()
-    monitor = ConnectionMonitor(default_config, ctx, conn_repo=conn_repo)
+    monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
 
     with patch.object(monitor, "_run_ss", return_value=[SS_ESTAB_WHITELISTED]):
         await monitor.collect()
@@ -175,25 +188,55 @@ async def test_collect_silently_ignores_whitelisted_ip(
 
 
 @pytest.mark.asyncio
-async def test_collect_no_alert_within_cooldown(
+async def test_collect_no_threshold_alert_below_count(
     conn_repo: ConnectionRepository, default_config: dict
 ) -> None:
+    config = {**default_config, "repeat_alert_count": 3, "daily_report_time_utc": "23:59"}
     ctx = _make_ctx()
-    monitor = ConnectionMonitor(default_config, ctx, conn_repo=conn_repo)
+    monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
 
-    with patch.object(monitor, "_run_ss", return_value=[SS_ESTAB_UNKNOWN]):
-        await monitor.collect()  # first time → alert
-        await monitor.collect()  # within cooldown → no alert
+    with patch.object(monitor, "_run_ss", return_value=[SS_ESTAB_UNKNOWN] * 2):
+        await monitor.collect()
 
-    assert ctx.event_bus.publish.call_count == 1
+    ctx.event_bus.publish.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_collect_re_alerts_after_cooldown_expires(
+async def test_collect_suppresses_threshold_alert_within_cooldown(
     conn_repo: ConnectionRepository, default_config: dict
 ) -> None:
+    config = {
+        **default_config,
+        "repeat_alert_count": 1,
+        "repeat_alert_window_minutes": 10,
+        "cooldown_hours": 1,
+        "daily_report_time_utc": "23:59",
+    }
     ctx = _make_ctx()
-    monitor = ConnectionMonitor(default_config, ctx, conn_repo=conn_repo)
+    monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
+
+    now = datetime.now(UTC)
+    await conn_repo.upsert("8.8.8.8", 22, "tcp", now)
+
+    with patch.object(monitor, "_run_ss", return_value=[SS_ESTAB_UNKNOWN] * 2):
+        await monitor.collect()
+
+    ctx.event_bus.publish.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_collect_realerts_after_cooldown_expires(
+    conn_repo: ConnectionRepository, default_config: dict
+) -> None:
+    config = {
+        **default_config,
+        "repeat_alert_count": 1,
+        "repeat_alert_window_minutes": 10,
+        "cooldown_hours": 1,
+        "daily_report_time_utc": "23:59",
+    }
+    ctx = _make_ctx()
+    monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
 
     past = datetime.now(UTC) - timedelta(hours=2)
     await conn_repo.upsert("8.8.8.8", 22, "tcp", past)
@@ -201,28 +244,30 @@ async def test_collect_re_alerts_after_cooldown_expires(
     with patch.object(monitor, "_run_ss", return_value=[SS_ESTAB_UNKNOWN]):
         await monitor.collect()
 
-    ctx.event_bus.publish.assert_called_once()
+    assert ctx.event_bus.publish.call_count == 1
 
 
 @pytest.mark.asyncio
-async def test_collect_deduplicates_same_connection_in_single_poll(
+async def test_collect_deduplicates_same_connection_in_single_poll_for_attempt_count(
     conn_repo: ConnectionRepository, default_config: dict
 ) -> None:
+    config = {**default_config, "repeat_alert_count": 2, "daily_report_time_utc": "23:59"}
     ctx = _make_ctx()
-    monitor = ConnectionMonitor(default_config, ctx, conn_repo=conn_repo)
+    monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
 
     with patch.object(monitor, "_run_ss", return_value=[SS_ESTAB_UNKNOWN, SS_ESTAB_UNKNOWN]):
         await monitor.collect()
 
-    assert ctx.event_bus.publish.call_count == 1
+    ctx.event_bus.publish.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_collect_ignores_listen_lines(
     conn_repo: ConnectionRepository, default_config: dict
 ) -> None:
+    config = {**default_config, "repeat_alert_count": 1, "daily_report_time_utc": "23:59"}
     ctx = _make_ctx()
-    monitor = ConnectionMonitor(default_config, ctx, conn_repo=conn_repo)
+    monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
 
     with patch.object(monitor, "_run_ss", return_value=[SS_LISTEN]):
         await monitor.collect()
@@ -234,7 +279,11 @@ async def test_collect_ignores_listen_lines(
 async def test_collect_logs_warning_when_no_whitelist_configured(
     conn_repo: ConnectionRepository,
 ) -> None:
-    config = {"enabled": True, "cooldown_hours": 1}  # no whitelist
+    config = {
+        "enabled": True,
+        "cooldown_hours": 1,
+        "daily_report_time_utc": "23:59",
+    }  # no whitelist
     ctx = _make_ctx()
     monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
 
@@ -251,7 +300,7 @@ async def test_collect_logs_warning_when_no_whitelist_configured(
 async def test_collect_startup_warning_logged_only_once(
     conn_repo: ConnectionRepository,
 ) -> None:
-    config = {"enabled": True, "cooldown_hours": 1}
+    config = {"enabled": True, "cooldown_hours": 1, "daily_report_time_utc": "23:59"}
     ctx = _make_ctx()
     monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
 
@@ -268,8 +317,9 @@ async def test_collect_startup_warning_logged_only_once(
 async def test_collect_handles_ss_failure_gracefully(
     conn_repo: ConnectionRepository, default_config: dict
 ) -> None:
+    config = {**default_config, "daily_report_time_utc": "23:59"}
     ctx = _make_ctx()
-    monitor = ConnectionMonitor(default_config, ctx, conn_repo=conn_repo)
+    monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
 
     with patch.object(monitor, "_run_ss", side_effect=RuntimeError("ss not found")):
         await monitor.collect()  # must not raise
@@ -278,28 +328,15 @@ async def test_collect_handles_ss_failure_gracefully(
 
 
 @pytest.mark.asyncio
-async def test_collect_default_scope_alerts_same_ip_on_different_ports(
+async def test_collect_counts_attempts_across_ports_for_same_ip(
     conn_repo: ConnectionRepository, default_config: dict
 ) -> None:
-    ctx = _make_ctx()
-    monitor = ConnectionMonitor(default_config, ctx, conn_repo=conn_repo)
-
-    with patch.object(
-        monitor,
-        "_run_ss",
-        side_effect=[[SS_ESTAB_UNKNOWN], [SS_ESTAB_UNKNOWN_ALT_PORT]],
-    ):
-        await monitor.collect()
-        await monitor.collect()
-
-    assert ctx.event_bus.publish.call_count == 2
-
-
-@pytest.mark.asyncio
-async def test_collect_ip_scope_suppresses_same_ip_across_ports(
-    conn_repo: ConnectionRepository, default_config: dict
-) -> None:
-    config = {**default_config, "cooldown_scope": "ip"}
+    config = {
+        **default_config,
+        "repeat_alert_count": 2,
+        "repeat_alert_window_minutes": 10,
+        "daily_report_time_utc": "23:59",
+    }
     ctx = _make_ctx()
     monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
 
@@ -312,3 +349,25 @@ async def test_collect_ip_scope_suppresses_same_ip_across_ports(
         await monitor.collect()
 
     assert ctx.event_bus.publish.call_count == 1
+    _, payload = ctx.event_bus.publish.call_args[0]
+    assert set(payload["ports"]) == {22, 80}
+
+
+@pytest.mark.asyncio
+async def test_collect_sends_daily_digest_once_per_day(
+    conn_repo: ConnectionRepository, default_config: dict
+) -> None:
+    config = {
+        **default_config,
+        "repeat_alert_count": 999,
+        "daily_report_time_utc": "00:00",
+    }
+    ctx = _make_ctx()
+    monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
+
+    with patch.object(monitor, "_run_ss", return_value=[SS_ESTAB_UNKNOWN]):
+        await monitor.collect()
+        await monitor.collect()  # same day: no second digest
+
+    event_types = [call.args[0] for call in ctx.event_bus.publish.call_args_list]
+    assert event_types.count("alert.connection.daily_digest") == 1

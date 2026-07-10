@@ -12,7 +12,8 @@ Monitoring is limited to **inbound connections on listening ports** (e.g. SSH, H
 ## Acceptance Criteria
 - [x] The daemon polls active inbound connections on listening ports using `ss -tnp` at a configurable interval (default: 60 seconds)
 - [x] A whitelist of trusted IPs and CIDR ranges can be defined in `config.yaml`; connections from whitelisted IPs are silently ignored
-- [x] When a new inbound connection from an IP not on the whitelist is detected, a chat notification is sent with: source IP, destination port, protocol, and timestamp
-- [x] Each new unknown IP per port is stored in the database; repeat connections from the same IP to the same port do not re-alert within a configurable cooldown period (default: 1 hour)
-- [x] Cooldown suppression can be scoped to either `ip_port` (default) or `ip` so port-scan noise can be reduced by suppressing repeat alerts from the same source IP across all destination ports
+- [x] Unknown inbound connection observations are recorded with source IP, destination port, protocol, and timestamp so attempts can be aggregated over time
+- [x] An immediate alert is sent only when attempts from the same source IP reach a configurable threshold within a configurable time window (for example 3 attempts in 10 minutes)
+- [x] Threshold alerts are rate-limited by a configurable cooldown period so repeated alerts from the same source IP are suppressed
+- [x] A daily chat digest summarizes unknown connection activity from the last 24 hours, grouped by source IP and destination port with attempt counts
 - [x] If no whitelist is configured, all IPs are considered unknown and will alert — a startup warning is logged to prompt the user to configure one

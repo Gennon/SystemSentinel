@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 import ipaddress
 import re
 from typing import TYPE_CHECKING, Any
@@ -91,21 +91,6 @@ class ConnectionMonitor(BaseMonitor):
         super().__init__(config, app_ctx)
         self._conn_repo = conn_repo
         self._startup_warning_logged = False
-        self._invalid_cooldown_scope_logged = False
-
-    def _cooldown_scope(self) -> str:
-        """Return cooldown scope: ``ip_port`` (default) or ``ip``."""
-        raw = str(self.config.get("cooldown_scope", "ip_port")).strip().lower()
-        if raw in {"ip_port", "ip"}:
-            return raw
-        if not self._invalid_cooldown_scope_logged:
-            self.logger.warning(
-                "Invalid cooldown scope %r configured; falling back to 'ip_port'. "
-                "Valid values: 'ip_port', 'ip'.",
-                raw,
-            )
-            self._invalid_cooldown_scope_logged = True
-        return "ip_port"
 
     async def _get_conn_repo(self) -> ConnectionRepository:
         if self._conn_repo is not None:
@@ -121,7 +106,7 @@ class ConnectionMonitor(BaseMonitor):
         return repo
 
     async def collect(self) -> None:
-        """Poll active inbound connections and fire alerts for unknown IPs."""
+        """Poll active inbound connections, track attempts, and emit threshold/digest alerts."""
         whitelist: list[str] = self.config.get("whitelist", [])
 
         if not whitelist and not self._startup_warning_logged:
@@ -132,8 +117,9 @@ class ConnectionMonitor(BaseMonitor):
             )
             self._startup_warning_logged = True
 
+        threshold_count: int = int(self.config.get("repeat_alert_count", 3))
+        threshold_window_minutes: int = int(self.config.get("repeat_alert_window_minutes", 10))
         cooldown_hours: int = int(self.config.get("cooldown_hours", 1))
-        cooldown_scope = self._cooldown_scope()
         repo = await self._get_conn_repo()
         now = datetime.now(UTC)
 
@@ -144,6 +130,7 @@ class ConnectionMonitor(BaseMonitor):
             return
 
         seen: set[tuple[str, int]] = set()
+        affected_ips: dict[str, set[int]] = {}
         for line in lines:
             parsed = parse_ss_line(line)
             if parsed is None:
@@ -161,32 +148,83 @@ class ConnectionMonitor(BaseMonitor):
             if is_whitelisted(src_ip, whitelist):
                 continue
 
-            if cooldown_scope == "ip":
-                last_alerted = await repo.get_last_alerted_for_ip(src_ip, protocol)
-            else:
-                last_alerted = await repo.get_last_alerted(src_ip, dest_port, protocol)
-            cooldown_cutoff = now - timedelta(hours=cooldown_hours)
+            await repo.record_attempt(src_ip, dest_port, protocol, now)
+            affected_ips.setdefault(src_ip, set()).add(dest_port)
 
+        window_start = now - timedelta(minutes=threshold_window_minutes)
+        cooldown_cutoff = now - timedelta(hours=cooldown_hours)
+
+        for src_ip, ports in affected_ips.items():
+            count = await repo.count_attempts_since(src_ip, window_start)
+            if count < threshold_count:
+                continue
+
+            last_alerted = await repo.get_last_alerted_for_ip(src_ip, "tcp")
             if last_alerted is not None and last_alerted > cooldown_cutoff:
                 continue
 
-            await repo.upsert(src_ip, dest_port, protocol, now)
-
+            observed_ports = await repo.ports_since(src_ip, window_start)
             await self.ctx.event_bus.publish(
-                "alert.connection.unknown_ip_detected",
+                "alert.connection.repeated_attempts_detected",
                 {
                     "src_ip": src_ip,
-                    "dest_port": dest_port,
-                    "protocol": protocol,
+                    "attempt_count": count,
+                    "window_minutes": threshold_window_minutes,
+                    "ports": observed_ports,
                     "timestamp": now.isoformat(),
                 },
             )
+
+            alert_port = min(ports)
+            await repo.upsert(src_ip, alert_port, "tcp", now)
             self.logger.warning(
-                "Unknown inbound connection: %s → port %d/%s",
+                "Connection attempt threshold exceeded: %d attempt(s) from %s in %d minutes",
+                count,
                 src_ip,
-                dest_port,
-                protocol,
+                threshold_window_minutes,
             )
+
+        await self._maybe_send_daily_digest(repo, now)
+
+    async def _maybe_send_daily_digest(self, repo: ConnectionRepository, now: datetime) -> None:
+        """Send one daily connection digest at/after configured UTC time."""
+        report_time = self._daily_report_time_utc()
+        today = now.date()
+        report_dt = datetime.combine(today, report_time, tzinfo=UTC)
+        if now < report_dt:
+            return
+
+        state_key = "connections.daily_report.last_sent_date_utc"
+        last_sent = await repo.get_state(state_key)
+        if last_sent == today.isoformat():
+            return
+
+        since = now - timedelta(hours=24)
+        rows = await repo.ip_port_activity_since(since)
+        if rows:
+            await self.ctx.event_bus.publish(
+                "alert.connection.daily_digest",
+                {
+                    "timestamp": now.isoformat(),
+                    "period_hours": 24,
+                    "rows": rows,
+                },
+            )
+        await repo.set_state(state_key, today.isoformat())
+
+    def _daily_report_time_utc(self) -> time:
+        """Return configured daily report UTC time, default 08:00."""
+        raw = str(self.config.get("daily_report_time_utc", "08:00")).strip()
+        if not re.fullmatch(r"\d{1,2}:\d{2}", raw):
+            self.logger.warning("Invalid daily_report_time_utc %r; using default 08:00", raw)
+            return time(hour=8, minute=0)
+        hour_str, minute_str = raw.split(":")
+        hour = int(hour_str)
+        minute = int(minute_str)
+        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+            self.logger.warning("Out-of-range daily_report_time_utc %r; using default 08:00", raw)
+            return time(hour=8, minute=0)
+        return time(hour=hour, minute=minute)
 
     async def _run_ss(self) -> list[str]:
         """Run ``ss -tnp`` and return its output lines.  Runs in a thread pool."""
