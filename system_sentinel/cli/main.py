@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 
 import click
@@ -14,6 +15,10 @@ from system_sentinel.setup.wizard import SetupWizard, WizardContext
 @click.group()
 def cli() -> None:
     """SystemSentinel — automated Linux system maintenance and monitoring."""
+
+
+def _restart_current_process() -> None:
+    os.execv(sys.executable, [sys.executable, *sys.argv])
 
 
 @cli.command()
@@ -30,7 +35,11 @@ def run() -> None:
         click.echo(f"Configuration error: {exc}", err=True)
         sys.exit(1)
     except DaemonRestartRequested:
-        sys.exit(1)
+        try:
+            _restart_current_process()
+        except OSError as exc:
+            click.echo(f"Failed to restart daemon process: {exc}", err=True)
+            sys.exit(1)
 
 
 @cli.command()
