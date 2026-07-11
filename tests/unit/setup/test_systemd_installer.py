@@ -216,7 +216,7 @@ class TestFixInstallDirPermissionsStep:
         assert results[0].error is not None
 
     def test_sets_traverse_on_ancestors_and_readable_on_install_dir(self) -> None:
-        """chmod o+x on ancestors inside /home and o+rX on install dir."""
+        """chmod path access, set install-dir readability, and chown to sentinel."""
         exec_path = "/home/gennon/.local/system-sentinel/.venv/bin/sentinel"
 
         chmod_calls: list[list[str]] = []
@@ -247,6 +247,7 @@ class TestFixInstallDirPermissionsStep:
         # o+rX should have been applied recursively to the install dir
         recursive_targets = [c for c in chmod_calls if "-R" in c and "o+rX" in c]
         assert any("/home/gennon/.local/system-sentinel" in c for c in recursive_targets)
+        assert any("/bin/chown" in c and "sentinel:sentinel" in c for c in chmod_calls)
 
     def test_chmod_ancestor_failure_returns_failure(self) -> None:
         exec_path = "/home/gennon/.local/system-sentinel/.venv/bin/sentinel"
@@ -347,6 +348,29 @@ class TestFixInstallDirPermissionsStep:
         # Only the recursive o+rX call should be present; no o+x ancestor calls
         traverse_calls = [c for c in chmod_calls if "o+x" in c and "-R" not in c]
         assert len(traverse_calls) == 0
+
+    def test_chown_install_dir_failure_returns_failure(self) -> None:
+        exec_path = "/home/gennon/.local/system-sentinel/.venv/bin/sentinel"
+
+        def mock_run(cmd, timeout=300):
+            if any(s.endswith("chown") for s in cmd):
+                return CommandResult(returncode=1, stdout="", stderr="permission denied")
+            return CommandResult(returncode=0, stdout="", stderr="")
+
+        with (
+            patch(
+                "system_sentinel.setup.systemd_installer.shutil.which",
+                return_value=exec_path,
+            ),
+            patch(
+                "system_sentinel.setup.systemd_installer.run_command",
+                side_effect=mock_run,
+            ),
+        ):
+            results, _ = _run_step(fix_install_dir_permissions_step)
+
+        assert results[0].outcome == StepOutcome.FAILURE
+        assert results[0].error is not None
 
 
 # ---------------------------------------------------------------------------

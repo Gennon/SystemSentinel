@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from importlib.metadata import entry_points
 import logging
 from pathlib import Path
@@ -16,6 +17,7 @@ from system_sentinel.core.context import AppContext
 from system_sentinel.core.event_bus import InProcessEventBus
 from system_sentinel.core.exceptions import ConfigError
 from system_sentinel.core.scheduler import Scheduler
+from system_sentinel.core.self_update import SelfUpdateError, SelfUpdateMonitor
 from system_sentinel.db.audit_repository import SqliteAuditRepository
 from system_sentinel.db.connection import DatabaseConnection
 from system_sentinel.db.metrics_repository import MetricsRepository
@@ -25,6 +27,10 @@ _CONFIG_PATH = Path("/etc/sentinel/config.yaml")
 _DB_PATH = Path("/var/lib/sentinel/sentinel.db")
 
 _TOOL_ENTRY_POINT_GROUP = "sentinel.tools"
+
+
+class DaemonRestartRequested(RuntimeError):
+    """Raised when the daemon should exit non-zero so systemd restarts it."""
 
 
 def _load_config(config_path: Path) -> dict[str, Any]:
@@ -100,8 +106,10 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
 
     scheduler = Scheduler(app_ctx)
     _discover_tools(config.get("tools", {}), app_ctx, scheduler)
+    self_update_monitor = SelfUpdateMonitor(config.get("updates", {}), logger)
 
     stop_event = asyncio.Event()
+    restart_requested = asyncio.Event()
 
     def _on_signal() -> None:
         logger.info("Shutdown signal received.")
@@ -118,14 +126,55 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
 
     await monitor_registry.start()
     scheduler.start()
+    self_update_task = (
+        asyncio.create_task(
+            _self_update_loop(
+                monitor=self_update_monitor,
+                stop_event=stop_event,
+                restart_requested=restart_requested,
+                logger=logger,
+            )
+        )
+        if self_update_monitor.enabled
+        else None
+    )
 
     logger.info("SystemSentinel daemon running. Waiting for shutdown signal.")
     await stop_event.wait()
 
     logger.info("Shutting down…")
+    if self_update_task is not None:
+        self_update_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await self_update_task
     scheduler.stop()
     await monitor_registry.stop()
     for adapter in chat_router.adapters:
         await adapter.stop()
     await db.close()
     logger.info("SystemSentinel daemon stopped.")
+    if restart_requested.is_set():
+        raise DaemonRestartRequested("Self-update applied. Restarting daemon.")
+
+
+async def _self_update_loop(
+    monitor: SelfUpdateMonitor,
+    stop_event: asyncio.Event,
+    restart_requested: asyncio.Event,
+    logger: logging.Logger,
+) -> None:
+    while not stop_event.is_set():
+        try:
+            updated = await monitor.check_and_apply_update()
+        except SelfUpdateError as exc:
+            logger.error("Self-update check failed: %s", exc)
+        else:
+            if updated:
+                logger.info("Self-update applied. Requesting daemon restart.")
+                restart_requested.set()
+                stop_event.set()
+                return
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=monitor.check_interval_seconds)
+        except TimeoutError:
+            continue

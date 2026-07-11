@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import yaml
 
-from system_sentinel.core.daemon import _load_config, run_daemon
+from system_sentinel.core.daemon import DaemonRestartRequested, _load_config, run_daemon
 from system_sentinel.core.exceptions import ConfigError
 
 if TYPE_CHECKING:
@@ -106,10 +106,15 @@ class TestRunDaemon:
             # Capture the stop_event and set it immediately so daemon exits
             original_event_class = asyncio.Event
 
+            event_index = 0
+
             def patched_event() -> asyncio.Event:
+                nonlocal event_index
                 ev = original_event_class()
                 stop_event_holder.append(ev)
-                ev.set()  # pre-set so the await stop_event.wait() returns immediately
+                if event_index == 0:
+                    ev.set()  # stop_event
+                event_index += 1
                 return ev
 
             with patch("system_sentinel.core.daemon.asyncio.Event", side_effect=patched_event):
@@ -121,3 +126,40 @@ class TestRunDaemon:
         mock_sched.start.assert_called_once()
         mock_sched.stop.assert_called_once()
         mock_db.close.assert_awaited_once()
+
+    async def test_daemon_requests_restart_after_self_update(self, tmp_path: Path) -> None:
+        config_path = _minimal_config(tmp_path)
+        db_path = tmp_path / "sentinel.db"
+
+        with (
+            patch("system_sentinel.core.daemon.DatabaseConnection") as mock_db_cls,
+            patch("system_sentinel.core.daemon.MonitorRegistry") as mock_monitor_cls,
+            patch("system_sentinel.core.daemon.ChatRegistry") as mock_chat_cls,
+            patch("system_sentinel.core.daemon.Scheduler") as mock_sched_cls,
+            patch("system_sentinel.core.daemon._discover_tools"),
+            patch("system_sentinel.core.daemon.AlertHandler"),
+            patch("system_sentinel.core.daemon.SelfUpdateMonitor") as mock_self_update_cls,
+        ):
+            mock_db = AsyncMock()
+            mock_db_cls.return_value = mock_db
+
+            mock_monitor = MagicMock()
+            mock_monitor.start = AsyncMock()
+            mock_monitor.stop = AsyncMock()
+            mock_monitor_cls.return_value = mock_monitor
+
+            mock_chat = MagicMock()
+            mock_chat.adapters = {}
+            mock_chat_cls.return_value = mock_chat
+
+            mock_sched = MagicMock()
+            mock_sched_cls.return_value = mock_sched
+
+            mock_self_update = MagicMock()
+            mock_self_update.enabled = True
+            mock_self_update.check_interval_seconds = 30
+            mock_self_update.check_and_apply_update = AsyncMock(return_value=True)
+            mock_self_update_cls.return_value = mock_self_update
+
+            with pytest.raises(DaemonRestartRequested):
+                await run_daemon(config_path=config_path, db_path=db_path)

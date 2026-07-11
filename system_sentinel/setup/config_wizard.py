@@ -30,6 +30,45 @@ def _tty_input(prompt: str) -> str:
         return input(prompt)
 
 
+def _discover_update_source_path() -> str | None:
+    """Best-effort discovery of a local update source directory.
+
+    Prefers the nearest ancestor containing a ``.git`` directory from the
+    current working directory so setup stores the checked-out repo path.
+    """
+    cwd = Path.cwd().resolve()
+    for candidate in [cwd, *cwd.parents]:
+        if (candidate / ".git").exists():
+            return str(candidate)
+    return None
+
+
+def _prompt_yes_no(question: str, *, default: bool) -> bool:
+    default_hint = "Y/n" if default else "y/N"
+    while True:
+        raw = _tty_input(f"\n  {question} [{default_hint}]: ").strip().lower()
+        if not raw:
+            return default
+        if raw in {"y", "yes"}:
+            return True
+        if raw in {"n", "no"}:
+            return False
+        print("  Invalid choice. Enter 'y' or 'n'.")
+
+
+def _prompt_update_source_path(default_path: str | None) -> str:
+    if default_path is not None:
+        print("\n  Update source path")
+        print(f"  Detected repository path: {default_path}")
+        entered = _tty_input("  Press Enter to accept or provide another path: ").strip()
+        return entered or default_path
+    while True:
+        entered = _tty_input("\n  Enter update source path: ").strip()
+        if entered:
+            return entered
+        print("  Update source path is required.")
+
+
 # Default path used by the canonical wizard; tests inject a temp path.
 _DEFAULT_CONFIG_PATH = Path("/etc/sentinel/config.yaml")
 
@@ -47,6 +86,13 @@ _SAFE_DEFAULTS: dict[str, Any] = {
         "enabled": True,
         "schedule": "02:00",
         "reboot_if_required": False,
+        "self_update": {
+            "enabled": True,
+            "check_interval_seconds": 300,
+            "remote": "origin",
+            "branch": "main",
+            "reinstall": True,
+        },
     },
     "monitors": {
         "cpu": {"enabled": True, "interval_seconds": 60, "alert_threshold_percent": 90},
@@ -160,9 +206,14 @@ def configure_chat_step(
             else:
                 chat[field] = value
 
+        enable_auto_update = _prompt_yes_no("Enable automatic daemon self-update?", default=True)
+        update_source_path = _prompt_update_source_path(_discover_update_source_path())
+
         config: dict[str, Any] = {"chat": chat}
         for key, val in _SAFE_DEFAULTS.items():
             config.setdefault(key, val)
+        config["updates"]["self_update"]["enabled"] = enable_auto_update
+        config["updates"]["self_update"]["source_path"] = update_source_path
 
         _sudo_mkdir(config_path.parent)
         _sudo_write(config_path, yaml.dump(config, default_flow_style=False))

@@ -5,7 +5,7 @@ import sys
 
 import click
 
-from system_sentinel.core.daemon import run_daemon
+from system_sentinel.core.daemon import DaemonRestartRequested, run_daemon
 from system_sentinel.core.exceptions import ConfigError
 from system_sentinel.setup import build_wizard
 from system_sentinel.setup.wizard import SetupWizard, WizardContext
@@ -28,6 +28,8 @@ def run() -> None:
         asyncio.run(run_daemon())
     except ConfigError as exc:
         click.echo(f"Configuration error: {exc}", err=True)
+        sys.exit(1)
+    except DaemonRestartRequested:
         sys.exit(1)
 
 

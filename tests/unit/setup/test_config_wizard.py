@@ -102,9 +102,15 @@ class TestConfigureChatStepMetadata:
 
 class TestNoConfigInteractive:
     def _inputs(
-        self, provider="discord", token="Bot.abc123", channel="123456789", users="42"
+        self,
+        provider="discord",
+        token="Bot.abc123",
+        channel="123456789",
+        users="42",
+        auto_update="y",
+        source_path="",
     ) -> list[str]:
-        return [provider, token, channel, users]
+        return [provider, token, channel, users, auto_update, source_path]
 
     def test_creates_config_yaml(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
@@ -155,6 +161,16 @@ class TestNoConfigInteractive:
         data = yaml.safe_load(config_path.read_text())
         assert "updates" in data
         assert "monitors" in data
+        assert data["updates"]["self_update"]["enabled"] is True
+        assert data["updates"]["self_update"]["source_path"]
+
+    def test_auto_update_can_be_disabled(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        ctx = WizardContext()
+        _run_step(ctx, config_path, inputs=self._inputs(auto_update="n"))
+
+        data = yaml.safe_load(config_path.read_text())
+        assert data["updates"]["self_update"]["enabled"] is False
 
     def test_output_tells_user_where_config_is_saved(self, tmp_path: Path, capsys) -> None:
         config_path = tmp_path / "config.yaml"
@@ -200,6 +216,8 @@ class TestValidationRetry:
             "good_token",  # token (retry, passes)
             "123",  # channel_id
             "42",  # allowed_users
+            "y",  # auto_update
+            "",  # source_path (accept detected)
         ]
         buf = io.StringIO()
         step = configure_chat_step(config_path=config_path, validator=validator)
@@ -237,6 +255,8 @@ class TestValidationRetry:
             "bad_channel",  # channel_id (fails)
             "good_channel",  # channel_id (retry, passes)
             "42",  # allowed_users
+            "y",  # auto_update
+            "",  # source_path (accept detected)
         ]
         buf = io.StringIO()
         step = configure_chat_step(config_path=config_path, validator=validator)
@@ -268,7 +288,7 @@ class TestValidationRetry:
                     return "401 Unauthorized"
             return None
 
-        inputs = ["discord", "bad", "good", "123", "42"]
+        inputs = ["discord", "bad", "good", "123", "42", "y", ""]
         buf = io.StringIO()
         step = configure_chat_step(config_path=config_path, validator=validator)
         wizard = SetupWizard(steps=[step], output=buf)

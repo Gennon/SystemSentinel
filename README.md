@@ -18,7 +18,7 @@ This will:
 3. Clone the repository
 4. Create a Python virtualenv
 5. Install SystemSentinel and dependencies
-6. Launch the interactive setup wizard
+6. Launch the interactive setup wizard (chat config, auto-update choice, and update source path)
 
 ### Manual installation
 

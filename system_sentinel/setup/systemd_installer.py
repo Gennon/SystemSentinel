@@ -168,6 +168,8 @@ def fix_install_dir_permissions_step() -> WizardStep:
        lives inside ``/home``, so no directory listing is exposed.
     2. Adds ``o+rX`` recursively to the install dir itself so the sentinel
        executable and its supporting files are readable and executable.
+    3. Changes ownership of the install dir to ``sentinel:sentinel`` so the
+       daemon can apply self-updates.
     """
 
     def _install_dir_from_exec(exec_path: str) -> Path:
@@ -241,10 +243,20 @@ def fix_install_dir_permissions_step() -> WizardStep:
                 error=result.stderr.strip() or result.stdout.strip(),
             )
 
+        # Make sentinel owner so it can self-update the checked-out code.
+        result = run_command(["sudo", "/bin/chown", "-R", "sentinel:sentinel", str(install_dir)])
+        if result.returncode != 0:
+            return WizardStepResult(
+                step_name="fix_install_dir_permissions",
+                outcome=StepOutcome.FAILURE,
+                message=f"Failed to set ownership on {install_dir}.",
+                error=result.stderr.strip() or result.stdout.strip(),
+            )
+
         return WizardStepResult(
             step_name="fix_install_dir_permissions",
             outcome=StepOutcome.SUCCESS,
-            message=f"Permissions set on {install_dir} and its path ancestors.",
+            message=f"Permissions and ownership set on {install_dir} and its path ancestors.",
         )
 
     return WizardStep(
