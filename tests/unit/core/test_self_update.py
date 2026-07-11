@@ -108,6 +108,39 @@ async def test_check_and_apply_update_raises_on_fetch_failure(tmp_path: Path) ->
         await monitor.check_and_apply_update()
 
 
+@pytest.mark.asyncio
+async def test_dubious_ownership_is_auto_fixed_and_fetch_retried(tmp_path: Path) -> None:
+    calls: list[tuple[str, ...]] = []
+    fetch_calls = 0
+
+    async def fake_exec(*args: str, **kwargs: Any) -> _FakeProc:
+        nonlocal fetch_calls
+        calls.append(args)
+        if "fetch" in args:
+            fetch_calls += 1
+            if fetch_calls == 1:
+                return _proc(stderr="fatal: detected dubious ownership in repository", returncode=1)
+            return _proc()
+        if args[:3] == ("git", "config", "--global"):
+            return _proc()
+        if args[-2:] == ("rev-parse", "HEAD"):
+            return _proc(stdout="abc")
+        if args[-2:] == ("rev-parse", "origin/main"):
+            return _proc(stdout="abc")
+        raise AssertionError(f"Unexpected command: {args}")
+
+    monitor = SelfUpdateMonitor(_monitor_config(tmp_path), MagicMock())
+    with patch(
+        "system_sentinel.core.self_update.asyncio.create_subprocess_exec",
+        side_effect=fake_exec,
+    ):
+        updated = await monitor.check_and_apply_update()
+
+    assert updated is False
+    assert fetch_calls == 2
+    assert any(call[:3] == ("git", "config", "--global") for call in calls)
+
+
 def test_disabled_self_update_does_not_enable_monitor(tmp_path: Path) -> None:
     monitor = SelfUpdateMonitor(
         {"self_update": {"enabled": False, "repository_path": str(tmp_path)}},

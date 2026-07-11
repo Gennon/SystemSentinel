@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -67,18 +68,20 @@ class SelfUpdateMonitor:
         if repo_path is None:
             self._logger.warning(
                 "Self-update is enabled but no update source path was detected. "
-                "Set updates.self_update.repository_path in config.yaml."
+                "Set updates.self_update.source_path in config.yaml."
             )
             return False
 
-        fetch = await _run_command(
-            "git", "-C", str(repo_path), "fetch", self.config.remote, self.config.branch
-        )
+        fetch = await _run_fetch(repo_path, self.config.remote, self.config.branch)
         if fetch.returncode != 0:
-            raise SelfUpdateError(
-                "git fetch failed: "
-                f"{fetch.stderr.decode(errors='replace').strip() or fetch.stdout.decode(errors='replace').strip()}"
-            )
+            if _has_dubious_ownership_error(fetch):
+                await _mark_git_safe_directory(repo_path)
+                fetch = await _run_fetch(repo_path, self.config.remote, self.config.branch)
+            if fetch.returncode != 0:
+                raise SelfUpdateError(
+                    "git fetch failed: "
+                    f"{fetch.stderr.decode(errors='replace').strip() or fetch.stdout.decode(errors='replace').strip()}"
+                )
 
         local_head = await _git_rev_parse(repo_path, "HEAD")
         remote_head = await _git_rev_parse(repo_path, f"{self.config.remote}/{self.config.branch}")
@@ -92,6 +95,8 @@ class SelfUpdateMonitor:
         )
         pull = await _run_command(
             "git",
+            "-c",
+            f"safe.directory={repo_path}",
             "-C",
             str(repo_path),
             "pull",
@@ -119,12 +124,13 @@ class _CommandResult:
     returncode: int
 
 
-async def _run_command(*args: str) -> _CommandResult:
+async def _run_command(*args: str, env: dict[str, str] | None = None) -> _CommandResult:
     try:
         proc = await asyncio.create_subprocess_exec(
             *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=env,
         )
     except FileNotFoundError as exc:
         raise SelfUpdateError(f"Command not found: {args[0]}") from exc
@@ -132,8 +138,64 @@ async def _run_command(*args: str) -> _CommandResult:
     return _CommandResult(stdout=stdout, stderr=stderr, returncode=proc.returncode or 0)
 
 
+async def _run_fetch(repo_path: Path, remote: str, branch: str) -> _CommandResult:
+    return await _run_command(
+        "git",
+        "-c",
+        f"safe.directory={repo_path}",
+        "-C",
+        str(repo_path),
+        "fetch",
+        remote,
+        branch,
+    )
+
+
+def _has_dubious_ownership_error(result: _CommandResult) -> bool:
+    msg = (
+        f"{result.stderr.decode(errors='replace')} {result.stdout.decode(errors='replace')}".lower()
+    )
+    return "detected dubious ownership" in msg
+
+
+async def _mark_git_safe_directory(repo_path: Path) -> None:
+    home_dir = _effective_home_dir()
+    home_dir.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    env["HOME"] = str(home_dir)
+    result = await _run_command(
+        "git",
+        "config",
+        "--global",
+        "--add",
+        "safe.directory",
+        str(repo_path),
+        env=env,
+    )
+    if result.returncode != 0:
+        raise SelfUpdateError(
+            "git config safe.directory failed: "
+            f"{result.stderr.decode(errors='replace').strip() or result.stdout.decode(errors='replace').strip()}"
+        )
+
+
+def _effective_home_dir() -> Path:
+    current = os.environ.get("HOME")
+    if current:
+        return Path(current)
+    return Path("/var/lib/sentinel")
+
+
 async def _git_rev_parse(repo_path: Path, ref: str) -> str:
-    cmd = await _run_command("git", "-C", str(repo_path), "rev-parse", ref)
+    cmd = await _run_command(
+        "git",
+        "-c",
+        f"safe.directory={repo_path}",
+        "-C",
+        str(repo_path),
+        "rev-parse",
+        ref,
+    )
     if cmd.returncode != 0:
         raise SelfUpdateError(
             f"git rev-parse {ref!r} failed: "
