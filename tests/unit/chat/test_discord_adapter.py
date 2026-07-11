@@ -271,3 +271,17 @@ def test_build_embed_no_fields_when_none() -> None:
     adapter = _make_adapter()
     embed = adapter._build_embed(OutboundMessage(text="plain"))
     assert embed.fields == []
+
+
+def test_build_embed_truncates_description_to_discord_limit() -> None:
+    adapter = _make_adapter()
+    embed = adapter._build_embed(OutboundMessage(text="x" * 5000))
+    assert embed.description is not None
+    assert len(embed.description) == 4096
+
+
+def test_build_embed_limits_number_of_fields() -> None:
+    adapter = _make_adapter()
+    fields = {f"key-{i}": "value" for i in range(30)}
+    embed = adapter._build_embed(OutboundMessage(text="body", fields=fields))
+    assert len(embed.fields) == 25

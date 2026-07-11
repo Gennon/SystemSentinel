@@ -29,6 +29,22 @@ _SEVERITY_COLOUR: dict[AlertSeverity, int] = {
     AlertSeverity.CRITICAL: 0xE74C3C,  # red
 }
 
+# Discord embed hard limits.
+_EMBED_TITLE_MAX = 256
+_EMBED_DESCRIPTION_MAX = 4096
+_EMBED_FIELD_NAME_MAX = 256
+_EMBED_FIELD_VALUE_MAX = 1024
+_EMBED_FIELDS_MAX = 25
+_EMBED_TOTAL_CHARS_MAX = 6000
+
+
+def _truncate(value: str | None, max_len: int) -> str | None:
+    if value is None or len(value) <= max_len:
+        return value
+    if max_len <= 1:
+        return value[:max_len]
+    return f"{value[: max_len - 1]}…"
+
 
 class DiscordAdapter(BaseChatAdapter):
     """Chat adapter that sends and receives messages via a Discord bot."""
@@ -112,13 +128,24 @@ class DiscordAdapter(BaseChatAdapter):
         await self.send(str(self._default_channel_id), message)
 
     def _build_embed(self, message: OutboundMessage) -> _discord.Embed:
+        title = _truncate(message.title, _EMBED_TITLE_MAX)
+        description = _truncate(message.text, _EMBED_DESCRIPTION_MAX) or ""
         colour = _SEVERITY_COLOUR.get(message.severity, 0x95A5A6)
         embed = _discord.Embed(
-            title=message.title,
-            description=message.text,
+            title=title,
+            description=description,
             colour=colour,
         )
+
+        current_total_chars = len(title or "") + len(description)
         if message.fields:
-            for name, value in message.fields.items():
-                embed.add_field(name=name, value=value, inline=False)
+            for idx, (name, value) in enumerate(message.fields.items()):
+                if idx >= _EMBED_FIELDS_MAX:
+                    break
+                safe_name = _truncate(name, _EMBED_FIELD_NAME_MAX) or "Field"
+                safe_value = _truncate(value, _EMBED_FIELD_VALUE_MAX) or "—"
+                if current_total_chars + len(safe_name) + len(safe_value) > _EMBED_TOTAL_CHARS_MAX:
+                    break
+                embed.add_field(name=safe_name, value=safe_value, inline=False)
+                current_total_chars += len(safe_name) + len(safe_value)
         return embed
