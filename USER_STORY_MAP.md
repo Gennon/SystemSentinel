@@ -48,7 +48,7 @@ A Linux system management daemon that autonomously handles updates, security har
 - [ ] As a user I want a daily summary report of resource usage trends so I can spot gradual degradation.
 
 ### File Management
-- [ ] As a user I want to see a list of files older than N days in configured directories so I can decide what to clean up.
+- [x] As a user I want to see a list of files older than N days in configured directories so I can decide what to clean up. **(US-007)**
 - [ ] As a user I want to optionally auto-delete files based on rules (age, size, pattern) so storage is managed automatically.
 
 ### Communication & Alerts

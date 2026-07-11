@@ -88,6 +88,31 @@ def _format_connection_daily_digest(payload: dict[str, Any]) -> OutboundMessage:
     )
 
 
+def _format_old_files_daily_digest(payload: dict[str, Any]) -> OutboundMessage:
+    """Build OutboundMessage for the daily old-file summary."""
+    rows: list[dict[str, Any]] = payload["rows"]
+    period_hours: int = int(payload["period_hours"])
+
+    total_files = sum(int(r["file_count"]) for r in rows)
+    total_size_bytes = sum(int(r["total_size_bytes"]) for r in rows)
+    lines = [
+        f"• {r['watched_directory']}: {r['file_count']} file(s), {r['total_size_bytes']} bytes"
+        for r in rows
+    ]
+    body = "\n".join(lines)
+    return OutboundMessage(
+        title="📋 Daily Old Files Summary",
+        text=body,
+        severity=AlertSeverity.INFO,
+        fields={
+            "Watched Directories": str(len(rows)),
+            "Files Found": str(total_files),
+            "Total Size (bytes)": str(total_size_bytes),
+            "Period": f"Last {period_hours} hours",
+        },
+    )
+
+
 def _format_brute_force(payload: dict[str, Any]) -> OutboundMessage:
     """Build an OutboundMessage for a brute-force SSH alert payload."""
     ip: str = payload["ip_address"]
@@ -130,6 +155,7 @@ class AlertHandler:
             self._on_connection_repeat_threshold,
         )
         event_bus.subscribe("alert.connection.daily_digest", self._on_connection_daily_digest)
+        event_bus.subscribe("alert.files.daily_digest", self._on_old_files_daily_digest)
 
     async def _on_unknown_connection(self, event_type: str, payload: Any) -> None:
         self._logger.warning(
@@ -162,4 +188,9 @@ class AlertHandler:
     async def _on_connection_daily_digest(self, event_type: str, payload: Any) -> None:
         self._logger.info("Publishing daily unknown connection digest")
         msg = _format_connection_daily_digest(payload)
+        await self._router.broadcast(msg)
+
+    async def _on_old_files_daily_digest(self, event_type: str, payload: Any) -> None:
+        self._logger.info("Publishing daily old-files digest")
+        msg = _format_old_files_daily_digest(payload)
         await self._router.broadcast(msg)

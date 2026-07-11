@@ -61,6 +61,7 @@ disk           = "system_sentinel.monitors.disk:DiskMonitor"
 network        = "system_sentinel.monitors.network:NetworkMonitor"
 logins         = "system_sentinel.monitors.logins:LoginMonitor"
 connections    = "system_sentinel.monitors.connections:ConnectionMonitor"
+old_files      = "system_sentinel.monitors.old_files:OldFilesMonitor"
 
 [project.entry-points."sentinel.chat_adapters"]
 discord = "system_sentinel.chat.adapters.discord.adapter:DiscordAdapter"

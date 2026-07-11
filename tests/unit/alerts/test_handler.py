@@ -9,6 +9,7 @@ from system_sentinel.alerts.handler import (
     _format_brute_force,
     _format_connection_daily_digest,
     _format_connection_repeat_threshold,
+    _format_old_files_daily_digest,
     _format_unknown_connection,
 )
 from system_sentinel.chat.base import AlertSeverity, OutboundMessage
@@ -134,6 +135,15 @@ _CONNECTION_DAILY_DIGEST_PAYLOAD = {
     "rows": [
         {"ip_address": "8.8.8.8", "dest_port": 22, "attempts": 3},
         {"ip_address": "1.2.3.4", "dest_port": 80, "attempts": 2},
+    ],
+}
+
+_OLD_FILES_DAILY_DIGEST_PAYLOAD = {
+    "timestamp": "2024-01-01T08:00:00+00:00",
+    "period_hours": 24,
+    "rows": [
+        {"watched_directory": "/var/log", "file_count": 3, "total_size_bytes": 1200},
+        {"watched_directory": "/tmp/archive", "file_count": 1, "total_size_bytes": 300},
     ],
 }
 
@@ -277,3 +287,25 @@ async def test_handler_broadcasts_on_connection_daily_digest_event() -> None:
     assert len(calls) == 1
     assert calls[0].severity == AlertSeverity.WARNING
     assert "8.8.8.8" in calls[0].text
+
+
+def test_format_old_files_daily_digest_fields() -> None:
+    msg = _format_old_files_daily_digest(_OLD_FILES_DAILY_DIGEST_PAYLOAD)
+    assert msg.fields is not None
+    assert msg.fields["Watched Directories"] == "2"
+    assert msg.fields["Files Found"] == "4"
+    assert msg.fields["Total Size (bytes)"] == "1500"
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_old_files_daily_digest_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.files.daily_digest", _OLD_FILES_DAILY_DIGEST_PAYLOAD)
+
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.INFO
+    assert "/var/log" in calls[0].text
