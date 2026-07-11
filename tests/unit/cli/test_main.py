@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import sys
 from unittest.mock import AsyncMock, patch
 
 from click.testing import CliRunner
 
-from system_sentinel.cli.main import cli
+from system_sentinel.cli.main import _restart_exec_args, cli
 from system_sentinel.core.daemon import DaemonRestartRequested
 from system_sentinel.core.exceptions import ConfigError
 
@@ -57,3 +58,39 @@ class TestRunCommand:
 
         assert result.exit_code == 1
         assert "Configuration error: bad config" in result.output
+
+
+class TestRestartExecArgs:
+    def test_prefers_existing_absolute_launcher(self) -> None:
+        with (
+            patch.object(sys, "argv", ["/tmp/sentinel", "run"]),
+            patch("system_sentinel.cli.main.os.path.isabs", return_value=True),
+            patch("system_sentinel.cli.main.os.path.exists", return_value=True),
+        ):
+            executable, args = _restart_exec_args()
+
+        assert executable == "/tmp/sentinel"
+        assert args == ["/tmp/sentinel", "run"]
+
+    def test_resolves_launcher_via_path_lookup(self) -> None:
+        with (
+            patch.object(sys, "argv", ["sentinel", "run"]),
+            patch("system_sentinel.cli.main.os.path.isabs", return_value=False),
+            patch("system_sentinel.cli.main.shutil.which", return_value="/usr/local/bin/sentinel"),
+        ):
+            executable, args = _restart_exec_args()
+
+        assert executable == "/usr/local/bin/sentinel"
+        assert args == ["/usr/local/bin/sentinel", "run"]
+
+    def test_falls_back_to_python_interpreter(self) -> None:
+        with (
+            patch.object(sys, "argv", ["sentinel", "run"]),
+            patch("system_sentinel.cli.main.os.path.isabs", return_value=False),
+            patch("system_sentinel.cli.main.shutil.which", return_value=None),
+            patch.object(sys, "executable", "/usr/bin/python3"),
+        ):
+            executable, args = _restart_exec_args()
+
+        assert executable == "/usr/bin/python3"
+        assert args == ["/usr/bin/python3", "sentinel", "run"]

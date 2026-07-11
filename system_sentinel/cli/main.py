@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import sys
 
 import click
@@ -17,8 +18,20 @@ def cli() -> None:
     """SystemSentinel — automated Linux system maintenance and monitoring."""
 
 
+def _restart_exec_args() -> tuple[str, list[str]]:
+    launcher = sys.argv[0] if sys.argv else ""
+    if launcher:
+        if os.path.isabs(launcher) and os.path.exists(launcher):
+            return launcher, list(sys.argv)
+        resolved = shutil.which(launcher)
+        if resolved:
+            return resolved, [resolved, *sys.argv[1:]]
+    return sys.executable, [sys.executable, *sys.argv]
+
+
 def _restart_current_process() -> None:
-    os.execv(sys.executable, [sys.executable, *sys.argv])
+    executable, args = _restart_exec_args()
+    os.execv(executable, args)
 
 
 @cli.command()
