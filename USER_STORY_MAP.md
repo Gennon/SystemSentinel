@@ -45,8 +45,8 @@ A Linux system management daemon that autonomously handles updates, security har
 - [x] As a user I want an alert when a new unknown IP connects to an open port so I am aware of unexpected network access. **(US-004)**
 
 ### Monitoring & Metrics
-- [ ] As a user I want CPU, RAM, disk, and network usage metrics collected at a configurable interval so I have a continuous picture of system health.
-- [ ] As a user I want a daily summary report of resource usage trends so I can spot gradual degradation.
+- [x] As a user I want CPU, RAM, disk, and network usage metrics collected at a configurable interval so I have a continuous picture of system health. **(US-005)**
+- [x] As a user I want a daily summary report of resource usage trends so I can spot gradual degradation. **(US-006)**
 
 ### File Management
 - [x] As a user I want to see a list of files older than N days in configured directories so I can decide what to clean up. **(US-007)**
