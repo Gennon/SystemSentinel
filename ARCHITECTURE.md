@@ -585,10 +585,10 @@ tools:
     schedule: "0 4 * * *"
     rules:
       - path: /tmp
-        older_than_days: 7
+        older_than: "7d 00:00:00"
         pattern: "*"
       - path: /var/log
-        older_than_days: 30
+        older_than: "30d 00:00:00"
         pattern: "*.gz"
 
   packages:
@@ -600,7 +600,7 @@ tools:
 
 monitors:
   collection_interval: "00:01:00"
-  retention_days: 30
+  retention: "30d 00:00:00"
   cpu:
     enabled: true
     alert_threshold_percent: 90

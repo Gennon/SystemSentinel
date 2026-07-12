@@ -164,6 +164,7 @@ class TestNoConfigInteractive:
         assert data["updates"]["self_update"]["enabled"] is True
         assert data["updates"]["self_update"]["check_interval"] == "00:05:00"
         assert data["monitors"]["collection_interval"] == "00:01:00"
+        assert data["monitors"]["retention"] == "30d 00:00:00"
         assert data["updates"]["self_update"]["source_path"]
 
     def test_auto_update_can_be_disabled(self, tmp_path: Path) -> None:

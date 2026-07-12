@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 _LAST_SCAN_STATE_KEY = "old_files.last_scan_at_utc"
 _LAST_DIGEST_STATE_KEY = "old_files.daily_report.last_sent_date_utc"
 _DEFAULT_SCAN_INTERVAL_SECONDS = 24 * 60 * 60
+_DEFAULT_AGE_THRESHOLD_SECONDS = 30 * 24 * 60 * 60
 
 
 class OldFilesMonitor(BaseMonitor):
@@ -64,11 +65,23 @@ class OldFilesMonitor(BaseMonitor):
             default_seconds=_DEFAULT_SCAN_INTERVAL_SECONDS,
             logger=self.logger,
         )
-        age_threshold_days = int(self.config.get("age_threshold_days", 30))
+        age_threshold_seconds = parse_duration_from_config(
+            self.config,
+            key="age_threshold",
+            default_seconds=_DEFAULT_AGE_THRESHOLD_SECONDS,
+            logger=self.logger,
+        )
+        age_threshold_days = int(age_threshold_seconds // 86400)
 
         if watched_directories and await self._is_scan_due(repo, now, scan_interval_seconds):
             for directory in watched_directories:
-                await self._scan_and_store(repo, directory, age_threshold_days, now)
+                await self._scan_and_store(
+                    repo,
+                    directory,
+                    age_threshold_seconds,
+                    age_threshold_days,
+                    now,
+                )
             await repo.set_state(_LAST_SCAN_STATE_KEY, now.isoformat())
 
         await self._maybe_send_daily_digest(repo, now)
@@ -101,6 +114,7 @@ class OldFilesMonitor(BaseMonitor):
         self,
         repo: OldFilesRepository,
         directory: str,
+        age_threshold_seconds: float,
         age_threshold_days: int,
         now: datetime,
     ) -> None:
@@ -111,7 +125,10 @@ class OldFilesMonitor(BaseMonitor):
 
         try:
             files = await asyncio.to_thread(
-                self._scan_directory_sync, directory_path, age_threshold_days, now
+                self._scan_directory_sync,
+                directory_path,
+                age_threshold_seconds,
+                now,
             )
             await repo.record_scan(directory, age_threshold_days, now, files)
         except Exception:
@@ -120,7 +137,7 @@ class OldFilesMonitor(BaseMonitor):
     def _scan_directory_sync(
         self,
         directory_path: Path,
-        age_threshold_days: int,
+        age_threshold_seconds: float,
         now: datetime,
     ) -> list[dict[str, Any]]:
         matched: list[dict[str, Any]] = []
@@ -132,9 +149,10 @@ class OldFilesMonitor(BaseMonitor):
             except OSError:
                 continue
             modified_at = datetime.fromtimestamp(stat_result.st_mtime, tz=UTC)
-            age_days = int((now - modified_at).total_seconds() // 86400)
-            if age_days < age_threshold_days:
+            age_seconds = (now - modified_at).total_seconds()
+            if age_seconds < age_threshold_seconds:
                 continue
+            age_days = int(age_seconds // 86400)
             matched.append(
                 {
                     "file_path": str(path),

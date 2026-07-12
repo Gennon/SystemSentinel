@@ -135,7 +135,7 @@ class TestCollectionLoop:
     async def test_collect_called_on_start(
         self, app_ctx: AppContext, metrics_repo: MetricsRepository
     ) -> None:
-        config = {"collection_interval": "00:00:00", "retention_days": 30}
+        config = {"collection_interval": "00:00:00", "retention": "30d 00:00:00"}
         registry = MonitorRegistry(config, app_ctx, metrics_repo)
         monitor = _mock_monitor("cpu")
         registry._monitors.append(monitor)
@@ -150,7 +150,7 @@ class TestCollectionLoop:
     async def test_disabled_monitor_not_collected(
         self, app_ctx: AppContext, metrics_repo: MetricsRepository
     ) -> None:
-        config = {"collection_interval": "00:00:00", "retention_days": 30}
+        config = {"collection_interval": "00:00:00", "retention": "30d 00:00:00"}
         registry = MonitorRegistry(config, app_ctx, metrics_repo)
         monitor = _mock_monitor("cpu", enabled=False)
         registry._monitors.append(monitor)
@@ -165,7 +165,7 @@ class TestCollectionLoop:
     async def test_collection_task_cancelled_on_stop(
         self, app_ctx: AppContext, metrics_repo: MetricsRepository
     ) -> None:
-        config = {"collection_interval": "00:01:00", "retention_days": 30}
+        config = {"collection_interval": "00:01:00", "retention": "30d 00:00:00"}
         registry = MonitorRegistry(config, app_ctx, metrics_repo)
 
         await registry.start()
@@ -179,7 +179,7 @@ class TestCollectionLoop:
     async def test_monitor_exception_does_not_stop_loop(
         self, app_ctx: AppContext, metrics_repo: MetricsRepository
     ) -> None:
-        config = {"collection_interval": "00:00:00", "retention_days": 30}
+        config = {"collection_interval": "00:00:00", "retention": "30d 00:00:00"}
         registry = MonitorRegistry(config, app_ctx, metrics_repo)
 
         bad_monitor = _mock_monitor("bad")
@@ -198,7 +198,7 @@ class TestCollectionLoop:
     async def test_collects_multiple_times_per_interval(
         self, app_ctx: AppContext, metrics_repo: MetricsRepository
     ) -> None:
-        config = {"collection_interval": "00:00:00", "retention_days": 30}
+        config = {"collection_interval": "00:00:00", "retention": "30d 00:00:00"}
         registry = MonitorRegistry(config, app_ctx, metrics_repo)
         monitor = _mock_monitor("cpu")
         registry._monitors.append(monitor)
@@ -216,7 +216,7 @@ class TestPurgeLoop:
     async def test_purge_runs_on_startup(
         self, app_ctx: AppContext, metrics_repo: MetricsRepository
     ) -> None:
-        config = {"collection_interval": "00:01:00", "retention_days": 30}
+        config = {"collection_interval": "00:01:00", "retention": "30d 00:00:00"}
         registry = MonitorRegistry(config, app_ctx, metrics_repo)
 
         await registry.start()
@@ -229,7 +229,7 @@ class TestPurgeLoop:
     async def test_purge_passes_none_metric_type(
         self, app_ctx: AppContext, metrics_repo: MetricsRepository
     ) -> None:
-        config = {"collection_interval": "00:01:00", "retention_days": 30}
+        config = {"collection_interval": "00:01:00", "retention": "30d 00:00:00"}
         registry = MonitorRegistry(config, app_ctx, metrics_repo)
 
         await registry.start()
@@ -240,10 +240,10 @@ class TestPurgeLoop:
         assert call_args.args[0] is None  # purge all metric types
 
     @pytest.mark.asyncio
-    async def test_purge_respects_retention_days_config(
+    async def test_purge_respects_retention_config(
         self, app_ctx: AppContext, metrics_repo: MetricsRepository
     ) -> None:
-        config = {"collection_interval": "00:01:00", "retention_days": 7}
+        config = {"collection_interval": "00:01:00", "retention": "7d 00:00:00"}
         registry = MonitorRegistry(config, app_ctx, metrics_repo)
 
         await registry.start()
@@ -260,7 +260,7 @@ class TestPurgeLoop:
         self, app_ctx: AppContext, metrics_repo: MetricsRepository
     ) -> None:
         metrics_repo.purge_old = AsyncMock(side_effect=RuntimeError("db error"))
-        config = {"collection_interval": "00:00:00", "retention_days": 30}
+        config = {"collection_interval": "00:00:00", "retention": "30d 00:00:00"}
         registry = MonitorRegistry(config, app_ctx, metrics_repo)
 
         await registry.start()
@@ -271,7 +271,7 @@ class TestPurgeLoop:
     async def test_purge_task_cancelled_on_stop(
         self, app_ctx: AppContext, metrics_repo: MetricsRepository
     ) -> None:
-        config = {"collection_interval": "00:01:00", "retention_days": 30}
+        config = {"collection_interval": "00:01:00", "retention": "30d 00:00:00"}
         registry = MonitorRegistry(config, app_ctx, metrics_repo)
 
         await registry.start()

@@ -96,6 +96,7 @@ _SAFE_DEFAULTS: dict[str, Any] = {
     },
     "monitors": {
         "collection_interval": "00:01:00",
+        "retention": "30d 00:00:00",
         "cpu": {"enabled": True, "interval": "00:01:00", "alert_threshold_percent": 90},
         "ram": {"enabled": True, "interval": "00:01:00", "alert_threshold_percent": 85},
         "disk": {"enabled": True, "interval": "00:05:00", "alert_threshold_percent": 90},

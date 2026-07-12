@@ -58,7 +58,7 @@ async def test_collect_stores_only_files_older_than_threshold(
     config = {
         "enabled": True,
         "watched_directories": [str(tmp_path)],
-        "age_threshold_days": 7,
+        "age_threshold": "7d 00:00:00",
         "scan_interval": "24:00:00",
         "daily_report_time_utc": "23:59",
     }
@@ -86,7 +86,7 @@ async def test_collect_expands_tilde_in_watched_directories(
     config = {
         "enabled": True,
         "watched_directories": ["~/archive"],
-        "age_threshold_days": 7,
+        "age_threshold": "7d 00:00:00",
         "scan_interval": "24:00:00",
         "daily_report_time_utc": "23:59",
     }
@@ -106,7 +106,7 @@ async def test_collect_respects_scan_interval(repo: OldFilesRepository, tmp_path
     config = {
         "enabled": True,
         "watched_directories": [str(tmp_path)],
-        "age_threshold_days": 7,
+        "age_threshold": "7d 00:00:00",
         "scan_interval": "24:00:00",
         "daily_report_time_utc": "23:59",
     }
@@ -132,7 +132,7 @@ async def test_collect_publishes_daily_digest_once_per_day(
     config = {
         "enabled": True,
         "watched_directories": [str(tmp_path)],
-        "age_threshold_days": 7,
+        "age_threshold": "7d 00:00:00",
         "scan_interval": "24:00:00",
         "daily_report_time_utc": "00:00",
     }

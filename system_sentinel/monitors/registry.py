@@ -25,7 +25,8 @@ class MonitorRegistry:
     HH:MM:SS, default 00:01:00).
 
     The *purge loop* deletes metric records older than the configured retention
-    window (``monitors.retention_days``, default 30 days) once per day.
+    window (``monitors.retention``, HH:MM:SS or <days>d HH:MM:SS, default 30 days)
+    once per day.
 
     Usage::
 
@@ -91,20 +92,25 @@ class MonitorRegistry:
             default_seconds=60,
             logger=self._logger,
         )
-        retention_days: int = int(self._config.get("retention_days", 30))
+        retention_seconds = parse_duration_from_config(
+            self._config,
+            key="retention",
+            default_seconds=30 * 24 * 60 * 60,
+            logger=self._logger,
+        )
 
         self._collection_task = asyncio.create_task(
             self._collection_loop(interval),
             name="monitor.collection_loop",
         )
         self._purge_task = asyncio.create_task(
-            self._purge_loop(retention_days),
+            self._purge_loop(retention_seconds),
             name="monitor.purge_loop",
         )
         self._logger.info(
-            "Monitor collection loop started (interval=%ds, retention=%dd)",
+            "Monitor collection loop started (interval=%ds, retention=%ds)",
             int(interval),
-            retention_days,
+            int(retention_seconds),
         )
 
     async def stop(self) -> None:
@@ -138,20 +144,22 @@ class MonitorRegistry:
             except Exception:
                 self._logger.exception("Unexpected error in monitor %r — continuing", monitor.name)
 
-    async def _purge_loop(self, retention_days: int) -> None:
+    async def _purge_loop(self, retention_seconds: float) -> None:
         """Purge old metric records immediately, then repeat every 24 hours."""
         while not self._stop_event.is_set():
-            await self._purge_old_metrics(retention_days)
+            await self._purge_old_metrics(retention_seconds)
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._stop_event.wait(), timeout=_PURGE_INTERVAL_SECONDS)
 
-    async def _purge_old_metrics(self, retention_days: int) -> None:
-        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+    async def _purge_old_metrics(self, retention_seconds: float) -> None:
+        cutoff = datetime.now(UTC) - timedelta(seconds=retention_seconds)
         try:
             deleted = await self._metrics_repo.purge_old(None, cutoff)
             if deleted:
                 self._logger.info(
-                    "Purged %d metric record(s) older than %d day(s)", deleted, retention_days
+                    "Purged %d metric record(s) older than %d second(s)",
+                    deleted,
+                    int(retention_seconds),
                 )
         except Exception:
             self._logger.exception("Failed to purge old metrics")
