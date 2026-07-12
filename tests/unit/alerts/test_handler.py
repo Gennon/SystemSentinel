@@ -9,7 +9,10 @@ from system_sentinel.alerts.handler import (
     _format_brute_force,
     _format_connection_daily_digest,
     _format_connection_repeat_threshold,
+    _format_cpu_threshold_exceeded,
+    _format_disk_threshold_exceeded,
     _format_old_files_daily_digest,
+    _format_ram_threshold_exceeded,
     _format_unknown_connection,
 )
 from system_sentinel.chat.base import AlertSeverity, OutboundMessage
@@ -147,6 +150,32 @@ _OLD_FILES_DAILY_DIGEST_PAYLOAD = {
     ],
 }
 
+_CPU_THRESHOLD_PAYLOAD = {
+    "event_type": "cpu_threshold_exceeded",
+    "current_value": "95.0%",
+    "threshold": ">90.0% for more than 2 consecutive intervals",
+    "timestamp": "2024-01-01T00:00:00+00:00",
+    "hostname": "sentinel-host",
+}
+
+_RAM_THRESHOLD_PAYLOAD = {
+    "event_type": "ram_threshold_exceeded",
+    "current_value": "92.0%",
+    "threshold": ">90.0%",
+    "timestamp": "2024-01-01T00:00:00+00:00",
+    "hostname": "sentinel-host",
+}
+
+_DISK_THRESHOLD_PAYLOAD = {
+    "event_type": "disk_threshold_exceeded",
+    "current_value": "91.0%",
+    "threshold": ">85.0%",
+    "timestamp": "2024-01-01T00:00:00+00:00",
+    "hostname": "sentinel-host",
+    "mountpoint": "/",
+    "device": "/dev/sda1",
+}
+
 
 # ---------------------------------------------------------------------------
 # _format_brute_force unit tests
@@ -184,6 +213,9 @@ def test_format_brute_force_fields_populated() -> None:
     assert msg.fields is not None
     assert msg.fields["IP Address"] == "1.2.3.4"
     assert msg.fields["Attempts"] == "7"
+    assert msg.fields["Event Type"] == "failed_ssh_logins"
+    assert msg.fields["Timestamp"] == "—"
+    assert msg.fields["Hostname"] == "—"
 
 
 # ---------------------------------------------------------------------------
@@ -309,3 +341,63 @@ async def test_handler_broadcasts_on_old_files_daily_digest_event() -> None:
     assert len(calls) == 1
     assert calls[0].severity == AlertSeverity.INFO
     assert "/var/log" in calls[0].text
+
+
+def test_format_cpu_threshold_fields_present() -> None:
+    msg = _format_cpu_threshold_exceeded(_CPU_THRESHOLD_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert msg.fields is not None
+    assert msg.fields["Event Type"] == "cpu_threshold_exceeded"
+    assert msg.fields["Current Value"] == "95.0%"
+    assert msg.fields["Threshold"] == ">90.0% for more than 2 consecutive intervals"
+    assert msg.fields["Timestamp"] == "2024-01-01T00:00:00+00:00"
+    assert msg.fields["Hostname"] == "sentinel-host"
+
+
+def test_format_ram_threshold_fields_present() -> None:
+    msg = _format_ram_threshold_exceeded(_RAM_THRESHOLD_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert msg.fields is not None
+    assert msg.fields["Event Type"] == "ram_threshold_exceeded"
+
+
+def test_format_disk_threshold_fields_present() -> None:
+    msg = _format_disk_threshold_exceeded(_DISK_THRESHOLD_PAYLOAD)
+    assert msg.severity == AlertSeverity.CRITICAL
+    assert msg.fields is not None
+    assert msg.fields["Event Type"] == "disk_threshold_exceeded"
+    assert msg.fields["Mountpoint"] == "/"
+    assert msg.fields["Device"] == "/dev/sda1"
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_cpu_threshold_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+    await bus.publish("alert.cpu.threshold_exceeded", _CPU_THRESHOLD_PAYLOAD)
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.WARNING
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_ram_threshold_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+    await bus.publish("alert.ram.threshold_exceeded", _RAM_THRESHOLD_PAYLOAD)
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.WARNING
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_disk_threshold_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+    await bus.publish("alert.disk.threshold_exceeded", _DISK_THRESHOLD_PAYLOAD)
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.CRITICAL

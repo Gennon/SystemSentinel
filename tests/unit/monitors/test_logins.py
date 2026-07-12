@@ -47,6 +47,7 @@ def default_config() -> dict:
         "enabled": True,
         "failed_login_alert_count": 5,
         "failed_login_window": "00:10:00",
+        "alert_cooldown": "00:30:00",
     }
 
 
@@ -148,6 +149,11 @@ async def test_collect_triggers_alert_at_threshold(
     assert event_type == "alert.login.brute_force_detected"
     assert payload["ip_address"] == "1.2.3.4"
     assert payload["attempt_count"] == 5
+    assert payload["event_type"] == "failed_ssh_logins"
+    assert payload["current_value"] == "5"
+    assert payload["threshold"] == ">=5 attempts within 10 minutes"
+    assert "timestamp" in payload
+    assert "hostname" in payload
 
 
 @pytest.mark.asyncio

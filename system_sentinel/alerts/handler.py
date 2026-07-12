@@ -131,10 +131,74 @@ def _format_brute_force(payload: dict[str, Any]) -> OutboundMessage:
         text=text,
         severity=AlertSeverity.CRITICAL,
         fields={
+            "Event Type": str(payload.get("event_type", "failed_ssh_logins")),
+            "Current Value": str(payload.get("current_value", count)),
+            "Threshold": str(payload.get("threshold", "—")),
+            "Timestamp": str(payload.get("timestamp", "—")),
+            "Hostname": str(payload.get("hostname", "—")),
             "IP Address": ip,
             "Attempts": str(count),
             "Usernames": usernames_str,
             "Window": f"{window} min",
+        },
+    )
+
+
+def _format_cpu_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessage:
+    return OutboundMessage(
+        title="⚠️ High CPU Usage",
+        text=(
+            f"CPU alert on **{payload.get('hostname', 'unknown')}**: "
+            f"{payload.get('current_value', '—')} (threshold {payload.get('threshold', '—')})."
+        ),
+        severity=AlertSeverity.WARNING,
+        fields={
+            "Event Type": str(payload.get("event_type", "cpu_threshold_exceeded")),
+            "Current Value": str(payload.get("current_value", "—")),
+            "Threshold": str(payload.get("threshold", "—")),
+            "Timestamp": str(payload.get("timestamp", "—")),
+            "Hostname": str(payload.get("hostname", "—")),
+        },
+    )
+
+
+def _format_ram_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessage:
+    return OutboundMessage(
+        title="⚠️ High RAM Usage",
+        text=(
+            f"RAM alert on **{payload.get('hostname', 'unknown')}**: "
+            f"{payload.get('current_value', '—')} (threshold {payload.get('threshold', '—')})."
+        ),
+        severity=AlertSeverity.WARNING,
+        fields={
+            "Event Type": str(payload.get("event_type", "ram_threshold_exceeded")),
+            "Current Value": str(payload.get("current_value", "—")),
+            "Threshold": str(payload.get("threshold", "—")),
+            "Timestamp": str(payload.get("timestamp", "—")),
+            "Hostname": str(payload.get("hostname", "—")),
+        },
+    )
+
+
+def _format_disk_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessage:
+    mountpoint = str(payload.get("mountpoint", "unknown"))
+    device = str(payload.get("device", "unknown"))
+    return OutboundMessage(
+        title="🔴 Disk Usage Critical",
+        text=(
+            f"Disk alert on **{payload.get('hostname', 'unknown')}** for "
+            f"**{mountpoint}** ({device}): {payload.get('current_value', '—')} "
+            f"(threshold {payload.get('threshold', '—')})."
+        ),
+        severity=AlertSeverity.CRITICAL,
+        fields={
+            "Event Type": str(payload.get("event_type", "disk_threshold_exceeded")),
+            "Current Value": str(payload.get("current_value", "—")),
+            "Threshold": str(payload.get("threshold", "—")),
+            "Timestamp": str(payload.get("timestamp", "—")),
+            "Hostname": str(payload.get("hostname", "—")),
+            "Mountpoint": mountpoint,
+            "Device": device,
         },
     )
 
@@ -156,6 +220,9 @@ class AlertHandler:
         )
         event_bus.subscribe("alert.connection.daily_digest", self._on_connection_daily_digest)
         event_bus.subscribe("alert.files.daily_digest", self._on_old_files_daily_digest)
+        event_bus.subscribe("alert.cpu.threshold_exceeded", self._on_cpu_threshold_exceeded)
+        event_bus.subscribe("alert.ram.threshold_exceeded", self._on_ram_threshold_exceeded)
+        event_bus.subscribe("alert.disk.threshold_exceeded", self._on_disk_threshold_exceeded)
 
     async def _on_unknown_connection(self, event_type: str, payload: Any) -> None:
         self._logger.warning(
@@ -193,4 +260,19 @@ class AlertHandler:
     async def _on_old_files_daily_digest(self, event_type: str, payload: Any) -> None:
         self._logger.info("Publishing daily old-files digest")
         msg = _format_old_files_daily_digest(payload)
+        await self._router.broadcast(msg)
+
+    async def _on_cpu_threshold_exceeded(self, event_type: str, payload: Any) -> None:
+        self._logger.warning("CPU threshold exceeded: %s", payload.get("current_value"))
+        msg = _format_cpu_threshold_exceeded(payload)
+        await self._router.broadcast(msg)
+
+    async def _on_ram_threshold_exceeded(self, event_type: str, payload: Any) -> None:
+        self._logger.warning("RAM threshold exceeded: %s", payload.get("current_value"))
+        msg = _format_ram_threshold_exceeded(payload)
+        await self._router.broadcast(msg)
+
+    async def _on_disk_threshold_exceeded(self, event_type: str, payload: Any) -> None:
+        self._logger.warning("Disk threshold exceeded: %s", payload.get("current_value"))
+        msg = _format_disk_threshold_exceeded(payload)
         await self._router.broadcast(msg)

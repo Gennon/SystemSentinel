@@ -34,7 +34,12 @@ def _make_ctx() -> AppContext:
 
 @pytest.fixture
 def default_config() -> dict:
-    return {"enabled": True}
+    return {
+        "enabled": True,
+        "alert_threshold_percent": 90,
+        "alert_consecutive_intervals": 2,
+        "alert_cooldown": "00:30:00",
+    }
 
 
 @pytest.mark.asyncio
@@ -83,3 +88,25 @@ async def test_collect_handles_persist_failure_gracefully(
     fake_sample = {"overall_percent": 10.0, "per_core_percent": [10.0]}
     with patch.object(monitor, "_sample", return_value=fake_sample):
         await monitor.collect()  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_collect_emits_cpu_alert_after_required_consecutive_intervals(
+    repo: MetricsRepository, default_config: dict
+) -> None:
+    ctx = _make_ctx()
+    monitor = CpuMonitor(default_config, ctx, metrics_repo=repo)
+    high = {"overall_percent": 95.0, "per_core_percent": [95.0]}
+    with patch.object(monitor, "_sample", side_effect=[high, high, high]):
+        await monitor.collect()
+        await monitor.collect()
+        await monitor.collect()
+
+    ctx.event_bus.publish.assert_awaited_once()
+    event_type, payload = ctx.event_bus.publish.call_args.args
+    assert event_type == "alert.cpu.threshold_exceeded"
+    assert payload["event_type"] == "cpu_threshold_exceeded"
+    assert payload["current_value"] == "95.0%"
+    assert "threshold" in payload
+    assert "timestamp" in payload
+    assert "hostname" in payload

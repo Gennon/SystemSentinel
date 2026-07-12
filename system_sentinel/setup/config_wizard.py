@@ -97,9 +97,31 @@ _SAFE_DEFAULTS: dict[str, Any] = {
     "monitors": {
         "collection_interval": "00:01:00",
         "retention": "30d 00:00:00",
-        "cpu": {"enabled": True, "interval": "00:01:00", "alert_threshold_percent": 90},
-        "ram": {"enabled": True, "interval": "00:01:00", "alert_threshold_percent": 85},
-        "disk": {"enabled": True, "interval": "00:05:00", "alert_threshold_percent": 90},
+        "cpu": {
+            "enabled": True,
+            "interval": "00:01:00",
+            "alert_threshold_percent": 90,
+            "alert_consecutive_intervals": 2,
+            "alert_cooldown": "00:30:00",
+        },
+        "ram": {
+            "enabled": True,
+            "interval": "00:01:00",
+            "alert_threshold_percent": 90,
+            "alert_cooldown": "00:30:00",
+        },
+        "disk": {
+            "enabled": True,
+            "interval": "00:05:00",
+            "alert_threshold_percent": 85,
+            "alert_cooldown": "00:30:00",
+        },
+        "logins": {
+            "enabled": True,
+            "failed_login_alert_count": 5,
+            "failed_login_window": "00:10:00",
+            "alert_cooldown": "00:30:00",
+        },
         "network": {"enabled": True, "interval": "00:01:00"},
     },
 }

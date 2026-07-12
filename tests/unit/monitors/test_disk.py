@@ -34,7 +34,11 @@ def _make_ctx() -> AppContext:
 
 @pytest.fixture
 def default_config() -> dict:
-    return {"enabled": True}
+    return {
+        "enabled": True,
+        "alert_threshold_percent": 85,
+        "alert_cooldown": "00:30:00",
+    }
 
 
 FAKE_SAMPLE = {
@@ -84,3 +88,37 @@ async def test_collect_handles_failure_gracefully(
 
     results = await repo.query_range("disk", since=datetime.now(UTC) - timedelta(seconds=5))
     assert results == []
+
+
+@pytest.mark.asyncio
+async def test_collect_emits_disk_alert_when_threshold_exceeded(
+    repo: MetricsRepository, default_config: dict
+) -> None:
+    ctx = _make_ctx()
+    monitor = DiskMonitor(default_config, ctx, metrics_repo=repo)
+    high_sample = {
+        "partitions": [
+            {
+                "mountpoint": "/",
+                "device": "/dev/sda1",
+                "fstype": "ext4",
+                "total_bytes": 100_000_000_000,
+                "used_bytes": 91_000_000_000,
+                "free_bytes": 9_000_000_000,
+                "percent": 91.0,
+            }
+        ]
+    }
+    with patch.object(monitor, "_sample", return_value=high_sample):
+        await monitor.collect()
+
+    ctx.event_bus.publish.assert_awaited_once()
+    event_type, payload = ctx.event_bus.publish.call_args.args
+    assert event_type == "alert.disk.threshold_exceeded"
+    assert payload["event_type"] == "disk_threshold_exceeded"
+    assert payload["current_value"] == "91.0%"
+    assert payload["threshold"] == ">85.0%"
+    assert payload["mountpoint"] == "/"
+    assert payload["device"] == "/dev/sda1"
+    assert "timestamp" in payload
+    assert "hostname" in payload

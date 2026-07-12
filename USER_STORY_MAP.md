@@ -52,7 +52,7 @@ A Linux system management daemon that autonomously handles updates, security har
 - [x] As a user I want to see a list of files older than N days in configured directories so I can decide what to clean up. **(US-007)**
 
 ### Communication & Alerts
-- [ ] As a user I want chat notifications for critical events (high CPU, failed logins, disk full) so I am notified immediately.
+- [x] As a user I want chat notifications for critical events (high CPU, failed logins, disk full) so I am notified immediately. **(US-009)**
 - [ ] As a user I want a daily digest report sent via chat each morning so I start the day with a system overview.
 - [x] As a user I want a startup chat notification when the service comes online so I know monitoring is active. **(US-041)**
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import re
+import socket
 from typing import TYPE_CHECKING, Any
 
 from system_sentinel.core.time_config import parse_duration_from_config
@@ -55,7 +56,7 @@ class LoginMonitor(BaseMonitor):
     ) -> None:
         super().__init__(config, app_ctx)
         self._login_repo = login_repo
-        self._alerted_ips: set[str] = set()
+        self._last_alerted_at_by_ip: dict[str, datetime] = {}
 
     async def _get_login_repo(self) -> LoginRepository:
         if self._login_repo is not None:
@@ -82,6 +83,12 @@ class LoginMonitor(BaseMonitor):
             logger=self.logger,
         )
         window_minutes = int(window_seconds // 60)
+        cooldown_seconds = parse_duration_from_config(
+            self.config,
+            key="alert_cooldown",
+            default_seconds=30 * 60,
+            logger=self.logger,
+        )
         now = datetime.now(UTC)
         window_start = now - timedelta(seconds=window_seconds)
 
@@ -106,21 +113,30 @@ class LoginMonitor(BaseMonitor):
                 )
 
         for ip in affected_ips:
-            if ip in self._alerted_ips:
-                continue
             count = await repo.count_since(ip, window_start)
             if count >= alert_count:
+                last_alerted = self._last_alerted_at_by_ip.get(ip)
+                if (
+                    last_alerted is not None
+                    and (now - last_alerted).total_seconds() < cooldown_seconds
+                ):
+                    continue
                 usernames = await repo.usernames_since(ip, window_start)
                 await self.ctx.event_bus.publish(
                     "alert.login.brute_force_detected",
                     {
+                        "event_type": "failed_ssh_logins",
+                        "current_value": str(count),
+                        "threshold": f">={alert_count} attempts within {window_minutes} minutes",
+                        "timestamp": now.isoformat(),
+                        "hostname": socket.gethostname(),
                         "ip_address": ip,
                         "attempt_count": count,
                         "usernames": usernames,
                         "window_minutes": window_minutes,
                     },
                 )
-                self._alerted_ips.add(ip)
+                self._last_alerted_at_by_ip[ip] = now
                 self.logger.warning(
                     "Brute-force alert: %d failed attempts from %s in %d minutes",
                     count,
