@@ -73,6 +73,32 @@ async def test_collect_stores_only_files_older_than_threshold(
 
 
 @pytest.mark.asyncio
+async def test_collect_expands_tilde_in_watched_directories(
+    repo: OldFilesRepository, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home_dir = tmp_path / "home"
+    watched_dir = home_dir / "archive"
+    watched_dir.mkdir(parents=True)
+    old_file = watched_dir / "old.log"
+    _make_file(old_file, days_old=40, size=32)
+    monkeypatch.setenv("HOME", str(home_dir))
+
+    config = {
+        "enabled": True,
+        "watched_directories": ["~/archive"],
+        "age_threshold_days": 7,
+        "scan_interval_seconds": 86400,
+        "daily_report_time_utc": "23:59",
+    }
+    monitor = OldFilesMonitor(config, _make_ctx(), old_files_repo=repo)
+    await monitor.collect()
+
+    rows = await repo.files_for_latest_scan(str(watched_dir))
+    assert len(rows) == 1
+    assert rows[0]["file_path"] == str(old_file)
+
+
+@pytest.mark.asyncio
 async def test_collect_respects_scan_interval(repo: OldFilesRepository, tmp_path: Path) -> None:
     old_file = tmp_path / "old.log"
     _make_file(old_file, days_old=10, size=10)

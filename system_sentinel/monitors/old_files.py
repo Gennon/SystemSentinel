@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, time, timedelta
+import os
 from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Any
@@ -72,7 +73,14 @@ class OldFilesMonitor(BaseMonitor):
         raw = self.config.get("watched_directories", [])
         if not isinstance(raw, list):
             return []
-        return [str(path) for path in raw if str(path).strip()]
+        normalized: list[str] = []
+        for path in raw:
+            raw_path = str(path).strip()
+            if not raw_path:
+                continue
+            expanded = os.path.expandvars(raw_path)
+            normalized.append(str(Path(expanded).expanduser()))
+        return normalized
 
     async def _is_scan_due(
         self, repo: OldFilesRepository, now: datetime, scan_interval_seconds: int
