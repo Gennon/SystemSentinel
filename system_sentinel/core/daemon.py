@@ -92,7 +92,7 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
     app_ctx = AppContext(audit=audit, event_bus=event_bus, logger=logger)
 
     chat_router = ChatRouter()
-    chat_registry = ChatRegistry(config.get("chat_adapters", config.get("chat", {})), app_ctx)
+    chat_registry = ChatRegistry(config.get("chat_adapters", {}), app_ctx)
     chat_registry.discover()
     for adapter in chat_registry.adapters.values():
         chat_router.register(adapter)

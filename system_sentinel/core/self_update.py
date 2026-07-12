@@ -24,7 +24,7 @@ class SelfUpdateError(RuntimeError):
 class SelfUpdateConfig:
     enabled: bool
     check_interval_seconds: int
-    repository_path: Path | None
+    source_path: Path | None
     remote: str
     branch: str
     reinstall: bool
@@ -35,11 +35,11 @@ class SelfUpdateConfig:
     ) -> SelfUpdateConfig:
         raw_self_update = updates_cfg.get("self_update", {})
         self_update_cfg = raw_self_update if isinstance(raw_self_update, dict) else {}
-        repo_value = self_update_cfg.get("source_path", self_update_cfg.get("repository_path"))
-        repository_path = (
+        repo_value = self_update_cfg.get("source_path")
+        source_path = (
             Path(str(repo_value)).expanduser().resolve()
             if repo_value is not None
-            else _discover_repository_path()
+            else _discover_source_path()
         )
         interval = max(
             _MIN_INTERVAL_SECONDS,
@@ -55,7 +55,7 @@ class SelfUpdateConfig:
         return cls(
             enabled=bool(self_update_cfg.get("enabled", False)),
             check_interval_seconds=interval,
-            repository_path=repository_path,
+            source_path=source_path,
             remote=str(self_update_cfg.get("remote", "origin")),
             branch=str(self_update_cfg.get("branch", "main")),
             reinstall=bool(self_update_cfg.get("reinstall", True)),
@@ -84,7 +84,7 @@ class SelfUpdateMonitor:
     async def check_and_apply_update(self) -> bool:
         if not self.enabled:
             return False
-        repo_path = self.config.repository_path
+        repo_path = self.config.source_path
         if repo_path is None:
             self._logger.warning(
                 "Self-update is enabled but no update source path was detected. "
@@ -239,7 +239,7 @@ async def _reinstall_editable(repo_path: Path) -> None:
         )
 
 
-def _discover_repository_path() -> Path | None:
+def _discover_source_path() -> Path | None:
     for parent in Path(__file__).resolve().parents:
         if (parent / ".git").exists():
             return parent

@@ -74,10 +74,8 @@ _DEFAULT_CONFIG_PATH = Path("/etc/sentinel/config.yaml")
 
 # Required chat fields and their user-facing descriptions (also used in prompts).
 REQUIRED_CHAT_FIELDS: dict[str, str] = {
-    "provider": "Chat provider type (e.g. 'discord')",
     "token": "Bot token — the secret key from your chat platform's developer portal",
     "channel_id": "Channel ID — the numeric ID of the channel the bot should post to",
-    "allowed_users": "Allowed user IDs — comma-separated list of user IDs that may interact with the bot",
 }
 
 # Safe defaults written alongside the chat config on a fresh install.
@@ -137,19 +135,18 @@ def _null_validator(field: str, value: str, token: str | None = None) -> str | N
 def _validate_existing_config(data: dict[str, Any]) -> list[str]:
     """Return a list of validation error strings for an existing config dict."""
     errors: list[str] = []
-    chat = data.get("chat")
-    if not isinstance(chat, dict):
-        errors.append("Missing 'chat' section")
+    chat_adapters = data.get("chat_adapters")
+    if not isinstance(chat_adapters, dict):
+        errors.append("Missing 'chat_adapters' section")
+        return errors
+    discord = chat_adapters.get("discord")
+    if not isinstance(discord, dict):
+        errors.append("Missing 'chat_adapters.discord' section")
         return errors
 
     for field in REQUIRED_CHAT_FIELDS:
-        if field == "allowed_users":
-            users = chat.get("allowed_users")
-            if not users:
-                errors.append("'chat.allowed_users' must have at least one user ID")
-        else:
-            if not chat.get(field):
-                errors.append(f"Missing required field 'chat.{field}'")
+        if not discord.get(field):
+            errors.append(f"Missing required field 'chat_adapters.discord.{field}'")
 
     return errors
 
@@ -219,21 +216,18 @@ def configure_chat_step(
         print("\nChat configuration — the wizard will walk you through the required settings.")
 
         token: str | None = None
-        chat: dict[str, Any] = {}
+        discord: dict[str, Any] = {"enabled": True}
 
         for field, description in REQUIRED_CHAT_FIELDS.items():
             value = _prompt_field(field, description, token, validator)
             if field == "token":
                 token = value
-            if field == "allowed_users":
-                chat[field] = [u.strip() for u in value.split(",") if u.strip()]
-            else:
-                chat[field] = value
+            discord[field] = value
 
         enable_auto_update = _prompt_yes_no("Enable automatic daemon self-update?", default=True)
         update_source_path = _prompt_update_source_path(_discover_update_source_path())
 
-        config: dict[str, Any] = {"chat": chat}
+        config: dict[str, Any] = {"chat_adapters": {"discord": discord}}
         for key, val in _SAFE_DEFAULTS.items():
             config.setdefault(key, val)
         config["updates"]["self_update"]["enabled"] = enable_auto_update

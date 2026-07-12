@@ -25,9 +25,9 @@ class TestLoadConfig:
 
     def test_valid_yaml_returns_dict(self, tmp_path: Path) -> None:
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("chat:\n  provider: discord\n")
+        config_file.write_text("chat_adapters:\n  discord:\n    enabled: true\n")
         result = _load_config(config_file)
-        assert result == {"chat": {"provider": "discord"}}
+        assert result == {"chat_adapters": {"discord": {"enabled": True}}}
 
     def test_invalid_yaml_raises_config_error(self, tmp_path: Path) -> None:
         config_file = tmp_path / "config.yaml"
@@ -54,7 +54,7 @@ class TestLoadConfig:
 
 
 def _minimal_config(tmp_path: Path) -> Path:
-    config = {"chat": {"provider": "discord"}, "monitors": {}, "tools": {}}
+    config = {"chat_adapters": {"discord": {"enabled": True}}, "monitors": {}, "tools": {}}
     config_file = tmp_path / "config.yaml"
     config_file.write_text(yaml.dump(config))
     return config_file

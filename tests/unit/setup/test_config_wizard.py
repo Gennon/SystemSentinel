@@ -67,17 +67,11 @@ def _run_step(
 
 
 class TestRequiredChatFields:
-    def test_required_fields_include_provider(self) -> None:
-        assert "provider" in REQUIRED_CHAT_FIELDS
-
     def test_required_fields_include_token(self) -> None:
         assert "token" in REQUIRED_CHAT_FIELDS
 
     def test_required_fields_include_channel_id(self) -> None:
         assert "channel_id" in REQUIRED_CHAT_FIELDS
-
-    def test_required_fields_include_allowed_users(self) -> None:
-        assert "allowed_users" in REQUIRED_CHAT_FIELDS
 
     def test_each_field_has_a_description(self) -> None:
         for field, desc in REQUIRED_CHAT_FIELDS.items():
@@ -103,14 +97,12 @@ class TestConfigureChatStepMetadata:
 class TestNoConfigInteractive:
     def _inputs(
         self,
-        provider="discord",
         token="Bot.abc123",
         channel="123456789",
-        users="42",
         auto_update="y",
         source_path="",
     ) -> list[str]:
-        return [provider, token, channel, users, auto_update, source_path]
+        return [token, channel, auto_update, source_path]
 
     def test_creates_config_yaml(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
@@ -120,13 +112,13 @@ class TestNoConfigInteractive:
         assert config_path.exists()
         assert results[0].outcome == StepOutcome.SUCCESS
 
-    def test_config_contains_provider(self, tmp_path: Path) -> None:
+    def test_config_enables_discord_adapter(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
         ctx = WizardContext()
-        _run_step(ctx, config_path, inputs=self._inputs(provider="discord"))
+        _run_step(ctx, config_path, inputs=self._inputs())
 
         data = yaml.safe_load(config_path.read_text())
-        assert data["chat"]["provider"] == "discord"
+        assert data["chat_adapters"]["discord"]["enabled"] is True
 
     def test_config_contains_token(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
@@ -134,7 +126,7 @@ class TestNoConfigInteractive:
         _run_step(ctx, config_path, inputs=self._inputs(token="Bot.mytoken"))
 
         data = yaml.safe_load(config_path.read_text())
-        assert data["chat"]["token"] == "Bot.mytoken"
+        assert data["chat_adapters"]["discord"]["token"] == "Bot.mytoken"
 
     def test_config_contains_channel_id(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
@@ -142,16 +134,15 @@ class TestNoConfigInteractive:
         _run_step(ctx, config_path, inputs=self._inputs(channel="999"))
 
         data = yaml.safe_load(config_path.read_text())
-        assert data["chat"]["channel_id"] == "999"
+        assert data["chat_adapters"]["discord"]["channel_id"] == "999"
 
-    def test_config_contains_allowed_users(self, tmp_path: Path) -> None:
+    def test_config_does_not_write_legacy_chat_section(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
         ctx = WizardContext()
-        _run_step(ctx, config_path, inputs=self._inputs(users="111,222"))
+        _run_step(ctx, config_path, inputs=self._inputs())
 
         data = yaml.safe_load(config_path.read_text())
-        assert "111" in data["chat"]["allowed_users"]
-        assert "222" in data["chat"]["allowed_users"]
+        assert "chat" not in data
 
     def test_config_includes_safe_defaults(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
@@ -214,11 +205,9 @@ class TestValidationRetry:
             return None
 
         inputs = [
-            "discord",  # provider
             "bad_token",  # token (fails)
             "good_token",  # token (retry, passes)
             "123",  # channel_id
-            "42",  # allowed_users
             "y",  # auto_update
             "",  # source_path (accept detected)
         ]
@@ -236,7 +225,7 @@ class TestValidationRetry:
 
         assert results[0].outcome == StepOutcome.SUCCESS
         data = yaml.safe_load(config_path.read_text())
-        assert data["chat"]["token"] == "good_token"
+        assert data["chat_adapters"]["discord"]["token"] == "good_token"
 
     def test_invalid_channel_prompts_for_reentry(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
@@ -253,11 +242,9 @@ class TestValidationRetry:
             return None
 
         inputs = [
-            "discord",  # provider
             "Bot.token",  # token
             "bad_channel",  # channel_id (fails)
             "good_channel",  # channel_id (retry, passes)
-            "42",  # allowed_users
             "y",  # auto_update
             "",  # source_path (accept detected)
         ]
@@ -275,7 +262,7 @@ class TestValidationRetry:
 
         assert results[0].outcome == StepOutcome.SUCCESS
         data = yaml.safe_load(config_path.read_text())
-        assert data["chat"]["channel_id"] == "good_channel"
+        assert data["chat_adapters"]["discord"]["channel_id"] == "good_channel"
 
     def test_validation_error_message_shown_to_user(self, tmp_path: Path, capsys) -> None:
         config_path = tmp_path / "config.yaml"
@@ -291,7 +278,7 @@ class TestValidationRetry:
                     return "401 Unauthorized"
             return None
 
-        inputs = ["discord", "bad", "good", "123", "42", "y", ""]
+        inputs = ["bad", "good", "123", "y", ""]
         buf = io.StringIO()
         step = configure_chat_step(config_path=config_path, validator=validator)
         wizard = SetupWizard(steps=[step], output=buf)
@@ -316,11 +303,8 @@ class TestValidationRetry:
 class TestConfigAlreadyExists:
     def _write_valid_config(self, path: Path) -> None:
         data = {
-            "chat": {
-                "provider": "discord",
-                "token": "Bot.existingtoken",
-                "channel_id": "789",
-                "allowed_users": ["10"],
+            "chat_adapters": {
+                "discord": {"enabled": True, "token": "Bot.existingtoken", "channel_id": "789"}
             },
             "updates": {"enabled": True},
             "monitors": {},
@@ -341,7 +325,7 @@ class TestConfigAlreadyExists:
     def test_config_with_missing_token_reports_failure(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
         data: dict[str, object] = {
-            "chat": {"provider": "discord", "channel_id": "789", "allowed_users": ["10"]},
+            "chat_adapters": {"discord": {"enabled": True, "channel_id": "789"}},
         }
         config_path.write_text(yaml.dump(data))
 
@@ -362,16 +346,9 @@ class TestConfigAlreadyExists:
 
         assert results[0].outcome == StepOutcome.FAILURE
 
-    def test_config_with_empty_allowed_users_reports_failure(self, tmp_path: Path) -> None:
+    def test_config_with_missing_discord_section_reports_failure(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
-        data: dict[str, object] = {
-            "chat": {
-                "provider": "discord",
-                "token": "Bot.tok",
-                "channel_id": "789",
-                "allowed_users": [],
-            },
-        }
+        data: dict[str, object] = {"chat_adapters": {}}
         config_path.write_text(yaml.dump(data))
 
         ctx = WizardContext(check_only=True)
@@ -382,7 +359,7 @@ class TestConfigAlreadyExists:
     def test_existing_config_not_overwritten_on_failure(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
         data: dict[str, object] = {
-            "chat": {"provider": "discord"},
+            "chat_adapters": {"discord": {"enabled": True}},
         }
         config_path.write_text(yaml.dump(data))
         original = config_path.read_text()
@@ -402,12 +379,7 @@ class TestCheckOnlyMode:
     def test_valid_config_succeeds_in_check_only(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
         data = {
-            "chat": {
-                "provider": "discord",
-                "token": "Bot.tok",
-                "channel_id": "99",
-                "allowed_users": ["1"],
-            }
+            "chat_adapters": {"discord": {"enabled": True, "token": "Bot.tok", "channel_id": "99"}}
         }
         config_path.write_text(yaml.dump(data))
 
@@ -451,12 +423,7 @@ class TestUnattendedMode:
     def test_valid_config_succeeds_in_unattended_mode(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
         data = {
-            "chat": {
-                "provider": "discord",
-                "token": "Bot.tok",
-                "channel_id": "99",
-                "allowed_users": ["1"],
-            }
+            "chat_adapters": {"discord": {"enabled": True, "token": "Bot.tok", "channel_id": "99"}}
         }
         config_path.write_text(yaml.dump(data))
 

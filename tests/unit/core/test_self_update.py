@@ -29,7 +29,7 @@ def _monitor_config(tmp_path: Path, **overrides: Any) -> dict[str, Any]:
     cfg: dict[str, Any] = {
         "self_update": {
             "enabled": True,
-            "repository_path": str(tmp_path),
+            "source_path": str(tmp_path),
             "remote": "origin",
             "branch": "main",
             "reinstall": False,
@@ -149,7 +149,7 @@ async def test_dubious_ownership_is_auto_fixed_and_fetch_retried(tmp_path: Path)
 
 def test_disabled_self_update_does_not_enable_monitor(tmp_path: Path) -> None:
     monitor = SelfUpdateMonitor(
-        {"self_update": {"enabled": False, "repository_path": str(tmp_path)}},
+        {"self_update": {"enabled": False, "source_path": str(tmp_path)}},
         MagicMock(),
     )
     assert monitor.enabled is False

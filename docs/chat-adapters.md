@@ -71,22 +71,14 @@ chmod 600 /etc/system-sentinel/secrets.env
 ### 7. Configure `config.yaml`
 
 ```yaml
-chat:
-  provider: discord
-  command_prefix: "!"           # prefix for bot commands, e.g. !status
-  unauthorized_response: silent # silent | deny_message
-
+chat_adapters:
   discord:
     enabled: true
-    token: "env:SENTINEL_DISCORD_TOKEN"   # reads from environment variable
+    token: "env:SENTINEL_DISCORD_TOKEN"   # can be provided from environment
     channel_id: "123456789012345678"
-
-  allowed_users:
-    - "YOUR_DISCORD_USER_ID"
-    # - "ANOTHER_DISCORD_USER_ID"
 ```
 
-> **Important:** `allowed_users` must be a list of user ID strings. Do not mix scalar entries with object fields (`platform`, `role`) in the same list item, or YAML parsing/validation will fail.
+For the full config key reference (including monitors, tools, updates, and defaults), see [docs/configuration.md](configuration.md).
 
 ### 8. Start (or restart) the daemon
 

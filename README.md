@@ -49,6 +49,7 @@ curl -fsSL https://raw.githubusercontent.com/Gennon/SystemSentinel/main/install.
 | [USER_STORY_MAP.md](USER_STORY_MAP.md) | What we're building and why — source of truth for features and releases |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Package structure, plugin interfaces, coding standards, and how to add tools/adapters/providers |
 | [user_stories/](user_stories/) | Detailed acceptance criteria per feature |
+| [docs/configuration.md](docs/configuration.md) | Authoritative reference for all `config.yaml` keys, defaults, and behavior |
 | [docs/chat-adapters.md](docs/chat-adapters.md) | How to set up Discord (and future) chat adapters |
 
 ## Tech stack
@@ -64,3 +65,5 @@ mypy --strict system_sentinel   # type check
 ```
 
 New feature? Start with the relevant user story in `user_stories/`, write tests first, then implement. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full developer guide.
+
+If a change adds, removes, or alters any config key/default/behavior, update [docs/configuration.md](docs/configuration.md) in the same change.
