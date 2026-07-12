@@ -107,7 +107,23 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
 
     scheduler = Scheduler(app_ctx)
     _discover_tools(config.get("tools", {}), app_ctx, scheduler)
-    self_update_monitor = SelfUpdateMonitor(config.get("updates", {}), logger)
+
+    async def _on_self_update_start(remote: str, branch: str) -> None:
+        await chat_router.broadcast(
+            OutboundMessage(
+                title="SystemSentinel update starting",
+                text=(
+                    f"New version detected on {remote}/{branch}. "
+                    "Applying update now; service will restart when complete."
+                ),
+            )
+        )
+
+    self_update_monitor = SelfUpdateMonitor(
+        config.get("updates", {}),
+        logger,
+        on_update_start=_on_self_update_start,
+    )
 
     stop_event = asyncio.Event()
     restart_requested = asyncio.Event()

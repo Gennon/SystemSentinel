@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -79,7 +79,12 @@ async def test_check_and_apply_update_pulls_when_remote_is_newer(tmp_path: Path)
             return _proc()
         raise AssertionError(f"Unexpected command: {args}")
 
-    monitor = SelfUpdateMonitor(_monitor_config(tmp_path), MagicMock())
+    on_update_start = AsyncMock()
+    monitor = SelfUpdateMonitor(
+        _monitor_config(tmp_path),
+        MagicMock(),
+        on_update_start=on_update_start,
+    )
     with patch(
         "system_sentinel.core.self_update.asyncio.create_subprocess_exec",
         side_effect=fake_exec,
@@ -88,6 +93,7 @@ async def test_check_and_apply_update_pulls_when_remote_is_newer(tmp_path: Path)
 
     assert updated is True
     assert any("pull" in call for call in calls)
+    on_update_start.assert_awaited_once_with("origin", "main")
 
 
 @pytest.mark.asyncio

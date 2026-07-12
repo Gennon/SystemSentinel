@@ -37,7 +37,7 @@ A Linux system management daemon that autonomously handles updates, security har
 - [x] As a user I want the setup wizard to walk me through the minimum required configuration so I don't have to manually edit a config file to get started. **(US-038)**
 - [x] As a user I want the system to auto-apply security patches on a configurable schedule so the machine stays up to date without manual intervention. **(US-001)**
 - [x] As a user I want to define a list of required packages that are always installed so the system self-heals if software goes missing. **(US-002)**
-- [x] As a user I want the daemon to self-update from the configured update source and then restart itself so deployed instances stay current automatically. **(US-040)**
+- [x] As a user I want the daemon to self-update from the configured update source, notify chat when update starts, and then restart itself so deployed instances stay current automatically. **(US-040)**
 
 ### Security & Hardening
 - [x] As a user I want failed SSH login attempts logged with IP address, timestamp, and username so I can see who is trying to get in. **(US-003)**

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
     import logging
 
 _DEFAULT_INTERVAL_SECONDS = 300
@@ -49,9 +50,15 @@ class SelfUpdateConfig:
 
 
 class SelfUpdateMonitor:
-    def __init__(self, updates_cfg: dict[str, Any], logger: logging.Logger) -> None:
+    def __init__(
+        self,
+        updates_cfg: dict[str, Any],
+        logger: logging.Logger,
+        on_update_start: Callable[[str, str], Awaitable[None]] | None = None,
+    ) -> None:
         self.config = SelfUpdateConfig.from_updates_config(updates_cfg)
         self._logger = logger.getChild("self_update")
+        self._on_update_start = on_update_start
 
     @property
     def enabled(self) -> bool:
@@ -87,6 +94,9 @@ class SelfUpdateMonitor:
         remote_head = await _git_rev_parse(repo_path, f"{self.config.remote}/{self.config.branch}")
         if local_head == remote_head:
             return False
+
+        if self._on_update_start is not None:
+            await self._on_update_start(self.config.remote, self.config.branch)
 
         self._logger.info(
             "New update detected on %s/%s — applying self-update.",
