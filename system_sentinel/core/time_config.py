@@ -6,22 +6,25 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import logging
 
-_DURATION_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
+_EXTENDED_DURATION_RE = re.compile(
+    r"^(?:(?P<days>\d+)\s*[dD]\s+)?(?P<hours>\d+):(?P<minutes>\d+):(?P<seconds>\d+)$"
+)
 
 
-def parse_duration_hhmmss(value: object) -> float | None:
+def parse_duration_hhmmss(value: object) -> tuple[float, bool] | None:
     if not isinstance(value, str):
         return None
     raw = value.strip()
-    if not _DURATION_RE.fullmatch(raw):
+    match = _EXTENDED_DURATION_RE.fullmatch(raw)
+    if match is None:
         return None
-    hours_s, minutes_s, seconds_s = raw.split(":")
-    hours = int(hours_s)
-    minutes = int(minutes_s)
-    seconds = int(seconds_s)
-    if minutes > 59 or seconds > 59:
-        return None
-    return float(hours * 3600 + minutes * 60 + seconds)
+    days = int(match.group("days") or 0)
+    hours = int(match.group("hours"))
+    minutes = int(match.group("minutes"))
+    seconds = int(match.group("seconds"))
+    total_seconds = float(days * 86400 + hours * 3600 + minutes * 60 + seconds)
+    is_non_canonical = bool(days > 0 and hours >= 24) or minutes > 59 or seconds > 59
+    return total_seconds, is_non_canonical
 
 
 def parse_duration_from_config(
@@ -37,13 +40,21 @@ def parse_duration_from_config(
     parsed = parse_duration_hhmmss(raw)
     if parsed is None:
         logger.warning(
-            "Invalid %s value %r; expected HH:MM:SS. Using default %s.",
+            "Invalid %s value %r; expected HH:MM:SS or <days>d HH:MM:SS. Using default %s.",
             key,
             raw,
             _format_seconds(default_seconds),
         )
         return default_seconds
-    return parsed
+    parsed_seconds, is_non_canonical = parsed
+    if is_non_canonical:
+        logger.warning(
+            "Non-canonical %s value %r; interpreting as %s.",
+            key,
+            raw,
+            _format_seconds(parsed_seconds),
+        )
+    return parsed_seconds
 
 
 def _format_seconds(total_seconds: float) -> str:

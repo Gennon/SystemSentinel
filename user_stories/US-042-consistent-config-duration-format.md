@@ -8,4 +8,5 @@ As a user I want all duration-based config values to use a consistent `HH:MM:SS`
 
 ## Acceptance Criteria
 - [x] Duration config keys use suffix-free names (for example `scan_interval`, `collection_interval`, `check_interval`)
-- [x] Duration config values use `HH:MM:SS` format
+- [x] Duration config values use `HH:MM:SS` format, with optional `<days>d` prefix
+- [x] Hours may exceed 24 and non-canonical values (for example minutes/seconds over 59) are accepted and logged with a warning
