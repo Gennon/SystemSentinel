@@ -599,7 +599,7 @@ tools:
       - fail2ban
 
 monitors:
-  collection_interval_seconds: 60
+  collection_interval: "00:01:00"
   retention_days: 30
   cpu:
     enabled: true
@@ -620,7 +620,7 @@ monitors:
   logins:
     enabled: true
     failed_login_alert_count: 5
-    failed_login_window_minutes: 10
+    failed_login_window: "00:10:00"
   file_integrity:
     enabled: false
     watched_paths:
@@ -781,7 +781,7 @@ Each registry loads its group with `importlib.metadata.entry_points(group="senti
 | Constants | `UPPER_SNAKE_CASE` | `DEFAULT_COOLDOWN_MINUTES = 30` |
 | Type aliases | `PascalCase` | `CommandHandler` |
 | Event type strings | `<domain>.<noun>.<past_tense_verb>` | `"alert.cpu.fired"` |
-| Config YAML keys | `snake_case` | `collection_interval_seconds` |
+| Config YAML keys | `snake_case` | `collection_interval` |
 | Tool `name` attribute | `snake_case` | `"security_update"` |
 
 ### 8.2 Type Hints

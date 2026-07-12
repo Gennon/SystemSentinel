@@ -51,8 +51,8 @@ def default_config() -> dict:
         "enabled": True,
         "whitelist": ["10.0.0.0/8", "192.168.1.50"],
         "repeat_alert_count": 3,
-        "repeat_alert_window_minutes": 10,
-        "cooldown_hours": 1,
+        "repeat_alert_window": "00:10:00",
+        "cooldown": "01:00:00",
         "daily_report_time_utc": "23:59",
     }
 
@@ -152,7 +152,7 @@ async def test_collect_fires_threshold_alert_for_repeated_attempts(
     config = {
         **default_config,
         "repeat_alert_count": 3,
-        "repeat_alert_window_minutes": 10,
+        "repeat_alert_window": "00:10:00",
         "daily_report_time_utc": "23:59",
     }
     ctx = _make_ctx()
@@ -208,8 +208,8 @@ async def test_collect_suppresses_threshold_alert_within_cooldown(
     config = {
         **default_config,
         "repeat_alert_count": 1,
-        "repeat_alert_window_minutes": 10,
-        "cooldown_hours": 1,
+        "repeat_alert_window": "00:10:00",
+        "cooldown": "01:00:00",
         "daily_report_time_utc": "23:59",
     }
     ctx = _make_ctx()
@@ -231,8 +231,8 @@ async def test_collect_realerts_after_cooldown_expires(
     config = {
         **default_config,
         "repeat_alert_count": 1,
-        "repeat_alert_window_minutes": 10,
-        "cooldown_hours": 1,
+        "repeat_alert_window": "00:10:00",
+        "cooldown": "01:00:00",
         "daily_report_time_utc": "23:59",
     }
     ctx = _make_ctx()
@@ -281,7 +281,7 @@ async def test_collect_logs_warning_when_no_whitelist_configured(
 ) -> None:
     config = {
         "enabled": True,
-        "cooldown_hours": 1,
+        "cooldown": "01:00:00",
         "daily_report_time_utc": "23:59",
     }  # no whitelist
     ctx = _make_ctx()
@@ -300,7 +300,7 @@ async def test_collect_logs_warning_when_no_whitelist_configured(
 async def test_collect_startup_warning_logged_only_once(
     conn_repo: ConnectionRepository,
 ) -> None:
-    config = {"enabled": True, "cooldown_hours": 1, "daily_report_time_utc": "23:59"}
+    config = {"enabled": True, "cooldown": "01:00:00", "daily_report_time_utc": "23:59"}
     ctx = _make_ctx()
     monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
 
@@ -334,7 +334,7 @@ async def test_collect_counts_attempts_across_ports_for_same_ip(
     config = {
         **default_config,
         "repeat_alert_count": 2,
-        "repeat_alert_window_minutes": 10,
+        "repeat_alert_window": "00:10:00",
         "daily_report_time_utc": "23:59",
     }
     ctx = _make_ctx()

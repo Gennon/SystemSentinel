@@ -5,6 +5,7 @@ import ipaddress
 import re
 from typing import TYPE_CHECKING, Any
 
+from system_sentinel.core.time_config import parse_duration_from_config
 from system_sentinel.monitors.base import BaseMonitor
 
 if TYPE_CHECKING:
@@ -118,8 +119,19 @@ class ConnectionMonitor(BaseMonitor):
             self._startup_warning_logged = True
 
         threshold_count: int = int(self.config.get("repeat_alert_count", 3))
-        threshold_window_minutes: int = int(self.config.get("repeat_alert_window_minutes", 10))
-        cooldown_hours: int = int(self.config.get("cooldown_hours", 1))
+        threshold_window_seconds = parse_duration_from_config(
+            self.config,
+            key="repeat_alert_window",
+            default_seconds=10 * 60,
+            logger=self.logger,
+        )
+        cooldown_seconds = parse_duration_from_config(
+            self.config,
+            key="cooldown",
+            default_seconds=60 * 60,
+            logger=self.logger,
+        )
+        threshold_window_minutes = int(threshold_window_seconds // 60)
         repo = await self._get_conn_repo()
         now = datetime.now(UTC)
 
@@ -151,8 +163,8 @@ class ConnectionMonitor(BaseMonitor):
             await repo.record_attempt(src_ip, dest_port, protocol, now)
             affected_ips.setdefault(src_ip, set()).add(dest_port)
 
-        window_start = now - timedelta(minutes=threshold_window_minutes)
-        cooldown_cutoff = now - timedelta(hours=cooldown_hours)
+        window_start = now - timedelta(seconds=threshold_window_seconds)
+        cooldown_cutoff = now - timedelta(seconds=cooldown_seconds)
 
         for src_ip, ports in affected_ips.items():
             count = await repo.count_attempts_since(src_ip, window_start)

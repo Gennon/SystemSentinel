@@ -6,6 +6,8 @@ from datetime import UTC, datetime, timedelta
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Any
 
+from system_sentinel.core.time_config import parse_duration_from_config
+
 if TYPE_CHECKING:
     from system_sentinel.core.context import AppContext
     from system_sentinel.db.metrics_repository import MetricsRepository
@@ -19,8 +21,8 @@ class MonitorRegistry:
     """Discovers, instantiates, and runs monitor plugins.
 
     The *collection loop* calls every enabled monitor's :py:meth:`collect`
-    method on the configured interval (``monitors.collection_interval_seconds``,
-    default 60 s).
+    method on the configured interval (``monitors.collection_interval``,
+    HH:MM:SS, default 00:01:00).
 
     The *purge loop* deletes metric records older than the configured retention
     window (``monitors.retention_days``, default 30 days) once per day.
@@ -83,7 +85,12 @@ class MonitorRegistry:
     async def start(self) -> None:
         """Start the collection loop and the daily retention purge loop."""
         self._stop_event.clear()
-        interval: int = int(self._config.get("collection_interval_seconds", 60))
+        interval = parse_duration_from_config(
+            self._config,
+            key="collection_interval",
+            default_seconds=60,
+            logger=self._logger,
+        )
         retention_days: int = int(self._config.get("retention_days", 30))
 
         self._collection_task = asyncio.create_task(
@@ -96,7 +103,7 @@ class MonitorRegistry:
         )
         self._logger.info(
             "Monitor collection loop started (interval=%ds, retention=%dd)",
-            interval,
+            int(interval),
             retention_days,
         )
 
@@ -114,7 +121,7 @@ class MonitorRegistry:
     # Internal loops
     # ------------------------------------------------------------------
 
-    async def _collection_loop(self, interval_seconds: int) -> None:
+    async def _collection_loop(self, interval_seconds: float) -> None:
         """Run all enabled monitors, then sleep for *interval_seconds*."""
         while not self._stop_event.is_set():
             await self._run_all()

@@ -46,7 +46,7 @@ def default_config() -> dict:
     return {
         "enabled": True,
         "failed_login_alert_count": 5,
-        "failed_login_window_minutes": 10,
+        "failed_login_window": "00:10:00",
     }
 
 

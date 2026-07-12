@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Any
 
+from system_sentinel.core.time_config import parse_duration_from_config
 from system_sentinel.monitors.base import BaseMonitor
 
 if TYPE_CHECKING:
@@ -57,8 +58,11 @@ class OldFilesMonitor(BaseMonitor):
 
         repo = await self._get_old_files_repo()
         now = datetime.now(UTC)
-        scan_interval_seconds = int(
-            self.config.get("scan_interval_seconds", _DEFAULT_SCAN_INTERVAL_SECONDS)
+        scan_interval_seconds = parse_duration_from_config(
+            self.config,
+            key="scan_interval",
+            default_seconds=_DEFAULT_SCAN_INTERVAL_SECONDS,
+            logger=self.logger,
         )
         age_threshold_days = int(self.config.get("age_threshold_days", 30))
 
@@ -83,7 +87,7 @@ class OldFilesMonitor(BaseMonitor):
         return normalized
 
     async def _is_scan_due(
-        self, repo: OldFilesRepository, now: datetime, scan_interval_seconds: int
+        self, repo: OldFilesRepository, now: datetime, scan_interval_seconds: float
     ) -> bool:
         if scan_interval_seconds <= 0:
             return True

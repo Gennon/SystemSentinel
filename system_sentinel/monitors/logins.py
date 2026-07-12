@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 import re
 from typing import TYPE_CHECKING, Any
 
+from system_sentinel.core.time_config import parse_duration_from_config
 from system_sentinel.monitors.base import BaseMonitor
 
 if TYPE_CHECKING:
@@ -74,9 +75,15 @@ class LoginMonitor(BaseMonitor):
         """Read new auth log entries, store them, and fire alert events as needed."""
         repo = await self._get_login_repo()
         alert_count: int = int(self.config.get("failed_login_alert_count", 5))
-        window_minutes: int = int(self.config.get("failed_login_window_minutes", 10))
+        window_seconds = parse_duration_from_config(
+            self.config,
+            key="failed_login_window",
+            default_seconds=10 * 60,
+            logger=self.logger,
+        )
+        window_minutes = int(window_seconds // 60)
         now = datetime.now(UTC)
-        window_start = now - timedelta(minutes=window_minutes)
+        window_start = now - timedelta(seconds=window_seconds)
 
         lines = await self._read_new_log_lines()
         affected_ips: set[str] = set()
@@ -147,7 +154,13 @@ class LoginMonitor(BaseMonitor):
     def _read_journald(self) -> list[str]:
         import subprocess
 
-        window_minutes: int = int(self.config.get("failed_login_window_minutes", 10))
+        window_seconds = parse_duration_from_config(
+            self.config,
+            key="failed_login_window",
+            default_seconds=10 * 60,
+            logger=self.logger,
+        )
+        window_minutes = max(1, int(window_seconds // 60))
         result = subprocess.run(
             [
                 "/usr/bin/journalctl",

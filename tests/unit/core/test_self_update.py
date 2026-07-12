@@ -33,7 +33,7 @@ def _monitor_config(tmp_path: Path, **overrides: Any) -> dict[str, Any]:
             "remote": "origin",
             "branch": "main",
             "reinstall": False,
-            "check_interval_seconds": 30,
+            "check_interval": "00:00:30",
         }
     }
     cfg["self_update"].update(overrides)

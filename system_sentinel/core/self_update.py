@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from system_sentinel.core.time_config import parse_duration_from_config
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
     import logging
@@ -28,7 +30,9 @@ class SelfUpdateConfig:
     reinstall: bool
 
     @classmethod
-    def from_updates_config(cls, updates_cfg: dict[str, Any]) -> SelfUpdateConfig:
+    def from_updates_config(
+        cls, updates_cfg: dict[str, Any], logger: logging.Logger
+    ) -> SelfUpdateConfig:
         raw_self_update = updates_cfg.get("self_update", {})
         self_update_cfg = raw_self_update if isinstance(raw_self_update, dict) else {}
         repo_value = self_update_cfg.get("source_path", self_update_cfg.get("repository_path"))
@@ -37,8 +41,17 @@ class SelfUpdateConfig:
             if repo_value is not None
             else _discover_repository_path()
         )
-        raw_interval = self_update_cfg.get("check_interval_seconds", _DEFAULT_INTERVAL_SECONDS)
-        interval = max(_MIN_INTERVAL_SECONDS, int(raw_interval))
+        interval = max(
+            _MIN_INTERVAL_SECONDS,
+            int(
+                parse_duration_from_config(
+                    self_update_cfg,
+                    key="check_interval",
+                    default_seconds=_DEFAULT_INTERVAL_SECONDS,
+                    logger=logger.getChild("config"),
+                )
+            ),
+        )
         return cls(
             enabled=bool(self_update_cfg.get("enabled", False)),
             check_interval_seconds=interval,
@@ -56,8 +69,8 @@ class SelfUpdateMonitor:
         logger: logging.Logger,
         on_update_start: Callable[[str, str], Awaitable[None]] | None = None,
     ) -> None:
-        self.config = SelfUpdateConfig.from_updates_config(updates_cfg)
         self._logger = logger.getChild("self_update")
+        self.config = SelfUpdateConfig.from_updates_config(updates_cfg, self._logger)
         self._on_update_start = on_update_start
 
     @property

@@ -88,17 +88,18 @@ _SAFE_DEFAULTS: dict[str, Any] = {
         "reboot_if_required": False,
         "self_update": {
             "enabled": True,
-            "check_interval_seconds": 300,
+            "check_interval": "00:05:00",
             "remote": "origin",
             "branch": "main",
             "reinstall": True,
         },
     },
     "monitors": {
-        "cpu": {"enabled": True, "interval_seconds": 60, "alert_threshold_percent": 90},
-        "ram": {"enabled": True, "interval_seconds": 60, "alert_threshold_percent": 85},
-        "disk": {"enabled": True, "interval_seconds": 300, "alert_threshold_percent": 90},
-        "network": {"enabled": True, "interval_seconds": 60},
+        "collection_interval": "00:01:00",
+        "cpu": {"enabled": True, "interval": "00:01:00", "alert_threshold_percent": 90},
+        "ram": {"enabled": True, "interval": "00:01:00", "alert_threshold_percent": 85},
+        "disk": {"enabled": True, "interval": "00:05:00", "alert_threshold_percent": 90},
+        "network": {"enabled": True, "interval": "00:01:00"},
     },
 }
 
