@@ -285,3 +285,30 @@ def test_build_embed_limits_number_of_fields() -> None:
     fields = {f"key-{i}": "value" for i in range(30)}
     embed = adapter._build_embed(OutboundMessage(text="body", fields=fields))
     assert len(embed.fields) == 25
+
+
+@pytest.mark.asyncio
+async def test_on_message_sends_handler_reply_to_channel() -> None:
+    adapter = _make_adapter()
+    await adapter.start()
+
+    async def _handler(message, args):  # type: ignore[no-untyped-def]
+        return OutboundMessage(text=f"ack {args[0]}")
+
+    adapter.on_message(_handler)
+
+    channel = await adapter._client.fetch_channel(444)
+    message = MagicMock()
+    message.author = MagicMock()
+    message.author.id = 12345
+    message.author.__str__.return_value = "tester#0001"
+    message.channel = channel
+    message.content = "!status"
+    on_message = adapter._client._event_handlers["on_message"]
+
+    await on_message(message)
+
+    channel.send.assert_awaited_once()
+    sent_embed = channel.send.call_args.kwargs["embed"]
+    assert sent_embed.description == "ack !status"
+    await adapter.stop()

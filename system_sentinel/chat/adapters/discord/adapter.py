@@ -89,7 +89,9 @@ class DiscordAdapter(BaseChatAdapter):
             )
             args = message.content.split()
             try:
-                await self._message_handler(inbound, args)
+                response = await self._message_handler(inbound, args)
+                if response is not None:
+                    await self.send(str(message.channel.id), response)
             except Exception:
                 self.logger.exception("Error in message handler")
 

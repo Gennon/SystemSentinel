@@ -11,7 +11,8 @@ from typing import Any
 import yaml
 
 from system_sentinel.alerts.handler import AlertHandler
-from system_sentinel.chat.base import OutboundMessage
+from system_sentinel.chat.access_control import ChatAccessControl
+from system_sentinel.chat.base import InboundMessage, OutboundMessage
 from system_sentinel.chat.registry import ChatRegistry
 from system_sentinel.chat.router import ChatRouter
 from system_sentinel.core.context import AppContext
@@ -97,6 +98,44 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
     for adapter in chat_registry.adapters.values():
         chat_router.register(adapter)
 
+    access_control = ChatAccessControl(
+        config=config,
+        logger=logger,
+        enabled_adapters=set(chat_registry.adapters.keys()),
+    )
+
+    async def _handle_inbound_message(
+        inbound: InboundMessage,
+        args: list[str],
+    ) -> OutboundMessage | None:
+        decision = access_control.authorize(inbound, args)
+        if not decision.authorized:
+            await access_control.audit_rejection(app_ctx.audit, inbound, args, decision.reason)
+            if decision.respond_with_message:
+                return OutboundMessage(
+                    text=access_control.unauthorized_message_for(inbound.adapter),
+                    reply_to=inbound,
+                )
+            return None
+
+        await event_bus.publish(
+            "chat.command.authorized",
+            {
+                "adapter": inbound.adapter,
+                "channel_id": inbound.channel_id,
+                "user_id": inbound.user_id,
+                "username": inbound.username,
+                "text": inbound.text,
+                "args": args,
+                "role": decision.role.value if decision.role is not None else None,
+                "received_at": inbound.received_at.isoformat(),
+            },
+        )
+        return None
+
+    for adapter in chat_router.adapters:
+        adapter.on_message(_handle_inbound_message)
+
     alert_handler = AlertHandler(chat_router, audit=audit)
     alert_handler.register(event_bus)
 
@@ -127,14 +166,46 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
 
     stop_event = asyncio.Event()
     restart_requested = asyncio.Event()
+    reload_tasks: set[asyncio.Task[None]] = set()
 
     def _on_signal() -> None:
         logger.info("Shutdown signal received.")
         stop_event.set()
 
+    async def _reload_chat_access_config() -> None:
+        try:
+            reloaded = _load_config(config_path)
+        except ConfigError as exc:
+            logger.error("Config reload failed: %s", exc)
+            await audit.append(
+                action_type="config_reload",
+                source="daemon",
+                description="Config reload failed.",
+                outcome="failure",
+                details={"error": str(exc)},
+            )
+            return
+
+        access_control.reload(reloaded, enabled_adapters=set(chat_registry.adapters.keys()))
+        await audit.append(
+            action_type="config_reload",
+            source="daemon",
+            description="Chat access control reloaded from config.",
+            outcome="success",
+        )
+        logger.info("Config reloaded for chat access control.")
+
+    def _on_reload_signal() -> None:
+        logger.info("Reload signal received.")
+        task = asyncio.create_task(_reload_chat_access_config())
+        reload_tasks.add(task)
+        task.add_done_callback(reload_tasks.discard)
+
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, _on_signal)
+    if hasattr(signal, "SIGHUP"):
+        loop.add_signal_handler(signal.SIGHUP, _on_reload_signal)
 
     logger.info("SystemSentinel daemon starting.")
 
@@ -171,6 +242,10 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
         self_update_task.cancel()
         with suppress(asyncio.CancelledError):
             await self_update_task
+    for task in list(reload_tasks):
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
     scheduler.stop()
     await monitor_registry.stop()
     for adapter in chat_router.adapters:

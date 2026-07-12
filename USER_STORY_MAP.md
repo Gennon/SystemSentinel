@@ -82,7 +82,7 @@ A Linux system management daemon that autonomously handles updates, security har
 
 ### Communication & Alerts
 - [ ] As a user I want to send chat commands to trigger actions remotely so I can manage the system from my phone.
-- [ ] As a user I want to control who can interact with the chat bot so that only authorised users can trigger actions or receive sensitive system information.
+- [x] As a user I want to control who can interact with the chat bot so that only authorised users can trigger actions or receive sensitive system information. **(US-034)**
 - [ ] As a user I want to configure alert severity levels (info, warning, critical) so I can tune the signal-to-noise ratio.
 
 ### AI / LLM Assistant

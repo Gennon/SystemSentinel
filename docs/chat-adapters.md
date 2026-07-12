@@ -76,9 +76,21 @@ chat_adapters:
     enabled: true
     token: "env:SENTINEL_DISCORD_TOKEN"   # can be provided from environment
     channel_id: "123456789012345678"
+    unauthorized_response: "silent"        # silent | deny_message
+    allowed_users:
+      - id: "123456789012345678"
+        role: "admin"
+      - id: "234567890123456789"
+        role: "readonly"
 ```
 
 For the full config key reference (including monitors, tools, updates, and defaults), see [docs/configuration.md](configuration.md).
+
+When `allowed_users` changes, reload access control without restarting:
+
+```bash
+sudo systemctl kill -s HUP sentinel
+```
 
 ### 8. Start (or restart) the daemon
 

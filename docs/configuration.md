@@ -18,6 +18,10 @@ The following keys use duration parsing from `system_sentinel.core.time_config`:
 | `chat_adapters.<adapter>.enabled` | bool | `false` | `ChatRegistry` | Must be `true` to load an adapter. |
 | `chat_adapters.discord.token` | string | none | `DiscordAdapter` | Required when `chat_adapters.discord.enabled=true`. |
 | `chat_adapters.discord.channel_id` | string/int | none | `DiscordAdapter` | Default destination channel for outgoing messages. |
+| `chat_adapters.<adapter>.allowed_users` | list[string \| object] | `[]` | `ChatAccessControl` | Allowed user IDs. String entries are treated as admin. Object entries use `{id, role}` where `role` is `admin` or `readonly`. |
+| `chat_adapters.<adapter>.unauthorized_response` | string | `silent` | `ChatAccessControl` | `silent` ignores unauthorized users; `deny_message` sends a generic denial reply. |
+| `chat_adapters.<adapter>.unauthorized_message` | string | `Not authorised.` | `ChatAccessControl` | Message used when `unauthorized_response=deny_message`. |
+| `chat_adapters.<adapter>.readonly_commands` | list[string] | built-in readonly set | `ChatAccessControl` | Commands allowed for `readonly` users. |
 | `monitors.collection_interval` | duration | `00:01:00` | `MonitorRegistry` | Global collection loop interval for all monitors. |
 | `monitors.retention` | duration | `30d 00:00:00` | `MonitorRegistry` | Metric retention window (daily purge). |
 | `monitors.<monitor>.enabled` | bool | `true` | `MonitorRegistry`/`BaseMonitor` | Per-monitor enable/disable switch. |
@@ -59,6 +63,7 @@ The following keys use duration parsing from `system_sentinel.core.time_config`:
 | `updates.self_update.remote` | string | `origin` | `SelfUpdateMonitor` | Git remote name. |
 | `updates.self_update.branch` | string | `main` | `SelfUpdateMonitor` | Git branch to track. |
 | `updates.self_update.reinstall` | bool | `true` | `SelfUpdateMonitor` | Runs `.venv/bin/pip install -e <repo>` after pull when available. |
+| *(signal)* `SIGHUP` | n/a | n/a | `run_daemon` | Reloads chat access control from `config.yaml` without restarting the daemon. |
 | `updates.enabled` | bool | `true` (wizard default) | setup wizard default only | Currently not consumed by runtime code. |
 | `updates.schedule` | `HH:MM` | `02:00` (wizard default) | setup wizard default only | Currently not consumed by runtime code. |
 | `updates.reboot_if_required` | bool | `false` (wizard default) | setup wizard default only | Currently not consumed by runtime code. |
@@ -80,6 +85,13 @@ chat_adapters:
     enabled: true
     token: "your-discord-token"
     channel_id: "123456789012345678"
+    unauthorized_response: "deny_message"
+    unauthorized_message: "Not authorised."
+    allowed_users:
+      - id: "111111111111111111"
+        role: "admin"
+      - id: "222222222222222222"
+        role: "readonly"
 
 updates:
   self_update:
