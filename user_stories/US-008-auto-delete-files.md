@@ -1,6 +1,6 @@
 # US-008 — Auto-delete files based on rules
 
-**Release:** 1 — Core / MVP
+**Release:** 3 — Observability & Polish
 **Area:** File Management
 
 ## Description
