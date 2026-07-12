@@ -96,8 +96,12 @@ class TestRunDaemon:
             mock_monitor.stop = AsyncMock()
             mock_monitor_cls.return_value = mock_monitor
 
+            mock_adapter = MagicMock()
+            mock_adapter.start = AsyncMock()
+            mock_adapter.stop = AsyncMock()
+            mock_adapter.send_to_default = AsyncMock()
             mock_chat = MagicMock()
-            mock_chat.adapters = {}
+            mock_chat.adapters = {"discord": mock_adapter}
             mock_chat_cls.return_value = mock_chat
 
             mock_sched = MagicMock()
@@ -125,6 +129,11 @@ class TestRunDaemon:
         mock_monitor.stop.assert_awaited_once()
         mock_sched.start.assert_called_once()
         mock_sched.stop.assert_called_once()
+        mock_adapter.start.assert_awaited_once()
+        mock_adapter.stop.assert_awaited_once()
+        mock_adapter.send_to_default.assert_awaited_once()
+        sent_message = mock_adapter.send_to_default.call_args.args[0]
+        assert sent_message.title == "SystemSentinel service started"
         mock_db.close.assert_awaited_once()
 
     async def test_daemon_requests_restart_after_self_update(self, tmp_path: Path) -> None:

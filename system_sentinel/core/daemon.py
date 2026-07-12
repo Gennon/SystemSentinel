@@ -11,6 +11,7 @@ from typing import Any
 import yaml
 
 from system_sentinel.alerts.handler import AlertHandler
+from system_sentinel.chat.base import OutboundMessage
 from system_sentinel.chat.registry import ChatRegistry
 from system_sentinel.chat.router import ChatRouter
 from system_sentinel.core.context import AppContext
@@ -123,6 +124,13 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
 
     for adapter in chat_router.adapters:
         await adapter.start()
+
+    await chat_router.broadcast(
+        OutboundMessage(
+            title="SystemSentinel service started",
+            text="SystemSentinel daemon is online and monitoring has started.",
+        )
+    )
 
     await monitor_registry.start()
     scheduler.start()
