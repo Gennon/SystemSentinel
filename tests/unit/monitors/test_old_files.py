@@ -122,7 +122,7 @@ async def test_collect_respects_scan_interval(repo: OldFilesRepository, tmp_path
 
 
 @pytest.mark.asyncio
-async def test_collect_publishes_daily_digest_once_per_day(
+async def test_collect_does_not_emit_standalone_daily_digest_event(
     repo: OldFilesRepository, tmp_path: Path
 ) -> None:
     old_file = tmp_path / "old.log"
@@ -142,4 +142,4 @@ async def test_collect_publishes_daily_digest_once_per_day(
     await monitor.collect()
 
     event_types = [call.args[0] for call in ctx.event_bus.publish.call_args_list]
-    assert event_types.count("alert.files.daily_digest") == 1
+    assert "alert.files.daily_digest" not in event_types

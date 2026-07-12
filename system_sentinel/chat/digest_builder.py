@@ -12,6 +12,21 @@ if TYPE_CHECKING:
 class DigestBuilder:
     """Builds periodic digest messages from stored monitoring data."""
 
+    def build_daily_digest(
+        self,
+        *,
+        generated_at: datetime | str,
+        sections: dict[str, str],
+    ) -> OutboundMessage:
+        timestamp = generated_at.isoformat() if isinstance(generated_at, datetime) else generated_at
+        fields: dict[str, str] = {"Timestamp": timestamp, **sections}
+        return OutboundMessage(
+            title="🧭 Daily System Digest",
+            text="Daily overview for the last 24 hours.",
+            severity=AlertSeverity.INFO,
+            fields=fields,
+        )
+
     async def build_login_digest(
         self,
         login_repo: LoginRepository,

@@ -53,7 +53,7 @@ A Linux system management daemon that autonomously handles updates, security har
 
 ### Communication & Alerts
 - [x] As a user I want chat notifications for critical events (high CPU, failed logins, disk full) so I am notified immediately. **(US-009)**
-- [ ] As a user I want a daily digest report sent via chat each morning so I start the day with a system overview.
+- [x] As a user I want a daily digest report sent via chat each morning so I start the day with a system overview. **(US-010)**
 - [x] As a user I want a startup chat notification when the service comes online so I know monitoring is active. **(US-041)**
 
 > **Note:** Release 1 chat integration is **outbound only** — SystemSentinel posts alerts and digests to chat. Two-way commands (inbound messages triggering actions) are a Release 2 feature.

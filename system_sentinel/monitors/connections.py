@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime, timedelta
 import ipaddress
 import re
 from typing import TYPE_CHECKING, Any
@@ -195,48 +195,6 @@ class ConnectionMonitor(BaseMonitor):
                 src_ip,
                 threshold_window_minutes,
             )
-
-        await self._maybe_send_daily_digest(repo, now)
-
-    async def _maybe_send_daily_digest(self, repo: ConnectionRepository, now: datetime) -> None:
-        """Send one daily connection digest at/after configured UTC time."""
-        report_time = self._daily_report_time_utc()
-        today = now.date()
-        report_dt = datetime.combine(today, report_time, tzinfo=UTC)
-        if now < report_dt:
-            return
-
-        state_key = "connections.daily_report.last_sent_date_utc"
-        last_sent = await repo.get_state(state_key)
-        if last_sent == today.isoformat():
-            return
-
-        since = now - timedelta(hours=24)
-        rows = await repo.ip_port_activity_since(since)
-        if rows:
-            await self.ctx.event_bus.publish(
-                "alert.connection.daily_digest",
-                {
-                    "timestamp": now.isoformat(),
-                    "period_hours": 24,
-                    "rows": rows,
-                },
-            )
-        await repo.set_state(state_key, today.isoformat())
-
-    def _daily_report_time_utc(self) -> time:
-        """Return configured daily report UTC time, default 08:00."""
-        raw = str(self.config.get("daily_report_time_utc", "08:00")).strip()
-        if not re.fullmatch(r"\d{1,2}:\d{2}", raw):
-            self.logger.warning("Invalid daily_report_time_utc %r; using default 08:00", raw)
-            return time(hour=8, minute=0)
-        hour_str, minute_str = raw.split(":")
-        hour = int(hour_str)
-        minute = int(minute_str)
-        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
-            self.logger.warning("Out-of-range daily_report_time_utc %r; using default 08:00", raw)
-            return time(hour=8, minute=0)
-        return time(hour=hour, minute=minute)
 
     async def _run_ss(self) -> list[str]:
         """Run ``ss -tnp`` and return its output lines.  Runs in a thread pool."""

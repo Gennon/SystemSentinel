@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime, timedelta
 import os
 from pathlib import Path
-import re
 from typing import TYPE_CHECKING, Any
 
 from system_sentinel.core.time_config import parse_duration_from_config
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
     from system_sentinel.db.old_files_repository import OldFilesRepository
 
 _LAST_SCAN_STATE_KEY = "old_files.last_scan_at_utc"
-_LAST_DIGEST_STATE_KEY = "old_files.daily_report.last_sent_date_utc"
 _DEFAULT_SCAN_INTERVAL_SECONDS = 24 * 60 * 60
 _DEFAULT_AGE_THRESHOLD_SECONDS = 30 * 24 * 60 * 60
 
@@ -83,8 +81,6 @@ class OldFilesMonitor(BaseMonitor):
                     now,
                 )
             await repo.set_state(_LAST_SCAN_STATE_KEY, now.isoformat())
-
-        await self._maybe_send_daily_digest(repo, now)
 
     def _watched_directories(self) -> list[str]:
         raw = self.config.get("watched_directories", [])
@@ -162,39 +158,3 @@ class OldFilesMonitor(BaseMonitor):
                 }
             )
         return matched
-
-    async def _maybe_send_daily_digest(self, repo: OldFilesRepository, now: datetime) -> None:
-        report_time = self._daily_report_time_utc()
-        today = now.date()
-        report_dt = datetime.combine(today, report_time, tzinfo=UTC)
-        if now < report_dt:
-            return
-
-        last_sent = await repo.get_state(_LAST_DIGEST_STATE_KEY)
-        if last_sent == today.isoformat():
-            return
-
-        summaries = await repo.latest_scan_summaries(now - timedelta(hours=24))
-        if summaries:
-            await self.ctx.event_bus.publish(
-                "alert.files.daily_digest",
-                {
-                    "timestamp": now.isoformat(),
-                    "period_hours": 24,
-                    "rows": summaries,
-                },
-            )
-        await repo.set_state(_LAST_DIGEST_STATE_KEY, today.isoformat())
-
-    def _daily_report_time_utc(self) -> time:
-        raw = str(self.config.get("daily_report_time_utc", "08:00")).strip()
-        if not re.fullmatch(r"\d{1,2}:\d{2}", raw):
-            self.logger.warning("Invalid daily_report_time_utc %r; using default 08:00", raw)
-            return time(hour=8, minute=0)
-        hour_str, minute_str = raw.split(":")
-        hour = int(hour_str)
-        minute = int(minute_str)
-        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
-            self.logger.warning("Out-of-range daily_report_time_utc %r; using default 08:00", raw)
-            return time(hour=8, minute=0)
-        return time(hour=hour, minute=minute)

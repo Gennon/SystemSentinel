@@ -97,7 +97,7 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
     for adapter in chat_registry.adapters.values():
         chat_router.register(adapter)
 
-    alert_handler = AlertHandler(chat_router)
+    alert_handler = AlertHandler(chat_router, audit=audit)
     alert_handler.register(event_bus)
 
     metrics_repo = MetricsRepository(db)

@@ -4,9 +4,11 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from system_sentinel.chat.base import AlertSeverity, OutboundMessage
+from system_sentinel.chat.digest_builder import DigestBuilder
 
 if TYPE_CHECKING:
     from system_sentinel.chat.router import ChatRouter
+    from system_sentinel.core.context import AuditRepository
     from system_sentinel.core.event_bus import InProcessEventBus
 
 
@@ -113,6 +115,17 @@ def _format_old_files_daily_digest(payload: dict[str, Any]) -> OutboundMessage:
     )
 
 
+def _format_system_daily_digest(payload: dict[str, Any]) -> OutboundMessage:
+    generated_at = payload["generated_at"]
+    sections_payload = payload["sections"]
+    sections = {str(key): str(value) for key, value in sections_payload.items()}
+    builder = DigestBuilder()
+    return builder.build_daily_digest(
+        generated_at=str(generated_at),
+        sections=sections,
+    )
+
+
 def _format_brute_force(payload: dict[str, Any]) -> OutboundMessage:
     """Build an OutboundMessage for a brute-force SSH alert payload."""
     ip: str = payload["ip_address"]
@@ -206,8 +219,9 @@ def _format_disk_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessage:
 class AlertHandler:
     """Subscribes to alert events on the event bus and forwards them to the ChatRouter."""
 
-    def __init__(self, chat_router: ChatRouter) -> None:
+    def __init__(self, chat_router: ChatRouter, audit: AuditRepository | None = None) -> None:
         self._router = chat_router
+        self._audit = audit
         self._logger = logging.getLogger("sentinel.alerts.handler")
 
     def register(self, event_bus: InProcessEventBus) -> None:
@@ -220,6 +234,7 @@ class AlertHandler:
         )
         event_bus.subscribe("alert.connection.daily_digest", self._on_connection_daily_digest)
         event_bus.subscribe("alert.files.daily_digest", self._on_old_files_daily_digest)
+        event_bus.subscribe("alert.system.daily_digest", self._on_system_daily_digest)
         event_bus.subscribe("alert.cpu.threshold_exceeded", self._on_cpu_threshold_exceeded)
         event_bus.subscribe("alert.ram.threshold_exceeded", self._on_ram_threshold_exceeded)
         event_bus.subscribe("alert.disk.threshold_exceeded", self._on_disk_threshold_exceeded)
@@ -233,6 +248,7 @@ class AlertHandler:
         )
         msg = _format_unknown_connection(payload)
         await self._router.broadcast(msg)
+        await self._record_alert(event_type, msg)
 
     async def _on_brute_force(self, event_type: str, payload: Any) -> None:
         self._logger.warning(
@@ -242,6 +258,7 @@ class AlertHandler:
         )
         msg = _format_brute_force(payload)
         await self._router.broadcast(msg)
+        await self._record_alert(event_type, msg)
 
     async def _on_connection_repeat_threshold(self, event_type: str, payload: Any) -> None:
         self._logger.warning(
@@ -251,28 +268,50 @@ class AlertHandler:
         )
         msg = _format_connection_repeat_threshold(payload)
         await self._router.broadcast(msg)
+        await self._record_alert(event_type, msg)
 
     async def _on_connection_daily_digest(self, event_type: str, payload: Any) -> None:
         self._logger.info("Publishing daily unknown connection digest")
         msg = _format_connection_daily_digest(payload)
         await self._router.broadcast(msg)
+        await self._record_alert(event_type, msg)
 
     async def _on_old_files_daily_digest(self, event_type: str, payload: Any) -> None:
         self._logger.info("Publishing daily old-files digest")
         msg = _format_old_files_daily_digest(payload)
+        await self._router.broadcast(msg)
+        await self._record_alert(event_type, msg)
+
+    async def _on_system_daily_digest(self, event_type: str, payload: Any) -> None:
+        self._logger.info("Publishing system daily digest")
+        msg = _format_system_daily_digest(payload)
         await self._router.broadcast(msg)
 
     async def _on_cpu_threshold_exceeded(self, event_type: str, payload: Any) -> None:
         self._logger.warning("CPU threshold exceeded: %s", payload.get("current_value"))
         msg = _format_cpu_threshold_exceeded(payload)
         await self._router.broadcast(msg)
+        await self._record_alert(event_type, msg)
 
     async def _on_ram_threshold_exceeded(self, event_type: str, payload: Any) -> None:
         self._logger.warning("RAM threshold exceeded: %s", payload.get("current_value"))
         msg = _format_ram_threshold_exceeded(payload)
         await self._router.broadcast(msg)
+        await self._record_alert(event_type, msg)
 
     async def _on_disk_threshold_exceeded(self, event_type: str, payload: Any) -> None:
         self._logger.warning("Disk threshold exceeded: %s", payload.get("current_value"))
         msg = _format_disk_threshold_exceeded(payload)
         await self._router.broadcast(msg)
+        await self._record_alert(event_type, msg)
+
+    async def _record_alert(self, event_type: str, msg: OutboundMessage) -> None:
+        if self._audit is None:
+            return
+        await self._audit.append(
+            action_type="alert_fired",
+            source=event_type,
+            description=msg.title or event_type,
+            outcome="success",
+            details={"severity": msg.severity.value},
+        )

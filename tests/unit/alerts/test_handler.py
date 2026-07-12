@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -13,6 +14,7 @@ from system_sentinel.alerts.handler import (
     _format_disk_threshold_exceeded,
     _format_old_files_daily_digest,
     _format_ram_threshold_exceeded,
+    _format_system_daily_digest,
     _format_unknown_connection,
 )
 from system_sentinel.chat.base import AlertSeverity, OutboundMessage
@@ -148,6 +150,15 @@ _OLD_FILES_DAILY_DIGEST_PAYLOAD = {
         {"watched_directory": "/var/log", "file_count": 3, "total_size_bytes": 1200},
         {"watched_directory": "/tmp/archive", "file_count": 1, "total_size_bytes": 300},
     ],
+}
+
+_SYSTEM_DAILY_DIGEST_PAYLOAD = {
+    "generated_at": "2024-01-01T08:00:00+00:00",
+    "sections": {
+        "System Uptime": "1d 02h",
+        "Update Status": "Last run: 2024-01-01T02:00:00+00:00",
+        "24h Resource Usage": "CPU avg 20%",
+    },
 }
 
 _CPU_THRESHOLD_PAYLOAD = {
@@ -341,6 +352,41 @@ async def test_handler_broadcasts_on_old_files_daily_digest_event() -> None:
     assert len(calls) == 1
     assert calls[0].severity == AlertSeverity.INFO
     assert "/var/log" in calls[0].text
+
+
+def test_format_system_daily_digest_fields() -> None:
+    msg = _format_system_daily_digest(_SYSTEM_DAILY_DIGEST_PAYLOAD)
+    assert msg.title == "🧭 Daily System Digest"
+    assert msg.fields is not None
+    assert msg.fields["Timestamp"] == "2024-01-01T08:00:00+00:00"
+    assert msg.fields["System Uptime"] == "1d 02h"
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_system_daily_digest_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.system.daily_digest", _SYSTEM_DAILY_DIGEST_PAYLOAD)
+
+    assert len(calls) == 1
+    assert calls[0].title == "🧭 Daily System Digest"
+
+
+@pytest.mark.asyncio
+async def test_handler_audits_alert_event() -> None:
+    router, _ = _make_router()
+    audit = AsyncMock()
+    audit.append = AsyncMock()
+    handler = AlertHandler(router, audit=audit)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.connection.unknown_ip_detected", _UNKNOWN_CONNECTION_PAYLOAD)
+
+    audit.append.assert_awaited_once()
 
 
 def test_format_cpu_threshold_fields_present() -> None:

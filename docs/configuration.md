@@ -41,12 +41,13 @@ The following keys use duration parsing from `system_sentinel.core.time_config`:
 | `monitors.connections.repeat_alert_count` | int | `3` | `ConnectionMonitor` | Repeated-attempt alert threshold. |
 | `monitors.connections.repeat_alert_window` | duration | `00:10:00` | `ConnectionMonitor` | Window for `repeat_alert_count`. |
 | `monitors.connections.cooldown` | duration | `01:00:00` | `ConnectionMonitor` | Alert cooldown per source IP. |
-| `monitors.connections.daily_report_time_utc` | `HH:MM` | `08:00` | `ConnectionMonitor` | Daily digest time (UTC). |
 | `monitors.old_files.data_dir` | path | `/var/lib/sentinel` | `OldFilesMonitor` | Used to locate `sentinel.db`. |
 | `monitors.old_files.watched_directories` | list[path] | `[]` | `OldFilesMonitor` | Empty disables scanning (with warning). |
 | `monitors.old_files.scan_interval` | duration | `24:00:00` | `OldFilesMonitor` | Time between scans. |
 | `monitors.old_files.age_threshold` | duration | `30d 00:00:00` | `OldFilesMonitor` | Minimum file age to include in scan results. |
-| `monitors.old_files.daily_report_time_utc` | `HH:MM` | `08:00` | `OldFilesMonitor` | Daily digest time (UTC). |
+| `monitors.daily_digest.data_dir` | path | `/var/lib/sentinel` | `DailyDigestMonitor` | Used to locate `sentinel.db`. |
+| `monitors.daily_digest.send_time_local` | `HH:MM` | `08:00` | `DailyDigestMonitor` | Daily digest send time in local timezone. |
+| `monitors.daily_digest.expected_collection_interval` | duration | `00:01:00` | `DailyDigestMonitor` | Expected metrics interval for offline gap detection sensitivity. |
 | `tools.<tool>.enabled` | bool | `true` | `Tool` base | Per-tool enable/disable switch. |
 | `tools.<tool>.schedule` | `HH:MM` or cron | none | `Scheduler` | Optional recurring schedule. |
 | `tools.security_update.dry_run` | bool | `false` | `SecurityUpdateTool` | Simulate updates without changing packages. |
@@ -118,13 +119,15 @@ monitors:
     repeat_alert_count: 3
     repeat_alert_window: "00:10:00"
     cooldown: "01:00:00"
-    daily_report_time_utc: "08:00"
   old_files:
     enabled: true
     watched_directories: []
     scan_interval: "24:00:00"
     age_threshold: "30d 00:00:00"
-    daily_report_time_utc: "08:00"
+  daily_digest:
+    enabled: true
+    send_time_local: "08:00"
+    expected_collection_interval: "00:01:00"
 
 tools:
   security_update:

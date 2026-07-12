@@ -354,7 +354,7 @@ async def test_collect_counts_attempts_across_ports_for_same_ip(
 
 
 @pytest.mark.asyncio
-async def test_collect_sends_daily_digest_once_per_day(
+async def test_collect_does_not_emit_standalone_daily_digest_event(
     conn_repo: ConnectionRepository, default_config: dict
 ) -> None:
     config = {
@@ -370,4 +370,4 @@ async def test_collect_sends_daily_digest_once_per_day(
         await monitor.collect()  # same day: no second digest
 
     event_types = [call.args[0] for call in ctx.event_bus.publish.call_args_list]
-    assert event_types.count("alert.connection.daily_digest") == 1
+    assert "alert.connection.daily_digest" not in event_types

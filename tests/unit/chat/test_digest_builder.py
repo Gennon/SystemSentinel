@@ -131,3 +131,23 @@ async def test_build_login_digest_defaults_to_last_24h(
 
     assert result is not None
     assert "7.7.7.7" in result.text
+
+
+def test_build_daily_digest_builds_structured_message() -> None:
+    builder = DigestBuilder()
+    now = datetime(2024, 1, 1, 8, 0, tzinfo=UTC)
+
+    result = builder.build_daily_digest(
+        generated_at=now,
+        sections={
+            "System Uptime": "2d 03h",
+            "Update Status": "Last run: 2024-01-01T02:00:00+00:00",
+            "24h Resource Usage": "CPU avg 20.0%, RAM peak 68.0%",
+        },
+    )
+
+    assert result.title == "🧭 Daily System Digest"
+    assert result.fields is not None
+    assert result.fields["Timestamp"] == now.isoformat()
+    assert result.fields["System Uptime"] == "2d 03h"
+    assert result.fields["24h Resource Usage"] == "CPU avg 20.0%, RAM peak 68.0%"
