@@ -81,7 +81,7 @@ A Linux system management daemon that autonomously handles updates, security har
 - [ ] As a user I want a storage usage report showing top consumers by directory so I know where space is going.
 
 ### Communication & Alerts
-- [ ] As a user I want to send chat commands to trigger actions remotely so I can manage the system from my phone.
+- [x] As a user I want to send chat commands to trigger actions remotely so I can manage the system from my phone. **(US-020)**
 - [x] As a user I want to control who can interact with the chat bot so that only authorised users can trigger actions or receive sensitive system information. **(US-034)**
 - [ ] As a user I want to configure alert severity levels (info, warning, critical) so I can tune the signal-to-noise ratio.
 

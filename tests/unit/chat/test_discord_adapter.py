@@ -312,3 +312,31 @@ async def test_on_message_sends_handler_reply_to_channel() -> None:
     sent_embed = channel.send.call_args.kwargs["embed"]
     assert sent_embed.description == "ack !status"
     await adapter.stop()
+
+
+@pytest.mark.asyncio
+async def test_on_reaction_sends_handler_reply_to_channel() -> None:
+    adapter = _make_adapter()
+    await adapter.start()
+
+    async def _handler(_reaction):  # type: ignore[no-untyped-def]
+        return OutboundMessage(text="confirmed")
+
+    adapter.on_reaction(_handler)
+
+    channel = await adapter._client.fetch_channel(555)
+    user = MagicMock()
+    user.id = 54321
+    user.__str__.return_value = "tester#0002"
+
+    reaction = MagicMock()
+    reaction.emoji = "✅"
+    reaction.message.channel = channel
+
+    on_reaction_add = adapter._client._event_handlers["on_reaction_add"]
+    await on_reaction_add(reaction, user)
+
+    channel.send.assert_awaited_once()
+    sent_embed = channel.send.call_args.kwargs["embed"]
+    assert sent_embed.description == "confirmed"
+    await adapter.stop()

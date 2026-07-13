@@ -8,6 +8,7 @@ from system_sentinel.chat.base import (
     AlertSeverity,
     BaseChatAdapter,
     InboundMessage,
+    InboundReaction,
     OutboundMessage,
 )
 
@@ -125,6 +126,16 @@ def test_on_message_registers_handler() -> None:
 
     stub.on_message(handler)
     assert stub._message_handler is handler
+
+
+def test_on_reaction_registers_handler() -> None:
+    stub = _make_stub()
+
+    async def handler(reaction: InboundReaction) -> OutboundMessage | None:
+        return None
+
+    stub.on_reaction(handler)
+    assert stub._reaction_handler is handler
 
 
 @pytest.mark.asyncio

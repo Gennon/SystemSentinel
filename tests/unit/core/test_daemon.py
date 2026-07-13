@@ -101,6 +101,7 @@ class TestRunDaemon:
             mock_adapter.stop = AsyncMock()
             mock_adapter.send_to_default = AsyncMock()
             mock_adapter.on_message = MagicMock()
+            mock_adapter.on_reaction = MagicMock()
             mock_chat = MagicMock()
             mock_chat.adapters = {"discord": mock_adapter}
             mock_chat_cls.return_value = mock_chat
@@ -134,6 +135,7 @@ class TestRunDaemon:
         mock_adapter.stop.assert_awaited_once()
         mock_adapter.send_to_default.assert_awaited_once()
         mock_adapter.on_message.assert_called_once()
+        mock_adapter.on_reaction.assert_called_once()
         sent_message = mock_adapter.send_to_default.call_args.args[0]
         assert sent_message.title == "SystemSentinel service started"
         mock_db.close.assert_awaited_once()

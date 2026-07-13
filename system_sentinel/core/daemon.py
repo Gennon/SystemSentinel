@@ -13,6 +13,7 @@ import yaml
 from system_sentinel.alerts.handler import AlertHandler
 from system_sentinel.chat.access_control import ChatAccessControl
 from system_sentinel.chat.base import InboundMessage, OutboundMessage
+from system_sentinel.chat.command_dispatcher import ChatCommandDispatcher
 from system_sentinel.chat.registry import ChatRegistry
 from system_sentinel.chat.router import ChatRouter
 from system_sentinel.core.context import AppContext
@@ -60,9 +61,10 @@ def _discover_tools(
     tools_config: dict[str, Any],
     app_ctx: AppContext,
     scheduler: Scheduler,
-) -> None:
+) -> dict[str, Any]:
     """Load all tools registered via the ``sentinel.tools`` entry-point group."""
     logger = app_ctx.logger.getChild("tool.registry")
+    discovered: dict[str, Any] = {}
     eps = entry_points(group=_TOOL_ENTRY_POINT_GROUP)
     for ep in eps:
         tool_config: dict[str, Any] = tools_config.get(ep.name, {})
@@ -73,9 +75,11 @@ def _discover_tools(
             cls = ep.load()
             tool = cls(tool_config, app_ctx)
             scheduler.register_tool(tool)
+            discovered[ep.name] = tool
             logger.info("Loaded tool: %s", ep.name)
         except Exception:
             logger.exception("Failed to load tool %r", ep.name)
+    return discovered
 
 
 async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH) -> None:
@@ -105,8 +109,7 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
     )
 
     async def _handle_inbound_message(
-        inbound: InboundMessage,
-        args: list[str],
+        inbound: InboundMessage, args: list[str]
     ) -> OutboundMessage | None:
         decision = access_control.authorize(inbound, args)
         if not decision.authorized:
@@ -131,10 +134,14 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
                 "received_at": inbound.received_at.isoformat(),
             },
         )
-        return None
+        return await command_dispatcher.handle_message(inbound, args)
+
+    async def _handle_inbound_reaction(reaction: Any) -> OutboundMessage | None:
+        return await command_dispatcher.handle_reaction(reaction)
 
     for adapter in chat_router.adapters:
         adapter.on_message(_handle_inbound_message)
+        adapter.on_reaction(_handle_inbound_reaction)
 
     alert_handler = AlertHandler(chat_router, audit=audit)
     alert_handler.register(event_bus)
@@ -145,7 +152,16 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
     monitor_registry.discover()
 
     scheduler = Scheduler(app_ctx)
-    _discover_tools(config.get("tools", {}), app_ctx, scheduler)
+    tools = _discover_tools(config.get("tools", {}), app_ctx, scheduler)
+
+    command_dispatcher = ChatCommandDispatcher(
+        config=config,
+        app_ctx=app_ctx,
+        scheduler=scheduler,
+        tools=tools,
+        monitor_registry=monitor_registry,
+        db=db,
+    )
 
     async def _on_self_update_start(remote: str, branch: str) -> None:
         await chat_router.broadcast(

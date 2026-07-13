@@ -9,6 +9,7 @@ from system_sentinel.chat.base import (
     AlertSeverity,
     BaseChatAdapter,
     InboundMessage,
+    InboundReaction,
     OutboundMessage,
 )
 
@@ -94,6 +95,28 @@ class DiscordAdapter(BaseChatAdapter):
                     await self.send(str(message.channel.id), response)
             except Exception:
                 self.logger.exception("Error in message handler")
+
+        @self._client.event  # type: ignore[untyped-decorator]
+        async def on_reaction_add(reaction: Any, user: Any) -> None:
+            if user == self._client.user:
+                return
+            if self._reaction_handler is None:
+                return
+            inbound = InboundReaction(
+                adapter=self.name,
+                channel_id=str(reaction.message.channel.id),
+                user_id=str(user.id),
+                username=str(user),
+                emoji=str(reaction.emoji),
+                raw=reaction,
+                received_at=datetime.now(UTC),
+            )
+            try:
+                response = await self._reaction_handler(inbound)
+                if response is not None:
+                    await self.send(str(reaction.message.channel.id), response)
+            except Exception:
+                self.logger.exception("Error in reaction handler")
 
     async def start(self) -> None:
         """Connect the Discord bot and wait until it is ready."""

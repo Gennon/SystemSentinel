@@ -12,4 +12,4 @@ As a user I want to see a list of files older than N days in configured director
 - [x] The scan result lists files with: path, size, last modified date, and age in days
 - [x] Results are stored in SQLite for querying
 - [x] A summary of files found (count and total size per watched directory) is included in the daily digest (see [US-010](US-010-daily-digest.md))
-- [ ] In Release 2 the `!files` command will expose this data interactively (see [US-020](US-020-chat-commands.md))
+- [x] In Release 2 the `!files` command will expose this data interactively (see [US-020](US-020-chat-commands.md))

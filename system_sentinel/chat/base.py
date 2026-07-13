@@ -39,6 +39,18 @@ class OutboundMessage:
 
 
 CommandHandler = Callable[[InboundMessage, list[str]], Awaitable["OutboundMessage | None"]]
+ReactionHandler = Callable[["InboundReaction"], Awaitable["OutboundMessage | None"]]
+
+
+@dataclass
+class InboundReaction:
+    adapter: str
+    channel_id: str
+    user_id: str
+    username: str
+    emoji: str
+    raw: object
+    received_at: datetime
 
 
 class BaseChatAdapter(ABC):
@@ -49,6 +61,7 @@ class BaseChatAdapter(ABC):
         self.ctx = app_ctx
         self.logger = app_ctx.logger.getChild(f"chat.{self.name}")
         self._message_handler: CommandHandler | None = None
+        self._reaction_handler: ReactionHandler | None = None
 
     @abstractmethod
     async def start(self) -> None:
@@ -73,3 +86,7 @@ class BaseChatAdapter(ABC):
     def on_message(self, handler: CommandHandler) -> None:
         """Register the dispatcher callback. Called by ChatRouter during wiring."""
         self._message_handler = handler
+
+    def on_reaction(self, handler: ReactionHandler) -> None:
+        """Register the reaction callback."""
+        self._reaction_handler = handler
