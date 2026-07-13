@@ -14,6 +14,7 @@ from system_sentinel.setup.systemd_installer import (
     create_sentinel_user_step,
     enable_systemd_service_step,
     fix_install_dir_permissions_step,
+    install_sudoers_rules_step,
     install_systemd_service_step,
     start_systemd_service_step,
 )
@@ -597,6 +598,76 @@ class TestInstallSystemdServiceStep:
             results, _ = _run_step(install_systemd_service_step)
 
         assert results[0].outcome == StepOutcome.FAILURE
+
+
+# ---------------------------------------------------------------------------
+# install_sudoers_rules_step
+# ---------------------------------------------------------------------------
+
+
+class TestInstallSudoersRulesStep:
+    def test_step_is_check_safe(self) -> None:
+        assert install_sudoers_rules_step().check_safe is True
+
+    def test_no_required_rules_succeeds(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("monitors:\n  services:\n    enabled: false\n")
+        with patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_path):
+            results, _ = _run_step(install_sudoers_rules_step)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        assert "No sudoers rules required" in results[0].message
+
+    def test_check_only_fails_when_required_file_missing(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("monitors:\n  services:\n    enabled: true\n")
+        with (
+            patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_path),
+            patch(
+                "system_sentinel.setup.systemd_installer.SUDOERS_INSTALL_PATH", tmp_path / "missing"
+            ),
+        ):
+            results, _ = _run_step(install_sudoers_rules_step, WizardContext(check_only=True))
+
+        assert results[0].outcome == StepOutcome.FAILURE
+
+    def test_check_only_succeeds_when_required_rule_present(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("monitors:\n  services:\n    enabled: true\n")
+        sudoers_path = tmp_path / "sentinel"
+        sudoers_path.write_text("sentinel ALL=(root) NOPASSWD: /bin/systemctl restart *\n")
+        with (
+            patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_path),
+            patch("system_sentinel.setup.systemd_installer.SUDOERS_INSTALL_PATH", sudoers_path),
+        ):
+            results, _ = _run_step(install_sudoers_rules_step, WizardContext(check_only=True))
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+
+    def test_installs_validated_sudoers_file(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        sudoers_path = tmp_path / "sentinel"
+        config_path.write_text("monitors:\n  services:\n    enabled: true\n")
+
+        def mock_run(cmd, timeout=300):
+            if cmd[:3] == ["/usr/sbin/visudo", "-c", "-f"]:
+                return CommandResult(returncode=0, stdout="parsed ok", stderr="")
+            return CommandResult(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_path),
+            patch("system_sentinel.setup.systemd_installer.SUDOERS_INSTALL_PATH", sudoers_path),
+            patch(
+                "system_sentinel.setup.systemd_installer.run_command", side_effect=mock_run
+            ) as mock_cmd,
+        ):
+            results, _ = _run_step(install_sudoers_rules_step)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        calls = [str(c) for c in mock_cmd.call_args_list]
+        assert any("/usr/sbin/visudo" in c for c in calls)
+        assert any("/bin/cp" in c for c in calls)
+        assert any("/bin/chmod" in c for c in calls)
 
 
 # ---------------------------------------------------------------------------

@@ -45,6 +45,10 @@ The following keys use duration parsing from `system_sentinel.core.time_config`:
 | `monitors.connections.repeat_alert_count` | int | `3` | `ConnectionMonitor` | Repeated-attempt alert threshold. |
 | `monitors.connections.repeat_alert_window` | duration | `00:10:00` | `ConnectionMonitor` | Window for `repeat_alert_count`. |
 | `monitors.connections.cooldown` | duration | `01:00:00` | `ConnectionMonitor` | Alert cooldown per source IP. |
+| `monitors.services.critical_services` | list[string] | `[]` | `ServiceMonitor` | Critical systemd unit names to health-check and auto-restart. |
+| `monitors.services.check_interval` | duration | `00:01:00` | `ServiceMonitor` | How often service health checks run. |
+| `monitors.services.max_restart_attempts` | int | `3` | `ServiceMonitor` | Max restart retries per failed service before escalating. |
+| `monitors.services.journal_lines` | int | `20` | `ServiceMonitor` | Number of recent journal lines included in failure notifications. |
 | `monitors.old_files.data_dir` | path | `/var/lib/sentinel` | `OldFilesMonitor` | Used to locate `sentinel.db`. |
 | `monitors.old_files.watched_directories` | list[path] | `[]` | `OldFilesMonitor` | Empty disables scanning (with warning). |
 | `monitors.old_files.scan_interval` | duration | `24:00:00` | `OldFilesMonitor` | Time between scans. |
@@ -131,6 +135,14 @@ monitors:
     repeat_alert_count: 3
     repeat_alert_window: "00:10:00"
     cooldown: "01:00:00"
+  services:
+    enabled: true
+    check_interval: "00:01:00"
+    max_restart_attempts: 3
+    journal_lines: 20
+    critical_services:
+      - "sshd.service"
+      - "nginx.service"
   old_files:
     enabled: true
     watched_directories: []

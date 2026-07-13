@@ -64,7 +64,7 @@ A Linux system management daemon that autonomously handles updates, security har
 
 ### System Maintenance
 - [ ] As a user I want automatic pre/post-update snapshots or rollback points so I can recover if an update breaks something.
-- [ ] As a user I want service health checks and auto-restart on failure so critical services stay running.
+- [x] As a user I want service health checks and auto-restart on failure so critical services stay running. **(US-012)**
 
 ### Security & Hardening
 - [ ] As a user I want the system to auto-apply CIS or custom hardening benchmarks so the machine meets a security baseline.

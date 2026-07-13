@@ -14,6 +14,9 @@ from system_sentinel.alerts.handler import (
     _format_disk_threshold_exceeded,
     _format_old_files_daily_digest,
     _format_ram_threshold_exceeded,
+    _format_service_failure_detected,
+    _format_service_restart_exhausted,
+    _format_service_restart_result,
     _format_system_daily_digest,
     _format_unknown_connection,
 )
@@ -185,6 +188,38 @@ _DISK_THRESHOLD_PAYLOAD = {
     "hostname": "sentinel-host",
     "mountpoint": "/",
     "device": "/dev/sda1",
+}
+
+_SERVICE_FAILURE_PAYLOAD = {
+    "service_name": "nginx.service",
+    "status": "failed",
+    "attempt": 1,
+    "max_attempts": 3,
+    "last_journal_lines": "example error line",
+}
+
+_SERVICE_RESTART_RESULT_SUCCESS_PAYLOAD = {
+    "service_name": "nginx.service",
+    "attempt": 1,
+    "max_attempts": 3,
+    "succeeded": True,
+    "status_after_restart": "active",
+    "error": "",
+}
+
+_SERVICE_RESTART_RESULT_FAILURE_PAYLOAD = {
+    "service_name": "nginx.service",
+    "attempt": 2,
+    "max_attempts": 3,
+    "succeeded": False,
+    "status_after_restart": "failed",
+    "error": "permission denied",
+}
+
+_SERVICE_RESTART_EXHAUSTED_PAYLOAD = {
+    "service_name": "nginx.service",
+    "max_attempts": 3,
+    "status_after_restart": "failed",
 }
 
 
@@ -447,6 +482,73 @@ async def test_handler_broadcasts_on_disk_threshold_event() -> None:
     await bus.publish("alert.disk.threshold_exceeded", _DISK_THRESHOLD_PAYLOAD)
     assert len(calls) == 1
     assert calls[0].severity == AlertSeverity.CRITICAL
+
+
+def test_format_service_failure_detected_includes_logs() -> None:
+    msg = _format_service_failure_detected(_SERVICE_FAILURE_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert "nginx.service" in msg.text
+    assert "example error line" in msg.text
+
+
+def test_format_service_restart_result_success_is_info() -> None:
+    msg = _format_service_restart_result(_SERVICE_RESTART_RESULT_SUCCESS_PAYLOAD)
+    assert msg.severity == AlertSeverity.INFO
+    assert "succeeded" in msg.text
+
+
+def test_format_service_restart_result_failure_is_warning() -> None:
+    msg = _format_service_restart_result(_SERVICE_RESTART_RESULT_FAILURE_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert "permission denied" in msg.text
+
+
+def test_format_service_restart_exhausted_is_critical() -> None:
+    msg = _format_service_restart_exhausted(_SERVICE_RESTART_EXHAUSTED_PAYLOAD)
+    assert msg.severity == AlertSeverity.CRITICAL
+    assert "did not recover" in msg.text
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_service_failure_detected_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.service.failure_detected", _SERVICE_FAILURE_PAYLOAD)
+
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.WARNING
+    assert "nginx.service" in calls[0].text
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_service_restart_result_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.service.restart_result", _SERVICE_RESTART_RESULT_SUCCESS_PAYLOAD)
+
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.INFO
+    assert "succeeded" in calls[0].text
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_service_restart_exhausted_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.service.restart_exhausted", _SERVICE_RESTART_EXHAUSTED_PAYLOAD)
+
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.CRITICAL
+    assert "did not recover" in calls[0].text
 
 
 @pytest.mark.asyncio

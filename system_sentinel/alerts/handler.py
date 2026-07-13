@@ -20,6 +20,9 @@ _EVENT_SEVERITY_KEYS = {
     "alert.connection.repeated_attempts_detected": "network_repeat",
     "alert.connection.daily_digest": "network_digest",
     "alert.files.daily_digest": "files_digest",
+    "alert.service.failure_detected": "service_failure",
+    "alert.service.restart_result": "service_restart_result",
+    "alert.service.restart_exhausted": "service_restart_exhausted",
 }
 
 _SEVERITY_RANK: dict[AlertSeverity, int] = {
@@ -150,6 +153,74 @@ def _format_old_files_daily_digest(payload: dict[str, Any]) -> OutboundMessage:
             "Files Found": str(total_files),
             "Total Size (bytes)": str(total_size_bytes),
             "Period": f"Last {period_hours} hours",
+        },
+    )
+
+
+def _format_service_failure_detected(payload: dict[str, Any]) -> OutboundMessage:
+    service_name = str(payload.get("service_name", "unknown"))
+    status = str(payload.get("status", "unknown"))
+    attempt = int(payload.get("attempt", 1))
+    max_attempts = int(payload.get("max_attempts", 3))
+    journal_lines = str(payload.get("last_journal_lines", "Unavailable."))
+    return OutboundMessage(
+        title="⚠️ Service Failure Detected",
+        text=(
+            f"Service **{service_name}** is **{status}**.\n"
+            f"Restart attempt {attempt}/{max_attempts} will be attempted.\n\n"
+            f"Recent logs:\n```text\n{journal_lines}\n```"
+        ),
+        severity=AlertSeverity.WARNING,
+        fields={
+            "Service": service_name,
+            "Status": status,
+            "Restart Attempt": f"{attempt}/{max_attempts}",
+        },
+    )
+
+
+def _format_service_restart_result(payload: dict[str, Any]) -> OutboundMessage:
+    service_name = str(payload.get("service_name", "unknown"))
+    attempt = int(payload.get("attempt", 1))
+    max_attempts = int(payload.get("max_attempts", 3))
+    succeeded = bool(payload.get("succeeded", False))
+    status_after_restart = str(payload.get("status_after_restart", "unknown"))
+    error = str(payload.get("error", "")).strip()
+    title = "✅ Service Restart Succeeded" if succeeded else "⚠️ Service Restart Failed"
+    text = (
+        f"Service **{service_name}** restart attempt {attempt}/{max_attempts} "
+        f"{'succeeded' if succeeded else 'failed'}.\n"
+        f"Current status: **{status_after_restart}**"
+    )
+    if error:
+        text = f"{text}\nError: {error}"
+    return OutboundMessage(
+        title=title,
+        text=text,
+        severity=AlertSeverity.INFO if succeeded else AlertSeverity.WARNING,
+        fields={
+            "Service": service_name,
+            "Attempt": f"{attempt}/{max_attempts}",
+            "Status": status_after_restart,
+        },
+    )
+
+
+def _format_service_restart_exhausted(payload: dict[str, Any]) -> OutboundMessage:
+    service_name = str(payload.get("service_name", "unknown"))
+    max_attempts = int(payload.get("max_attempts", 3))
+    status_after_restart = str(payload.get("status_after_restart", "unknown"))
+    return OutboundMessage(
+        title="🚨 Service Restart Attempts Exhausted",
+        text=(
+            f"Service **{service_name}** did not recover after **{max_attempts}** restart attempts.\n"
+            f"Current status: **{status_after_restart}**"
+        ),
+        severity=AlertSeverity.CRITICAL,
+        fields={
+            "Service": service_name,
+            "Attempts": str(max_attempts),
+            "Status": status_after_restart,
         },
     )
 
@@ -302,6 +373,9 @@ class AlertHandler:
         event_bus.subscribe("alert.cpu.threshold_exceeded", self._on_cpu_threshold_exceeded)
         event_bus.subscribe("alert.ram.threshold_exceeded", self._on_ram_threshold_exceeded)
         event_bus.subscribe("alert.disk.threshold_exceeded", self._on_disk_threshold_exceeded)
+        event_bus.subscribe("alert.service.failure_detected", self._on_service_failure_detected)
+        event_bus.subscribe("alert.service.restart_result", self._on_service_restart_result)
+        event_bus.subscribe("alert.service.restart_exhausted", self._on_service_restart_exhausted)
 
     async def _on_unknown_connection(self, event_type: str, payload: Any) -> None:
         self._logger.warning(
@@ -361,6 +435,32 @@ class AlertHandler:
     async def _on_disk_threshold_exceeded(self, event_type: str, payload: Any) -> None:
         self._logger.warning("Disk threshold exceeded: %s", payload.get("current_value"))
         msg = self._apply_severity(event_type, payload, _format_disk_threshold_exceeded(payload))
+        await self._notify_and_record(event_type, msg)
+
+    async def _on_service_failure_detected(self, event_type: str, payload: Any) -> None:
+        self._logger.warning(
+            "Service failure detected: %s is %s",
+            payload.get("service_name"),
+            payload.get("status"),
+        )
+        msg = self._apply_severity(event_type, payload, _format_service_failure_detected(payload))
+        await self._notify_and_record(event_type, msg)
+
+    async def _on_service_restart_result(self, event_type: str, payload: Any) -> None:
+        succeeded = bool(payload.get("succeeded", False))
+        if succeeded:
+            self._logger.info("Service restart succeeded: %s", payload.get("service_name"))
+        else:
+            self._logger.warning("Service restart failed: %s", payload.get("service_name"))
+        msg = self._apply_severity(event_type, payload, _format_service_restart_result(payload))
+        await self._notify_and_record(event_type, msg)
+
+    async def _on_service_restart_exhausted(self, event_type: str, payload: Any) -> None:
+        self._logger.warning(
+            "Service restart attempts exhausted: %s",
+            payload.get("service_name"),
+        )
+        msg = self._apply_severity(event_type, payload, _format_service_restart_exhausted(payload))
         await self._notify_and_record(event_type, msg)
 
     async def _notify_and_record(self, event_type: str, msg: OutboundMessage) -> None:

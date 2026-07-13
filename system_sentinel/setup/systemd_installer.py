@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 import time
+
+import yaml
 
 from system_sentinel.setup.dependency_installer import run_command
 from system_sentinel.setup.wizard import StepOutcome, WizardContext, WizardStep, WizardStepResult
@@ -13,6 +16,8 @@ SERVICE_INSTALL_PATH = Path("/etc/systemd/system/sentinel.service")
 
 DATA_DIR = Path("/var/lib/sentinel")
 CONFIG_DIR = Path("/etc/sentinel")
+CONFIG_PATH = CONFIG_DIR / "config.yaml"
+SUDOERS_INSTALL_PATH = Path("/etc/sudoers.d/sentinel")
 
 _POLL_INTERVAL = 1
 _POLL_MAX_ATTEMPTS = 10
@@ -20,6 +25,8 @@ _POLL_MAX_ATTEMPTS = 10
 # Number of directory levels above the sentinel binary that constitute the install root.
 # e.g. .venv/bin/sentinel → 3 levels up = install dir
 _INSTALL_DIR_DEPTH = 3
+
+_SERVICE_RESTART_RULE = "sentinel ALL=(root) NOPASSWD: /bin/systemctl restart *"
 
 
 def create_sentinel_user_step() -> WizardStep:
@@ -316,6 +323,130 @@ def create_data_dir_step() -> WizardStep:
     return WizardStep(
         name="create_data_dir",
         description="Create /var/lib/sentinel and /etc/sentinel data directories",
+        runner=runner,
+        check_safe=True,
+    )
+
+
+def _required_sudoers_rules() -> list[str]:
+    if not CONFIG_PATH.exists():
+        return []
+    raw = yaml.safe_load(CONFIG_PATH.read_text()) or {}
+    if not isinstance(raw, dict):
+        return []
+    monitors = raw.get("monitors")
+    if not isinstance(monitors, dict):
+        return []
+    services = monitors.get("services")
+    if not isinstance(services, dict):
+        return []
+    if not bool(services.get("enabled", True)):
+        return []
+    return [_SERVICE_RESTART_RULE]
+
+
+def _build_sudoers_content(rules: list[str]) -> str:
+    joined_rules = "\n".join(rules)
+    return (
+        "# Managed by SystemSentinel setup. Do not edit manually.\n"
+        "# Allows targeted service recovery operations for the sentinel user.\n"
+        f"{joined_rules}\n"
+    )
+
+
+def install_sudoers_rules_step() -> WizardStep:
+    """Return a WizardStep that installs required sudoers rules for enabled features."""
+
+    def runner(ctx: WizardContext) -> WizardStepResult:
+        required_rules = _required_sudoers_rules()
+        if not required_rules:
+            return WizardStepResult(
+                step_name="install_sudoers_rules",
+                outcome=StepOutcome.SUCCESS,
+                message="No sudoers rules required for enabled features.",
+            )
+
+        if ctx.check_only:
+            if not SUDOERS_INSTALL_PATH.exists():
+                return WizardStepResult(
+                    step_name="install_sudoers_rules",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Sudoers file not found at {SUDOERS_INSTALL_PATH}.",
+                    error="Run sentinel setup to install required sudoers rules.",
+                )
+            content = SUDOERS_INSTALL_PATH.read_text()
+            missing = [rule for rule in required_rules if rule not in content]
+            if missing:
+                return WizardStepResult(
+                    step_name="install_sudoers_rules",
+                    outcome=StepOutcome.FAILURE,
+                    message="Sudoers file is missing required rule(s).",
+                    error="; ".join(missing),
+                )
+            return WizardStepResult(
+                step_name="install_sudoers_rules",
+                outcome=StepOutcome.SUCCESS,
+                message="Required sudoers rules are installed.",
+            )
+
+        content = _build_sudoers_content(required_rules)
+        tmp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile("w", delete=False) as tmp_file:
+                tmp_file.write(content)
+                tmp_file.flush()
+                tmp_path = Path(tmp_file.name)
+
+            assert tmp_path is not None
+
+            validate = run_command(["/usr/sbin/visudo", "-c", "-f", str(tmp_path)])
+            if validate.returncode != 0:
+                return WizardStepResult(
+                    step_name="install_sudoers_rules",
+                    outcome=StepOutcome.FAILURE,
+                    message="Generated sudoers file failed validation.",
+                    error=validate.stderr.strip() or validate.stdout.strip(),
+                )
+
+            mkdir = run_command(["sudo", "/bin/mkdir", "-p", str(SUDOERS_INSTALL_PATH.parent)])
+            if mkdir.returncode != 0:
+                return WizardStepResult(
+                    step_name="install_sudoers_rules",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Failed to create {SUDOERS_INSTALL_PATH.parent}.",
+                    error=mkdir.stderr.strip() or mkdir.stdout.strip(),
+                )
+
+            copy = run_command(["sudo", "/bin/cp", str(tmp_path), str(SUDOERS_INSTALL_PATH)])
+            if copy.returncode != 0:
+                return WizardStepResult(
+                    step_name="install_sudoers_rules",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Failed to install sudoers file at {SUDOERS_INSTALL_PATH}.",
+                    error=copy.stderr.strip() or copy.stdout.strip(),
+                )
+
+            chmod = run_command(["sudo", "/bin/chmod", "440", str(SUDOERS_INSTALL_PATH)])
+            if chmod.returncode != 0:
+                return WizardStepResult(
+                    step_name="install_sudoers_rules",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Failed to set permissions on {SUDOERS_INSTALL_PATH}.",
+                    error=chmod.stderr.strip() or chmod.stdout.strip(),
+                )
+
+            return WizardStepResult(
+                step_name="install_sudoers_rules",
+                outcome=StepOutcome.SUCCESS,
+                message=f"Installed sudoers rules to {SUDOERS_INSTALL_PATH}.",
+            )
+        finally:
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
+
+    return WizardStep(
+        name="install_sudoers_rules",
+        description="Install required sudoers rules for enabled features",
         runner=runner,
         check_safe=True,
     )

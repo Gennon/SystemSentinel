@@ -16,6 +16,7 @@ from system_sentinel.setup.systemd_installer import (
     create_sentinel_user_step,
     enable_systemd_service_step,
     fix_install_dir_permissions_step,
+    install_sudoers_rules_step,
     install_systemd_service_step,
     start_systemd_service_step,
 )
@@ -35,6 +36,7 @@ def build_wizard() -> SetupWizard:
         add_sentinel_to_log_groups_step(),
         fix_install_dir_permissions_step(),
         create_data_dir_step(),
+        install_sudoers_rules_step(),
         install_systemd_service_step(),
         enable_systemd_service_step(),
         start_systemd_service_step(),

@@ -121,6 +121,13 @@ _SAFE_DEFAULTS: dict[str, Any] = {
             "alert_cooldown": "00:30:00",
         },
         "network": {"enabled": True, "interval": "00:01:00"},
+        "services": {
+            "enabled": True,
+            "check_interval": "00:01:00",
+            "max_restart_attempts": 3,
+            "journal_lines": 20,
+            "critical_services": [],
+        },
     },
 }
 
