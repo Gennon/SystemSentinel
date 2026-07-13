@@ -628,6 +628,7 @@ monitors:
       - /etc/sudoers
 
 alerts:
+  notify_min_severity: info  # info | warning | critical (chat suppression threshold)
   cooldown_minutes: 30
   severity_levels:
     cpu_high: warning

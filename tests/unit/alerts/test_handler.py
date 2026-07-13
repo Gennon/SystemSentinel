@@ -447,3 +447,63 @@ async def test_handler_broadcasts_on_disk_threshold_event() -> None:
     await bus.publish("alert.disk.threshold_exceeded", _DISK_THRESHOLD_PAYLOAD)
     assert len(calls) == 1
     assert calls[0].severity == AlertSeverity.CRITICAL
+
+
+@pytest.mark.asyncio
+async def test_handler_uses_configured_alert_severity_by_type() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(
+        router,
+        config={"alerts": {"severity_levels": {"cpu": "critical"}}},
+    )
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.cpu.threshold_exceeded", _CPU_THRESHOLD_PAYLOAD)
+
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.CRITICAL
+
+
+@pytest.mark.asyncio
+async def test_handler_suppresses_chat_below_min_severity_but_audits() -> None:
+    router, calls = _make_router()
+    audit = AsyncMock()
+    handler = AlertHandler(
+        router,
+        audit=audit,
+        config={
+            "alerts": {
+                "severity_levels": {"cpu": "warning"},
+                "notify_min_severity": "critical",
+            }
+        },
+    )
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.cpu.threshold_exceeded", _CPU_THRESHOLD_PAYLOAD)
+
+    assert calls == []
+    audit.append.assert_awaited_once()
+    details = audit.append.call_args.kwargs["details"]
+    assert details["severity"] == "warning"
+    assert details["chat_notification_suppressed"] is True
+
+
+@pytest.mark.asyncio
+async def test_handler_rule_override_severity_takes_precedence() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(
+        router,
+        config={"alerts": {"severity_levels": {"cpu": "info"}}},
+    )
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    payload = dict(_CPU_THRESHOLD_PAYLOAD)
+    payload["severity_override"] = "critical"
+    await bus.publish("alert.cpu.threshold_exceeded", payload)
+
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.CRITICAL

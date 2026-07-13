@@ -11,6 +11,45 @@ if TYPE_CHECKING:
     from system_sentinel.core.context import AuditRepository
     from system_sentinel.core.event_bus import InProcessEventBus
 
+_EVENT_SEVERITY_KEYS = {
+    "alert.cpu.threshold_exceeded": "cpu",
+    "alert.ram.threshold_exceeded": "ram",
+    "alert.disk.threshold_exceeded": "disk",
+    "alert.login.brute_force_detected": "login",
+    "alert.connection.unknown_ip_detected": "network_unknown_ip",
+    "alert.connection.repeated_attempts_detected": "network_repeat",
+    "alert.connection.daily_digest": "network_digest",
+    "alert.files.daily_digest": "files_digest",
+}
+
+_SEVERITY_RANK: dict[AlertSeverity, int] = {
+    AlertSeverity.INFO: 0,
+    AlertSeverity.WARNING: 1,
+    AlertSeverity.CRITICAL: 2,
+}
+
+
+def _coerce_severity(value: object) -> AlertSeverity | None:
+    if not isinstance(value, str):
+        return None
+    lowered = value.strip().lower()
+    if not lowered:
+        return None
+    try:
+        return AlertSeverity(lowered)
+    except ValueError:
+        return None
+
+
+def _with_severity(msg: OutboundMessage, severity: AlertSeverity) -> OutboundMessage:
+    return OutboundMessage(
+        title=msg.title,
+        text=msg.text,
+        severity=severity,
+        fields=msg.fields,
+        reply_to=msg.reply_to,
+    )
+
 
 def _format_unknown_connection(payload: dict[str, Any]) -> OutboundMessage:
     """Build an OutboundMessage for an unknown inbound connection alert payload."""
@@ -219,10 +258,35 @@ def _format_disk_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessage:
 class AlertHandler:
     """Subscribes to alert events on the event bus and forwards them to the ChatRouter."""
 
-    def __init__(self, chat_router: ChatRouter, audit: AuditRepository | None = None) -> None:
+    def __init__(
+        self,
+        chat_router: ChatRouter,
+        audit: AuditRepository | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> None:
         self._router = chat_router
         self._audit = audit
         self._logger = logging.getLogger("sentinel.alerts.handler")
+        self._severity_levels: dict[str, AlertSeverity] = {}
+        self._notify_min_severity = AlertSeverity.INFO
+        self._load_alert_config(config or {})
+
+    def _load_alert_config(self, config: dict[str, Any]) -> None:
+        alerts_cfg = config.get("alerts", {})
+        if not isinstance(alerts_cfg, dict):
+            return
+        raw_levels = alerts_cfg.get("severity_levels", {})
+        if isinstance(raw_levels, dict):
+            for key, raw_value in raw_levels.items():
+                if not isinstance(key, str):
+                    continue
+                severity = _coerce_severity(raw_value)
+                if severity is None:
+                    continue
+                self._severity_levels[key.strip()] = severity
+        min_severity = _coerce_severity(alerts_cfg.get("notify_min_severity"))
+        if min_severity is not None:
+            self._notify_min_severity = min_severity
 
     def register(self, event_bus: InProcessEventBus) -> None:
         """Wire this handler into *event_bus* by subscribing to known alert events."""
@@ -246,9 +310,8 @@ class AlertHandler:
             payload.get("dest_port"),
             payload.get("protocol"),
         )
-        msg = _format_unknown_connection(payload)
-        await self._router.broadcast(msg)
-        await self._record_alert(event_type, msg)
+        msg = self._apply_severity(event_type, payload, _format_unknown_connection(payload))
+        await self._notify_and_record(event_type, msg)
 
     async def _on_brute_force(self, event_type: str, payload: Any) -> None:
         self._logger.warning(
@@ -256,9 +319,8 @@ class AlertHandler:
             payload.get("ip_address"),
             payload.get("attempt_count", 0),
         )
-        msg = _format_brute_force(payload)
-        await self._router.broadcast(msg)
-        await self._record_alert(event_type, msg)
+        msg = self._apply_severity(event_type, payload, _format_brute_force(payload))
+        await self._notify_and_record(event_type, msg)
 
     async def _on_connection_repeat_threshold(self, event_type: str, payload: Any) -> None:
         self._logger.warning(
@@ -266,21 +328,20 @@ class AlertHandler:
             payload.get("src_ip"),
             payload.get("attempt_count", 0),
         )
-        msg = _format_connection_repeat_threshold(payload)
-        await self._router.broadcast(msg)
-        await self._record_alert(event_type, msg)
+        msg = self._apply_severity(
+            event_type, payload, _format_connection_repeat_threshold(payload)
+        )
+        await self._notify_and_record(event_type, msg)
 
     async def _on_connection_daily_digest(self, event_type: str, payload: Any) -> None:
         self._logger.info("Publishing daily unknown connection digest")
-        msg = _format_connection_daily_digest(payload)
-        await self._router.broadcast(msg)
-        await self._record_alert(event_type, msg)
+        msg = self._apply_severity(event_type, payload, _format_connection_daily_digest(payload))
+        await self._notify_and_record(event_type, msg)
 
     async def _on_old_files_daily_digest(self, event_type: str, payload: Any) -> None:
         self._logger.info("Publishing daily old-files digest")
-        msg = _format_old_files_daily_digest(payload)
-        await self._router.broadcast(msg)
-        await self._record_alert(event_type, msg)
+        msg = self._apply_severity(event_type, payload, _format_old_files_daily_digest(payload))
+        await self._notify_and_record(event_type, msg)
 
     async def _on_system_daily_digest(self, event_type: str, payload: Any) -> None:
         self._logger.info("Publishing system daily digest")
@@ -289,23 +350,54 @@ class AlertHandler:
 
     async def _on_cpu_threshold_exceeded(self, event_type: str, payload: Any) -> None:
         self._logger.warning("CPU threshold exceeded: %s", payload.get("current_value"))
-        msg = _format_cpu_threshold_exceeded(payload)
-        await self._router.broadcast(msg)
-        await self._record_alert(event_type, msg)
+        msg = self._apply_severity(event_type, payload, _format_cpu_threshold_exceeded(payload))
+        await self._notify_and_record(event_type, msg)
 
     async def _on_ram_threshold_exceeded(self, event_type: str, payload: Any) -> None:
         self._logger.warning("RAM threshold exceeded: %s", payload.get("current_value"))
-        msg = _format_ram_threshold_exceeded(payload)
-        await self._router.broadcast(msg)
-        await self._record_alert(event_type, msg)
+        msg = self._apply_severity(event_type, payload, _format_ram_threshold_exceeded(payload))
+        await self._notify_and_record(event_type, msg)
 
     async def _on_disk_threshold_exceeded(self, event_type: str, payload: Any) -> None:
         self._logger.warning("Disk threshold exceeded: %s", payload.get("current_value"))
-        msg = _format_disk_threshold_exceeded(payload)
-        await self._router.broadcast(msg)
-        await self._record_alert(event_type, msg)
+        msg = self._apply_severity(event_type, payload, _format_disk_threshold_exceeded(payload))
+        await self._notify_and_record(event_type, msg)
 
-    async def _record_alert(self, event_type: str, msg: OutboundMessage) -> None:
+    async def _notify_and_record(self, event_type: str, msg: OutboundMessage) -> None:
+        suppressed = _SEVERITY_RANK[msg.severity] < _SEVERITY_RANK[self._notify_min_severity]
+        if not suppressed:
+            await self._router.broadcast(msg)
+        await self._record_alert(event_type, msg, suppressed=suppressed)
+
+    def _apply_severity(
+        self, event_type: str, payload: Any, msg: OutboundMessage
+    ) -> OutboundMessage:
+        override = None
+        if isinstance(payload, dict):
+            override = _coerce_severity(payload.get("severity_override"))
+            if override is None:
+                override = _coerce_severity(payload.get("rule_severity"))
+        if override is not None:
+            return _with_severity(msg, override)
+
+        configured = self._severity_levels.get(event_type)
+        if configured is None:
+            alias = _EVENT_SEVERITY_KEYS.get(event_type)
+            if alias is not None:
+                configured = self._severity_levels.get(alias)
+        if configured is None and isinstance(payload, dict):
+            configured = _coerce_severity(payload.get("severity"))
+        if configured is None:
+            return msg
+        return _with_severity(msg, configured)
+
+    async def _record_alert(
+        self,
+        event_type: str,
+        msg: OutboundMessage,
+        *,
+        suppressed: bool = False,
+    ) -> None:
         if self._audit is None:
             return
         await self._audit.append(
@@ -313,5 +405,8 @@ class AlertHandler:
             source=event_type,
             description=msg.title or event_type,
             outcome="success",
-            details={"severity": msg.severity.value},
+            details={
+                "severity": msg.severity.value,
+                "chat_notification_suppressed": suppressed,
+            },
         )
