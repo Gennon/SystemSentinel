@@ -116,3 +116,60 @@ async def test_state_roundtrip(repo: ConnectionRepository) -> None:
     await repo.set_state("connections.daily_report.last_sent_date_utc", "2026-07-10")
     value = await repo.get_state("connections.daily_report.last_sent_date_utc")
     assert value == "2026-07-10"
+
+
+@pytest.mark.asyncio
+async def test_record_and_fetch_latest_classifications(repo: ConnectionRepository) -> None:
+    now = datetime.now(UTC)
+    await repo.record_classification(
+        ip_address="8.8.8.8",
+        category="likely_access_attempt",
+        confidence=0.92,
+        recommended_action="block",
+        reasons=["high_attempt_volume", "sensitive_port_targeted"],
+        attempts=12,
+        distinct_ports=3,
+        recurrence_count=7,
+        sensitive_port_targeted=True,
+        reverse_dns=None,
+        asn_organization=None,
+        geoip_country=None,
+        protocol="tcp",
+        observed_at=now,
+    )
+
+    rows = await repo.latest_classifications(limit=5)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["ip_address"] == "8.8.8.8"
+    assert row["category"] == "likely_access_attempt"
+    assert row["recommended_action"] == "block"
+    assert row["reasons"] == ["high_attempt_volume", "sensitive_port_targeted"]
+    assert row["reverse_dns"] is None
+    assert row["asn_organization"] is None
+    assert row["geoip_country"] is None
+
+
+@pytest.mark.asyncio
+async def test_classification_activity_since_returns_rows(repo: ConnectionRepository) -> None:
+    now = datetime.now(UTC)
+    await repo.record_classification(
+        ip_address="1.2.3.4",
+        category="background_scan",
+        confidence=0.44,
+        recommended_action="ignore",
+        reasons=["low_attempt_volume"],
+        attempts=1,
+        distinct_ports=1,
+        recurrence_count=1,
+        sensitive_port_targeted=False,
+        reverse_dns="scanner.example",
+        asn_organization="ExampleNet",
+        geoip_country="NL",
+        protocol="tcp",
+        observed_at=now,
+    )
+    rows = await repo.classification_activity_since(now - timedelta(minutes=1))
+    assert len(rows) == 1
+    assert rows[0]["ip_address"] == "1.2.3.4"
+    assert rows[0]["category"] == "background_scan"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -99,6 +100,114 @@ class ConnectionRepository:
             {"ip_address": row[0], "dest_port": int(row[1]), "attempts": int(row[2])}
             for row in rows
         ]
+
+    async def record_classification(
+        self,
+        *,
+        ip_address: str,
+        category: str,
+        confidence: float,
+        recommended_action: str,
+        reasons: list[str],
+        attempts: int,
+        distinct_ports: int,
+        recurrence_count: int,
+        sensitive_port_targeted: bool,
+        reverse_dns: str | None,
+        asn_organization: str | None,
+        geoip_country: str | None,
+        protocol: str,
+        observed_at: datetime,
+    ) -> None:
+        """Persist one connection-intent classification outcome."""
+        await self._db.connection.execute(
+            """
+            INSERT INTO connection_classifications (
+                observed_at, ip_address, protocol, category, confidence, recommended_action,
+                reasons_json, attempts, distinct_ports, recurrence_count, sensitive_port_targeted,
+                reverse_dns, asn_organization, geoip_country
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                observed_at.isoformat(),
+                ip_address,
+                protocol,
+                category,
+                confidence,
+                recommended_action,
+                json.dumps(reasons),
+                attempts,
+                distinct_ports,
+                recurrence_count,
+                int(sensitive_port_targeted),
+                reverse_dns,
+                asn_organization,
+                geoip_country,
+            ),
+        )
+        await self._db.connection.commit()
+
+    async def latest_classifications(self, *, limit: int = 10) -> list[dict[str, Any]]:
+        """Return latest classification outcomes."""
+        cursor = await self._db.connection.execute(
+            """
+            SELECT
+                observed_at, ip_address, protocol, category, confidence, recommended_action,
+                reasons_json, attempts, distinct_ports, recurrence_count, sensitive_port_targeted,
+                reverse_dns, asn_organization, geoip_country
+            FROM connection_classifications
+            ORDER BY observed_at DESC, id DESC
+            LIMIT ?
+            """,
+            (max(1, limit),),
+        )
+        rows = await cursor.fetchall()
+        return [self._parse_classification_row(row) for row in rows]
+
+    async def classification_activity_since(self, since: datetime) -> list[dict[str, Any]]:
+        """Return classification outcomes on/after *since*."""
+        cursor = await self._db.connection.execute(
+            """
+            SELECT
+                observed_at, ip_address, protocol, category, confidence, recommended_action,
+                reasons_json, attempts, distinct_ports, recurrence_count, sensitive_port_targeted,
+                reverse_dns, asn_organization, geoip_country
+            FROM connection_classifications
+            WHERE observed_at >= ?
+            ORDER BY observed_at DESC, id DESC
+            """,
+            (since.isoformat(),),
+        )
+        rows = await cursor.fetchall()
+        return [self._parse_classification_row(row) for row in rows]
+
+    def _parse_classification_row(self, row: Any) -> dict[str, Any]:
+        reasons_raw = row[6]
+        reasons: list[str] = []
+        if isinstance(reasons_raw, str):
+            try:
+                decoded = json.loads(reasons_raw)
+            except json.JSONDecodeError:
+                decoded = []
+            if isinstance(decoded, list):
+                reasons = [str(reason) for reason in decoded]
+        return {
+            "observed_at": str(row[0]),
+            "ip_address": str(row[1]),
+            "protocol": str(row[2]),
+            "category": str(row[3]),
+            "confidence": float(row[4]),
+            "recommended_action": str(row[5]),
+            "reasons": reasons,
+            "attempts": int(row[7]),
+            "distinct_ports": int(row[8]),
+            "recurrence_count": int(row[9]),
+            "sensitive_port_targeted": bool(row[10]),
+            "reverse_dns": str(row[11]) if row[11] is not None else None,
+            "asn_organization": str(row[12]) if row[12] is not None else None,
+            "geoip_country": str(row[13]) if row[13] is not None else None,
+        }
 
     async def get_state(self, key: str) -> str | None:
         """Return a monitor state value by *key* or ``None`` when missing."""

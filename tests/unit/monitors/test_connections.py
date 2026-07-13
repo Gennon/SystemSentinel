@@ -170,6 +170,15 @@ async def test_collect_fires_threshold_alert_for_repeated_attempts(
     assert payload["attempt_count"] == 3
     assert payload["window_minutes"] == 10
     assert payload["ports"] == [22]
+    assert payload["classification"]["category"] in {
+        "background_scan",
+        "suspicious",
+        "likely_access_attempt",
+    }
+    assert payload["classification"]["recommended_action"] in {"ignore", "watch", "block"}
+    assert payload["classification"]["reasons"]
+    assert payload["classification"]["enrichment"]["asn_organization"] is None
+    assert payload["classification"]["enrichment"]["geoip_country"] is None
     assert "timestamp" in payload
 
 
@@ -371,3 +380,73 @@ async def test_collect_does_not_emit_standalone_daily_digest_event(
 
     event_types = [call.args[0] for call in ctx.event_bus.publish.call_args_list]
     assert "alert.connection.daily_digest" not in event_types
+
+
+@pytest.mark.asyncio
+async def test_collect_classifies_as_background_scan_with_low_signal(
+    conn_repo: ConnectionRepository, default_config: dict
+) -> None:
+    config = {
+        **default_config,
+        "repeat_alert_count": 1,
+        "daily_report_time_utc": "23:59",
+        "classification": {
+            "attempts_per_ip": {"suspicious": 3, "likely_access_attempt": 8},
+            "distinct_destination_ports": {"suspicious": 2, "likely_access_attempt": 4},
+            "recurrence_over_time": {
+                "window": "24:00:00",
+                "suspicious": 3,
+                "likely_access_attempt": 7,
+            },
+            "protocol_port_sensitivity": {"sensitive_ports": [22, 3389], "weight": 2},
+            "score_thresholds": {"suspicious": 3, "likely_access_attempt": 6},
+            "ip_enrichment": {"enabled": False},
+        },
+    }
+    ctx = _make_ctx()
+    monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
+
+    with patch.object(monitor, "_run_ss", return_value=[SS_ESTAB_UNKNOWN_ALT_PORT]):
+        await monitor.collect()
+
+    _, payload = ctx.event_bus.publish.call_args[0]
+    assert payload["classification"]["category"] == "background_scan"
+    assert payload["classification"]["recommended_action"] == "ignore"
+
+
+@pytest.mark.asyncio
+async def test_collect_classifies_as_suspicious_for_multi_port_recurrence(
+    conn_repo: ConnectionRepository, default_config: dict
+) -> None:
+    config = {
+        **default_config,
+        "repeat_alert_count": 2,
+        "repeat_alert_window": "00:10:00",
+        "daily_report_time_utc": "23:59",
+        "classification": {
+            "attempts_per_ip": {"suspicious": 2, "likely_access_attempt": 6},
+            "distinct_destination_ports": {"suspicious": 2, "likely_access_attempt": 4},
+            "recurrence_over_time": {
+                "window": "24:00:00",
+                "suspicious": 2,
+                "likely_access_attempt": 8,
+            },
+            "protocol_port_sensitivity": {"sensitive_ports": [22, 3389], "weight": 2},
+            "score_thresholds": {"suspicious": 3, "likely_access_attempt": 8},
+            "ip_enrichment": {"enabled": False},
+        },
+    }
+    ctx = _make_ctx()
+    monitor = ConnectionMonitor(config, ctx, conn_repo=conn_repo)
+
+    with patch.object(
+        monitor,
+        "_run_ss",
+        side_effect=[[SS_ESTAB_UNKNOWN], [SS_ESTAB_UNKNOWN_ALT_PORT]],
+    ):
+        await monitor.collect()
+        await monitor.collect()
+
+    _, payload = ctx.event_bus.publish.call_args[0]
+    assert payload["classification"]["category"] == "suspicious"
+    assert payload["classification"]["recommended_action"] == "watch"

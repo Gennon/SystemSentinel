@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 import ipaddress
 import re
@@ -7,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from system_sentinel.core.time_config import parse_duration_from_config
 from system_sentinel.monitors.base import BaseMonitor
+from system_sentinel.monitors.connection_intent import classify_connection_intent
 
 if TYPE_CHECKING:
     from system_sentinel.core.context import AppContext
@@ -132,6 +134,18 @@ class ConnectionMonitor(BaseMonitor):
             logger=self.logger,
         )
         threshold_window_minutes = int(threshold_window_seconds // 60)
+        classification_cfg = self.config.get("classification", {})
+        recurrence_cfg = (
+            classification_cfg.get("recurrence_over_time", {})
+            if isinstance(classification_cfg, dict)
+            else {}
+        )
+        recurrence_window_seconds = parse_duration_from_config(
+            recurrence_cfg if isinstance(recurrence_cfg, dict) else {},
+            key="window",
+            default_seconds=24 * 60 * 60,
+            logger=self.logger,
+        )
         repo = await self._get_conn_repo()
         now = datetime.now(UTC)
 
@@ -164,6 +178,7 @@ class ConnectionMonitor(BaseMonitor):
             affected_ips.setdefault(src_ip, set()).add(dest_port)
 
         window_start = now - timedelta(seconds=threshold_window_seconds)
+        recurrence_window_start = now - timedelta(seconds=recurrence_window_seconds)
         cooldown_cutoff = now - timedelta(seconds=cooldown_seconds)
 
         for src_ip, ports in affected_ips.items():
@@ -176,6 +191,17 @@ class ConnectionMonitor(BaseMonitor):
                 continue
 
             observed_ports = await repo.ports_since(src_ip, window_start)
+            recurrence_count = await repo.count_attempts_since(src_ip, recurrence_window_start)
+            classification = await asyncio.to_thread(
+                classify_connection_intent,
+                ip_address=src_ip,
+                protocol="tcp",
+                attempts=count,
+                distinct_ports=len(observed_ports),
+                recurrence_count=recurrence_count,
+                observed_ports=observed_ports,
+                config=classification_cfg if isinstance(classification_cfg, dict) else {},
+            )
             await self.ctx.event_bus.publish(
                 "alert.connection.repeated_attempts_detected",
                 {
@@ -183,8 +209,35 @@ class ConnectionMonitor(BaseMonitor):
                     "attempt_count": count,
                     "window_minutes": threshold_window_minutes,
                     "ports": observed_ports,
+                    "classification": {
+                        "category": classification.category,
+                        "confidence": classification.confidence,
+                        "recommended_action": classification.recommended_action,
+                        "reasons": classification.reasons,
+                        "enrichment": {
+                            "reverse_dns": classification.enrichment.reverse_dns,
+                            "asn_organization": classification.enrichment.asn_organization,
+                            "geoip_country": classification.enrichment.geoip_country,
+                        },
+                    },
                     "timestamp": now.isoformat(),
                 },
+            )
+            await repo.record_classification(
+                ip_address=src_ip,
+                category=classification.category,
+                confidence=classification.confidence,
+                recommended_action=classification.recommended_action,
+                reasons=classification.reasons,
+                attempts=count,
+                distinct_ports=len(observed_ports),
+                recurrence_count=recurrence_count,
+                sensitive_port_targeted="sensitive_port_targeted" in classification.reasons,
+                reverse_dns=classification.enrichment.reverse_dns,
+                asn_organization=classification.enrichment.asn_organization,
+                geoip_country=classification.enrichment.geoip_country,
+                protocol="tcp",
+                observed_at=now,
             )
 
             alert_port = min(ports)

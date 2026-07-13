@@ -121,6 +121,33 @@ _SAFE_DEFAULTS: dict[str, Any] = {
             "alert_cooldown": "00:30:00",
         },
         "network": {"enabled": True, "interval": "00:01:00"},
+        "connections": {
+            "enabled": True,
+            "repeat_alert_count": 3,
+            "repeat_alert_window": "00:10:00",
+            "cooldown": "01:00:00",
+            "classification": {
+                "attempts_per_ip": {"suspicious": 3, "likely_access_attempt": 8},
+                "distinct_destination_ports": {"suspicious": 2, "likely_access_attempt": 4},
+                "recurrence_over_time": {
+                    "window": "24:00:00",
+                    "suspicious": 3,
+                    "likely_access_attempt": 7,
+                },
+                "protocol_port_sensitivity": {
+                    "sensitive_ports": [22, 3389, 5900],
+                    "weight": 2,
+                },
+                "score_thresholds": {"suspicious": 3, "likely_access_attempt": 6},
+                "ip_enrichment": {
+                    "enabled": False,
+                    "enable_reverse_dns": True,
+                    "enable_asn_lookup": True,
+                    "enable_geoip": True,
+                    "geoip_database_path": "",
+                },
+            },
+        },
         "services": {
             "enabled": True,
             "check_interval": "00:01:00",

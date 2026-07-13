@@ -85,12 +85,26 @@ def _format_connection_repeat_threshold(payload: dict[str, Any]) -> OutboundMess
     window: int = payload["window_minutes"]
     ports: list[int] = sorted(payload.get("ports", []))
     timestamp: str = payload["timestamp"]
+    classification = payload.get("classification", {})
+    category = str(classification.get("category", "unclassified"))
+    confidence = classification.get("confidence")
+    recommended_action = str(classification.get("recommended_action", "watch"))
+    reasons = classification.get("reasons", [])
+    reasons_str = (
+        ", ".join(str(reason) for reason in reasons)
+        if isinstance(reasons, list) and reasons
+        else "no specific reasons"
+    )
 
     ports_str = ", ".join(str(p) for p in ports) if ports else "—"
+    confidence_text = f"{float(confidence):.2f}" if isinstance(confidence, (float, int)) else "n/a"
     text = (
         f"**{count}** unknown inbound connection attempt(s) from **{src_ip}** "
         f"in the last {window} minute(s).\n"
-        f"Ports targeted: {ports_str}"
+        f"Ports targeted: {ports_str}\n"
+        f"Classification: **{category}** (confidence {confidence_text}).\n"
+        f"Recommended action: **{recommended_action}**.\n"
+        f"Reasons: {reasons_str}"
     )
     return OutboundMessage(
         title="🚨 Repeated Unknown Connection Attempts",
@@ -101,6 +115,10 @@ def _format_connection_repeat_threshold(payload: dict[str, Any]) -> OutboundMess
             "Attempts": str(count),
             "Window": f"{window} min",
             "Ports": ports_str,
+            "Classification": category,
+            "Confidence": confidence_text,
+            "Recommended Action": recommended_action,
+            "Reasons": reasons_str,
             "Timestamp": timestamp,
         },
     )

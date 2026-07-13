@@ -135,6 +135,12 @@ _CONNECTION_REPEAT_PAYLOAD = {
     "window_minutes": 10,
     "ports": [22, 80],
     "timestamp": "2024-01-01T00:00:00+00:00",
+    "classification": {
+        "category": "likely_access_attempt",
+        "confidence": 0.91,
+        "recommended_action": "block",
+        "reasons": ["high_attempt_volume", "sensitive_port_targeted"],
+    },
 }
 
 _CONNECTION_DAILY_DIGEST_PAYLOAD = {
@@ -329,6 +335,14 @@ def test_format_connection_repeat_threshold_includes_ports() -> None:
     msg = _format_connection_repeat_threshold(_CONNECTION_REPEAT_PAYLOAD)
     assert "22" in msg.text
     assert "80" in msg.text
+
+
+def test_format_connection_repeat_threshold_includes_classification_details() -> None:
+    msg = _format_connection_repeat_threshold(_CONNECTION_REPEAT_PAYLOAD)
+    assert "likely_access_attempt" in msg.text
+    assert msg.fields is not None
+    assert msg.fields["Classification"] == "likely_access_attempt"
+    assert msg.fields["Recommended Action"] == "block"
 
 
 @pytest.mark.asyncio

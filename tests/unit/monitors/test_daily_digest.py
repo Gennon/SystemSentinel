@@ -62,6 +62,22 @@ async def test_collect_publishes_single_daily_digest_once_per_local_day(
     )
     await login_repo.record(ip_address="1.2.3.4", username="root", timestamp=now, port=22)
     await conn_repo.record_attempt("8.8.8.8", 22, "tcp", now)
+    await conn_repo.record_classification(
+        ip_address="8.8.8.8",
+        category="likely_access_attempt",
+        confidence=0.95,
+        recommended_action="block",
+        reasons=["sensitive_port_targeted"],
+        attempts=5,
+        distinct_ports=2,
+        recurrence_count=5,
+        sensitive_port_targeted=True,
+        reverse_dns=None,
+        asn_organization=None,
+        geoip_country=None,
+        protocol="tcp",
+        observed_at=now,
+    )
     await db.connection.execute(
         """
         INSERT INTO audit_log (timestamp, action_type, source, description, outcome, details_json)
@@ -99,6 +115,9 @@ async def test_collect_publishes_single_daily_digest_once_per_local_day(
     assert "24h Resource Usage" in sections
     assert "Failed SSH Logins (24h)" in sections
     assert "Unknown Inbound IPs (24h)" in sections
+    assert "Unknown Connection Intent (24h)" in sections
+    assert "likely_access_attempt" in sections["Unknown Connection Intent (24h)"]
+    assert "8.8.8.8" in sections["Unknown Connection Intent (24h)"]
     assert "Files Auto-Deleted (24h)" in sections
     assert "Alerts Since Last Digest" in sections
 

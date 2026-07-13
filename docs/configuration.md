@@ -45,6 +45,22 @@ The following keys use duration parsing from `system_sentinel.core.time_config`:
 | `monitors.connections.repeat_alert_count` | int | `3` | `ConnectionMonitor` | Repeated-attempt alert threshold. |
 | `monitors.connections.repeat_alert_window` | duration | `00:10:00` | `ConnectionMonitor` | Window for `repeat_alert_count`. |
 | `monitors.connections.cooldown` | duration | `01:00:00` | `ConnectionMonitor` | Alert cooldown per source IP. |
+| `monitors.connections.classification.attempts_per_ip.suspicious` | int | `3` | `ConnectionMonitor` | Heuristic: attempt count to trigger `suspicious` classification. |
+| `monitors.connections.classification.attempts_per_ip.likely_access_attempt` | int | `8` | `ConnectionMonitor` | Heuristic: attempt count to trigger `likely_access_attempt` classification. |
+| `monitors.connections.classification.distinct_destination_ports.suspicious` | int | `2` | `ConnectionMonitor` | Heuristic: number of distinct ports to trigger `suspicious` classification. |
+| `monitors.connections.classification.distinct_destination_ports.likely_access_attempt` | int | `4` | `ConnectionMonitor` | Heuristic: number of distinct ports to trigger `likely_access_attempt` classification. |
+| `monitors.connections.classification.recurrence_over_time.window` | duration | `24:00:00` | `ConnectionMonitor` | Time window for recurrence counting. |
+| `monitors.connections.classification.recurrence_over_time.suspicious` | int | `3` | `ConnectionMonitor` | Heuristic: recurrence count to trigger `suspicious` classification. |
+| `monitors.connections.classification.recurrence_over_time.likely_access_attempt` | int | `7` | `ConnectionMonitor` | Heuristic: recurrence count to trigger `likely_access_attempt` classification. |
+| `monitors.connections.classification.protocol_port_sensitivity.sensitive_ports` | list[int] | `[22, 3389, 5900]` | `ConnectionMonitor` | Ports (SSH, RDP, VNC) that increase classification score. |
+| `monitors.connections.classification.protocol_port_sensitivity.weight` | int | `2` | `ConnectionMonitor` | Score boost when sensitive port is targeted. |
+| `monitors.connections.classification.score_thresholds.suspicious` | int | `3` | `ConnectionMonitor` | Total heuristic score to classify as `suspicious`. |
+| `monitors.connections.classification.score_thresholds.likely_access_attempt` | int | `6` | `ConnectionMonitor` | Total heuristic score to classify as `likely_access_attempt`. |
+| `monitors.connections.classification.ip_enrichment.enabled` | bool | `false` | `ConnectionMonitor` | Enable optional IP enrichment (requires `ipwhois` and/or `geoip2` packages). |
+| `monitors.connections.classification.ip_enrichment.enable_reverse_dns` | bool | `true` | `ConnectionMonitor` | Perform reverse DNS lookup (requires enrichment enabled). |
+| `monitors.connections.classification.ip_enrichment.enable_asn_lookup` | bool | `true` | `ConnectionMonitor` | Perform ASN/organization lookup via `ipwhois` (requires enrichment enabled and `ipwhois` package). |
+| `monitors.connections.classification.ip_enrichment.enable_geoip` | bool | `true` | `ConnectionMonitor` | Perform GeoIP country lookup via `geoip2` (requires enrichment enabled and `geoip2` package + MaxMind DB file). |
+| `monitors.connections.classification.ip_enrichment.geoip_database_path` | path | `""` (empty) | `ConnectionMonitor` | Path to MaxMind GeoIP database file (only used if `enable_geoip=true`). |
 | `monitors.services.critical_services` | list[string] | `[]` | `ServiceMonitor` | Critical systemd unit names to health-check and auto-restart. |
 | `monitors.services.check_interval` | duration | `00:01:00` | `ServiceMonitor` | How often service health checks run. |
 | `monitors.services.max_restart_attempts` | int | `3` | `ServiceMonitor` | Max restart retries per failed service before escalating. |
@@ -81,7 +97,42 @@ The following keys use duration parsing from `system_sentinel.core.time_config`:
 | `tools.snapshot.enabled` | bool | none | optional-feature setup merge | Added when enabling `snapshot`; currently no runtime consumer in this repo. |
 | `tools.vulnscan.enabled` | bool | none | optional-feature setup merge | Added when enabling `vulnscan`; currently no runtime consumer in this repo. |
 
-## Runtime-first example
+## Connection Intent Classification
+
+The connection monitor can classify unknown inbound connections into three categories to help distinguish background scans from targeted attacks:
+
+- **`background_scan`** - Low-confidence connection attempts, typically automated scanning or normal network traffic.
+- **`suspicious`** - Medium-confidence; suggests purposeful reconnaissance (multiple ports, targeted protocols, or repeated attempts).
+- **`likely_access_attempt`** - High-confidence; indicates deliberate attack activity (many attempts, sensitive ports, persistence over time).
+
+### Heuristic scoring
+
+Classification uses configurable thresholds based on connection behavior:
+
+1. **Attempts per IP** – How many connections from a single source within the alert window?
+2. **Distinct destination ports** – How many different ports did the source target?
+3. **Recurrence over time** – How many distinct days/hours did the source attempt connections? (tracked separately over 24h window)
+4. **Sensitive port targeting** – Did the source target SSH (22), RDP (3389), VNC (5900), or other sensitive services?
+
+Each factor contributes points; the total score maps to a category via `score_thresholds`.
+
+### Optional IP enrichment
+
+When `ip_enrichment.enabled: true`, SystemSentinel can enrich classifications with additional context:
+
+- **Reverse DNS** – Hostname associated with the source IP (always available; does not require external packages).
+- **ASN/organization** – Autonomous System Number and organization name (requires `ipwhois` package).
+- **GeoIP country** – Country where the source IP is registered (requires `geoip2` package and MaxMind GeoIP database file).
+
+**Note:** Enrichment is disabled by default. If `enabled: false`, enrichment lookups are skipped. If `enabled: true` but packages are missing or lookups fail, enriched fields are `null` rather than raising exceptions.
+
+### Configuration notes
+
+- **Tuning sensitivity:** Adjust `attempts_per_ip.suspicious` and `distinct_destination_ports.suspicious` to make classification more or less aggressive.
+- **Recurrence window:** The `recurrence_over_time.window` (default 24h) is independent of the alert window. This enables detection of multi-day attack patterns.
+- **Sensitive ports:** Add or remove ports from `protocol_port_sensitivity.sensitive_ports` to customize which services are considered high-value targets.
+
+
 
 ```yaml
 chat_adapters:
@@ -135,6 +186,29 @@ monitors:
     repeat_alert_count: 3
     repeat_alert_window: "00:10:00"
     cooldown: "01:00:00"
+    classification:
+      attempts_per_ip:
+        suspicious: 3
+        likely_access_attempt: 8
+      distinct_destination_ports:
+        suspicious: 2
+        likely_access_attempt: 4
+      recurrence_over_time:
+        window: "24:00:00"
+        suspicious: 3
+        likely_access_attempt: 7
+      protocol_port_sensitivity:
+        sensitive_ports: [22, 3389, 5900]
+        weight: 2
+      score_thresholds:
+        suspicious: 3
+        likely_access_attempt: 6
+      ip_enrichment:
+        enabled: false
+        enable_reverse_dns: true
+        enable_asn_lookup: true
+        enable_geoip: true
+        geoip_database_path: ""
   services:
     enabled: true
     check_interval: "00:01:00"

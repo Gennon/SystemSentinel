@@ -87,6 +87,9 @@ class DailyDigestMonitor(BaseMonitor):
             "Unknown Inbound IPs (24h)": await self._build_connection_summary(
                 connection_repo, window_start
             ),
+            "Unknown Connection Intent (24h)": await self._build_connection_classification_summary(
+                connection_repo, window_start
+            ),
             "Files Auto-Deleted (24h)": "0 file(s) auto-deleted (auto-delete not enabled).",
             "Alerts Since Last Digest": await self._build_alerts_summary(last_digest_at),
         }
@@ -175,6 +178,57 @@ class DailyDigestMonitor(BaseMonitor):
         attempts = sum(int(row["attempts"]) for row in rows)
         unique_ips = len({str(row["ip_address"]) for row in rows})
         return f"{attempts} connection attempt(s) from {unique_ips} unknown IP(s)."
+
+    async def _build_connection_classification_summary(
+        self,
+        connection_repo: ConnectionRepository,
+        since: datetime,
+    ) -> str:
+        rows = await connection_repo.classification_activity_since(since)
+        if not rows:
+            return (
+                "No classified connection activity in the last 24 hours "
+                "(background_scan=0, suspicious=0, likely_access_attempt=0)."
+            )
+
+        counts = {
+            "background_scan": 0,
+            "suspicious": 0,
+            "likely_access_attempt": 0,
+        }
+        ips_by_category: dict[str, dict[str, int]] = {
+            "background_scan": {},
+            "suspicious": {},
+            "likely_access_attempt": {},
+        }
+        for row in rows:
+            category = str(row["category"])
+            ip = str(row["ip_address"])
+            if category not in counts:
+                continue
+            counts[category] += 1
+            ips_by_category[category][ip] = ips_by_category[category].get(ip, 0) + 1
+
+        parts = [
+            f"background_scan={counts['background_scan']}",
+            f"suspicious={counts['suspicious']}",
+            f"likely_access_attempt={counts['likely_access_attempt']}",
+        ]
+
+        top_lines: list[str] = []
+        for category in ("background_scan", "suspicious", "likely_access_attempt"):
+            ranked = sorted(
+                ips_by_category[category].items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+            if not ranked:
+                continue
+            top_ip, hits = ranked[0]
+            top_lines.append(f"{category} top: {top_ip} ({hits})")
+
+        if not top_lines:
+            return ", ".join(parts)
+        return f"{', '.join(parts)}; {'; '.join(top_lines)}."
 
     async def _build_alerts_summary(self, since: datetime) -> str:
         db = await self._get_db()

@@ -11,6 +11,7 @@ from system_sentinel.chat.base import InboundMessage, InboundReaction
 from system_sentinel.chat.command_dispatcher import ChatCommandDispatcher
 from system_sentinel.core.context import AppContext
 from system_sentinel.db.connection import DatabaseConnection
+from system_sentinel.db.connection_repository import ConnectionRepository
 from system_sentinel.tools.base import BaseTool, ToolOutcome, ToolResult
 
 if TYPE_CHECKING:
@@ -188,3 +189,48 @@ async def test_storage_command_handles_permission_denied_path(
     response = await dispatcher.handle_message(_message("!storage"), ["!storage"])
     assert response is not None
     assert f"{protected_path}: permission denied" in response.text
+
+
+@pytest.mark.asyncio
+async def test_connections_classify_returns_latest_classifications(tmp_path: Path) -> None:
+    db = DatabaseConnection(tmp_path / "sentinel.db")
+    await db.connect()
+    repo = ConnectionRepository(db)
+    now = datetime.now(UTC)
+    await repo.record_classification(
+        ip_address="8.8.8.8",
+        category="likely_access_attempt",
+        confidence=0.91,
+        recommended_action="block",
+        reasons=["high_attempt_volume", "sensitive_port_targeted"],
+        attempts=9,
+        distinct_ports=3,
+        recurrence_count=5,
+        sensitive_port_targeted=True,
+        reverse_dns=None,
+        asn_organization=None,
+        geoip_country=None,
+        protocol="tcp",
+        observed_at=now,
+    )
+    ctx = AppContext(
+        audit=AsyncMock(),
+        event_bus=AsyncMock(),
+        logger=logging.getLogger("test"),
+    )
+    dispatcher = ChatCommandDispatcher(
+        config={"chat_adapters": {"discord": {"channel_id": "100"}}},
+        app_ctx=ctx,
+        scheduler=_FakeScheduler(),  # type: ignore[arg-type]
+        tools={},
+        monitor_registry=_FakeMonitorRegistry(),  # type: ignore[arg-type]
+        db=db,
+    )
+
+    response = await dispatcher.handle_message(
+        _message("!connections classify"), ["!connections", "classify"]
+    )
+    assert response is not None
+    assert "8.8.8.8" in response.text
+    assert "likely_access_attempt" in response.text
+    assert "block" in response.text

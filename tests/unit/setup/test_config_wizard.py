@@ -161,6 +161,11 @@ class TestNoConfigInteractive:
         assert data["monitors"]["services"]["max_restart_attempts"] == 3
         assert data["monitors"]["services"]["journal_lines"] == 20
         assert data["monitors"]["services"]["critical_services"] == []
+        assert data["monitors"]["connections"]["enabled"] is True
+        assert data["monitors"]["connections"]["classification"]["attempts_per_ip"] == {
+            "suspicious": 3,
+            "likely_access_attempt": 8,
+        }
         assert data["updates"]["self_update"]["source_path"]
 
     def test_auto_update_can_be_disabled(self, tmp_path: Path) -> None:

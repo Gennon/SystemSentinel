@@ -14,6 +14,7 @@ import uuid
 import psutil
 
 from system_sentinel.chat.base import InboundMessage, InboundReaction, OutboundMessage
+from system_sentinel.db.connection_repository import ConnectionRepository
 from system_sentinel.db.old_files_repository import OldFilesRepository
 
 if TYPE_CHECKING:
@@ -57,6 +58,7 @@ class ChatCommandDispatcher:
         self._monitor_registry = monitor_registry
         self._db = db
         self._old_files_repo = OldFilesRepository(db)
+        self._connection_repo = ConnectionRepository(db)
         self._pending_actions: dict[tuple[str, str, str], PendingAction] = {}
 
     async def handle_message(
@@ -76,6 +78,7 @@ class ChatCommandDispatcher:
             "!anomalies": self._cmd_anomalies,
             "!firewall": self._cmd_firewall,
             "!hardening": self._cmd_hardening,
+            "!connections": self._cmd_connections,
             "!help": self._cmd_help,
         }
         action_commands = {"!update", "!cleanup"}
@@ -349,10 +352,38 @@ class ChatCommandDispatcher:
                 "!anomalies - list recent login anomalies\n"
                 "!firewall - show firewall status\n"
                 "!hardening - show hardening audit results\n"
+                "!connections classify - list latest connection intent classifications\n"
                 "!help - show this help"
             ),
             reply_to=message,
         )
+
+    async def _cmd_connections(self, message: InboundMessage) -> OutboundMessage:
+        parts = message.text.strip().split()
+        subcommand = parts[1].lower() if len(parts) > 1 else ""
+        if subcommand != "classify":
+            return OutboundMessage(
+                text="Usage: !connections classify",
+                reply_to=message,
+            )
+
+        rows = await self._connection_repo.latest_classifications(limit=10)
+        if not rows:
+            return OutboundMessage(
+                text="No classified connection sources recorded yet.",
+                reply_to=message,
+            )
+
+        lines = ["Latest classified connection sources:"]
+        for row in rows:
+            confidence = float(row["confidence"])
+            reasons = row["reasons"] if isinstance(row["reasons"], list) else []
+            reasons_str = ", ".join(str(reason) for reason in reasons[:3]) or "no-reason-data"
+            lines.append(
+                f"- {row['ip_address']} | {row['category']} | confidence={confidence:.2f} | "
+                f"action={row['recommended_action']} | reasons={reasons_str}"
+            )
+        return OutboundMessage(text="\n".join(lines), reply_to=message)
 
     async def _active_alert_conditions(self) -> list[str]:
         conditions: list[str] = []
