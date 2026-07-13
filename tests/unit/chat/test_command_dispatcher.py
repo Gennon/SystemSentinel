@@ -156,3 +156,35 @@ async def test_custom_prefix_is_honored(tmp_path: Path) -> None:
     response = await dispatcher.handle_message(_message("/help"), ["/help"])
     assert response is not None
     assert "Available commands:" in response.text
+
+
+@pytest.mark.asyncio
+async def test_storage_command_handles_permission_denied_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    protected_path = "/home/username"
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {
+            "chat_adapters": {"discord": {"channel_id": "100"}},
+            "tools": {"storage": {"paths": [protected_path]}},
+        },
+        {},
+    )
+
+    monkeypatch.setattr(
+        "system_sentinel.chat.command_dispatcher.os.path.exists",
+        lambda path: str(path) == protected_path,
+    )
+
+    def _raise_permission_denied(_path: str) -> None:
+        raise PermissionError("[Errno 13] Permission denied")
+
+    monkeypatch.setattr(
+        "system_sentinel.chat.command_dispatcher.psutil.disk_usage",
+        _raise_permission_denied,
+    )
+
+    response = await dispatcher.handle_message(_message("!storage"), ["!storage"])
+    assert response is not None
+    assert f"{protected_path}: permission denied" in response.text

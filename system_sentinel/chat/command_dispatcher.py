@@ -413,7 +413,11 @@ class ChatCommandDispatcher:
             if not os.path.exists(path):
                 lines.append(f"{path}: missing")
                 continue
-            usage = psutil.disk_usage(path)
+            try:
+                usage = psutil.disk_usage(path)
+            except OSError as exc:
+                lines.append(f"{path}: permission denied ({exc})")
+                continue
             lines.append(
                 f"{path}: used={usage.used} free={usage.free} total={usage.total} ({usage.percent:.1f}%)"
             )
@@ -427,11 +431,15 @@ class ChatCommandDispatcher:
         if not root_path.exists() or not root_path.is_dir():
             return []
         sizes: list[tuple[str, int]] = []
-        for child in root_path.iterdir():
+        try:
+            children = list(root_path.iterdir())
+        except OSError:
+            return []
+        for child in children:
             if not child.is_dir():
                 continue
             size = 0
-            for dirpath, _dirnames, filenames in os.walk(child):
+            for dirpath, _dirnames, filenames in os.walk(child, onerror=lambda _err: None):
                 for filename in filenames:
                     file_path = Path(dirpath) / filename
                     try:
