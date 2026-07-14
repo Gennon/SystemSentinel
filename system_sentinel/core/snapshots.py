@@ -309,11 +309,19 @@ def _parse_timeshift_line(line: str) -> SnapshotRecord | None:
 
 
 def _error_text(result: _CommandResult) -> str:
-    return (
+    message = (
         result.stderr.decode(errors="replace").strip()
         or result.stdout.decode(errors="replace").strip()
         or "unknown snapshot backend failure"
     )
+    lower = message.lower()
+    if "a password is required" in lower or "is not allowed to execute" in lower:
+        return (
+            f"{message} "
+            "(snapshot command needs NOPASSWD sudo for the sentinel user; rerun `sentinel setup` "
+            "to install sudoers rules)."
+        )
+    return message
 
 
 async def _run_command(*args: str) -> _CommandResult:

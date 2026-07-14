@@ -9,6 +9,7 @@ from system_sentinel.core.snapshots import (
     SnapshotError,
     SnapshotManager,
     SnapshotRecord,
+    _error_text,
     _run_command,
 )
 
@@ -121,3 +122,18 @@ async def test_run_command_raises_when_sudo_missing_for_non_root() -> None:
         pytest.raises(SnapshotError, match="sudo"),
     ):
         await _run_command("snapper", "list")
+
+
+def test_error_text_includes_sudoers_hint_for_sudo_denials() -> None:
+    message = _error_text(
+        type(
+            "_R",
+            (),
+            {
+                "stdout": b"",
+                "stderr": b"sudo: a password is required",
+                "returncode": 1,
+            },
+        )()
+    )
+    assert "NOPASSWD sudo" in message

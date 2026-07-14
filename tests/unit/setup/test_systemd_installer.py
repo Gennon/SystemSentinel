@@ -680,7 +680,9 @@ class TestInstallSudoersRulesStep:
         with patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_path):
             rules = _required_sudoers_rules()
         assert "sentinel ALL=(root) NOPASSWD: /usr/bin/snapper *" in rules
+        assert "sentinel ALL=(root) NOPASSWD: /usr/sbin/snapper *" in rules
         assert "sentinel ALL=(root) NOPASSWD: /usr/bin/timeshift *" in rules
+        assert "sentinel ALL=(root) NOPASSWD: /usr/sbin/timeshift *" in rules
 
     def test_snapshot_backend_none_requires_no_sudoers_rules(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"

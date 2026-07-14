@@ -27,8 +27,16 @@ _POLL_MAX_ATTEMPTS = 10
 _INSTALL_DIR_DEPTH = 3
 
 _SERVICE_RESTART_RULE = "sentinel ALL=(root) NOPASSWD: /bin/systemctl restart *"
-_SNAPPER_RULE = "sentinel ALL=(root) NOPASSWD: /usr/bin/snapper *"
-_TIMESHIFT_RULE = "sentinel ALL=(root) NOPASSWD: /usr/bin/timeshift *"
+_SNAPPER_RULES = (
+    "sentinel ALL=(root) NOPASSWD: /usr/bin/snapper *",
+    "sentinel ALL=(root) NOPASSWD: /usr/sbin/snapper *",
+    "sentinel ALL=(root) NOPASSWD: /bin/snapper *",
+)
+_TIMESHIFT_RULES = (
+    "sentinel ALL=(root) NOPASSWD: /usr/bin/timeshift *",
+    "sentinel ALL=(root) NOPASSWD: /usr/sbin/timeshift *",
+    "sentinel ALL=(root) NOPASSWD: /bin/timeshift *",
+)
 
 
 def create_sentinel_user_step() -> WizardStep:
@@ -369,10 +377,10 @@ def _snapshot_rules(config: dict[str, object]) -> list[str]:
     if backend in {"none", "disabled"}:
         return []
     if backend == "snapper":
-        return [_SNAPPER_RULE]
+        return list(_SNAPPER_RULES)
     if backend == "timeshift":
-        return [_TIMESHIFT_RULE]
-    return [_SNAPPER_RULE, _TIMESHIFT_RULE]
+        return list(_TIMESHIFT_RULES)
+    return [*list(_SNAPPER_RULES), *list(_TIMESHIFT_RULES)]
 
 
 def _build_sudoers_content(rules: list[str]) -> str:
