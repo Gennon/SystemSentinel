@@ -14,6 +14,7 @@ from system_sentinel.core.context import AppContext
 from system_sentinel.db.connection import DatabaseConnection
 from system_sentinel.db.connection_repository import ConnectionRepository
 from system_sentinel.tools.base import BaseTool, ToolOutcome, ToolResult
+from system_sentinel.tools.firewall.backends import UnsupportedFirewallBackendError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -60,6 +61,24 @@ class _FakeFirewallTool(BaseTool):
 
     async def status_report(self) -> str:
         return "Firewall backend: ufw\nDesired state: MATCH"
+
+
+class _FailingFirewallTool(BaseTool):
+    name = "firewall"
+    display_name = "Firewall"
+    description = "fake"
+
+    async def run(self) -> ToolResult:
+        return ToolResult(
+            tool_name=self.name,
+            outcome=ToolOutcome.SUCCESS,
+            summary="ok",
+            started_at=datetime.now(UTC),
+            finished_at=datetime.now(UTC),
+        )
+
+    async def status_report(self) -> str:
+        raise UnsupportedFirewallBackendError("No supported firewall backend detected.")
 
 
 async def _dispatcher(
@@ -148,6 +167,30 @@ async def test_firewall_command_uses_firewall_tool_status_report(tmp_path: Path)
     response = await dispatcher.handle_message(_message("!firewall"), ["!firewall"])
     assert response is not None
     assert "Desired state: MATCH" in response.text
+
+
+@pytest.mark.asyncio
+async def test_firewall_command_handles_status_report_failures(tmp_path: Path) -> None:
+    db = DatabaseConnection(tmp_path / "sentinel.db")
+    await db.connect()
+    ctx = AppContext(
+        audit=AsyncMock(),
+        event_bus=AsyncMock(),
+        logger=logging.getLogger("test"),
+    )
+    firewall_tool = _FailingFirewallTool({}, ctx)
+    dispatcher = ChatCommandDispatcher(
+        config={"chat_adapters": {"discord": {"channel_id": "100"}}},
+        app_ctx=ctx,
+        scheduler=_FakeScheduler(),  # type: ignore[arg-type]
+        tools={"firewall": firewall_tool},
+        monitor_registry=_FakeMonitorRegistry(),  # type: ignore[arg-type]
+        db=db,
+    )
+
+    response = await dispatcher.handle_message(_message("!firewall"), ["!firewall"])
+    assert response is not None
+    assert "Firewall status unavailable" in response.text
 
 
 @pytest.mark.asyncio

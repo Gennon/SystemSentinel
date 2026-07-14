@@ -17,6 +17,10 @@ import psutil
 from system_sentinel.chat.base import InboundMessage, InboundReaction, OutboundMessage
 from system_sentinel.db.connection_repository import ConnectionRepository
 from system_sentinel.db.old_files_repository import OldFilesRepository
+from system_sentinel.tools.firewall.backends import (
+    FirewallBackendError,
+    UnsupportedFirewallBackendError,
+)
 
 if TYPE_CHECKING:
     from system_sentinel.core.context import AppContext
@@ -339,7 +343,27 @@ class ChatCommandDispatcher:
     async def _cmd_firewall(self, message: InboundMessage) -> OutboundMessage:
         firewall_tool = self._tools.get("firewall")
         if isinstance(firewall_tool, FirewallStatusReporter):
-            report = await firewall_tool.status_report()
+            try:
+                report = await firewall_tool.status_report()
+            except UnsupportedFirewallBackendError as exc:
+                return OutboundMessage(
+                    text=f"Firewall status unavailable: {exc}",
+                    reply_to=message,
+                )
+            except FirewallBackendError as exc:
+                return OutboundMessage(
+                    text=f"Firewall backend error while reading status: {exc}",
+                    reply_to=message,
+                )
+            except Exception as exc:
+                self._ctx.logger.getChild("chat.command_dispatcher").exception(
+                    "Unexpected failure in !firewall status_report",
+                    exc_info=exc,
+                )
+                return OutboundMessage(
+                    text="Firewall status failed unexpectedly. Check daemon logs for details.",
+                    reply_to=message,
+                )
             return OutboundMessage(text=report[:3000], reply_to=message)
 
         ufw_path = shutil.which("ufw")
