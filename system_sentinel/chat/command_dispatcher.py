@@ -393,6 +393,15 @@ class ChatCommandDispatcher:
         cpu_threshold = float(monitors_cfg.get("cpu", {}).get("alert_threshold_percent", 90))
         ram_threshold = float(monitors_cfg.get("ram", {}).get("alert_threshold_percent", 90))
         disk_threshold = float(monitors_cfg.get("disk", {}).get("alert_threshold_percent", 85))
+        network_cfg = monitors_cfg.get("network", {})
+        network_sent_threshold_raw = network_cfg.get("alert_threshold_bytes_sent")
+        network_recv_threshold_raw = network_cfg.get("alert_threshold_bytes_recv")
+        network_sent_threshold = (
+            float(network_sent_threshold_raw) if network_sent_threshold_raw is not None else None
+        )
+        network_recv_threshold = (
+            float(network_recv_threshold_raw) if network_recv_threshold_raw is not None else None
+        )
 
         cursor = await self._db.connection.execute(
             """
@@ -433,6 +442,18 @@ class ChatCommandDispatcher:
                         conditions.append(
                             f"Disk high on {mount}: {current:.1f}% > {disk_threshold:.1f}% ({now})"
                         )
+        if "network" in latest_by_type:
+            network_data = json.loads(latest_by_type["network"])
+            sent_current = float(network_data.get("bytes_sent", 0.0))
+            recv_current = float(network_data.get("bytes_recv", 0.0))
+            if network_sent_threshold is not None and sent_current > network_sent_threshold:
+                conditions.append(
+                    f"Network sent high: {int(sent_current)} B > {int(network_sent_threshold)} B ({now})"
+                )
+            if network_recv_threshold is not None and recv_current > network_recv_threshold:
+                conditions.append(
+                    f"Network recv high: {int(recv_current)} B > {int(network_recv_threshold)} B ({now})"
+                )
         return conditions
 
     def _build_storage_report_sync(self, paths: list[str]) -> str:

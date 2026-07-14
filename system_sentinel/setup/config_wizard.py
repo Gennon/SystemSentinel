@@ -120,7 +120,13 @@ _SAFE_DEFAULTS: dict[str, Any] = {
             "failed_login_window": "00:10:00",
             "alert_cooldown": "00:30:00",
         },
-        "network": {"enabled": True, "interval": "00:01:00"},
+        "network": {
+            "enabled": True,
+            "interval": "00:01:00",
+            "alert_threshold_bytes_sent": 10_000_000,
+            "alert_threshold_bytes_recv": 10_000_000,
+            "alert_cooldown": "00:30:00",
+        },
         "connections": {
             "enabled": True,
             "repeat_alert_count": 3,

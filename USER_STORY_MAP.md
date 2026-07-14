@@ -74,7 +74,7 @@ A Linux system management daemon that autonomously handles updates, security har
 
 ### Monitoring & Metrics
 - [ ] As a user I want GPU utilization metrics collected if a GPU is present so I can monitor AI/compute workloads.
-- [ ] As a user I want to set alert thresholds per metric (e.g. alert if RAM > 85%) so I only get paged for real problems.
+- [x] As a user I want to set alert thresholds per metric (e.g. alert if RAM > 85%) so I only get paged for real problems.
 
 ### File Management
 - [ ] As a user I want alerts when monitored directories change unexpectedly so I know about unauthorized file modifications.

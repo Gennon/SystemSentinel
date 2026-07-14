@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
+import socket
 from typing import TYPE_CHECKING, Any
 
 import psutil
 
+from system_sentinel.core.time_config import parse_duration_from_config
 from system_sentinel.monitors.base import BaseMonitor
 
 if TYPE_CHECKING:
@@ -32,6 +35,7 @@ class NetworkMonitor(BaseMonitor):
         self._metrics_repo = metrics_repo
         self._prev_bytes_sent: int | None = None
         self._prev_bytes_recv: int | None = None
+        self._last_alert_at: datetime | None = None
 
     async def _get_metrics_repo(self) -> MetricsRepository:
         if self._metrics_repo is not None:
@@ -83,9 +87,67 @@ class NetworkMonitor(BaseMonitor):
             "bytes_sent": delta_sent,
             "bytes_recv": delta_recv,
         }
+        await self._maybe_emit_alert(data)
 
         try:
             repo = await self._get_metrics_repo()
             await repo.insert("network", data)
         except Exception:
             self.logger.exception("Failed to persist network metrics")
+
+    async def _maybe_emit_alert(self, data: dict[str, Any]) -> None:
+        sent_threshold_raw = self.config.get("alert_threshold_bytes_sent")
+        recv_threshold_raw = self.config.get("alert_threshold_bytes_recv")
+        if sent_threshold_raw is None and recv_threshold_raw is None:
+            return
+
+        sent_threshold = float(sent_threshold_raw) if sent_threshold_raw is not None else None
+        recv_threshold = float(recv_threshold_raw) if recv_threshold_raw is not None else None
+
+        bytes_sent = int(data.get("bytes_sent", 0))
+        bytes_recv = int(data.get("bytes_recv", 0))
+        triggered_metrics: list[str] = []
+        if sent_threshold is not None and bytes_sent > sent_threshold:
+            triggered_metrics.append("bytes_sent")
+        if recv_threshold is not None and bytes_recv > recv_threshold:
+            triggered_metrics.append("bytes_recv")
+        if not triggered_metrics:
+            return
+
+        cooldown_seconds = parse_duration_from_config(
+            self.config,
+            key="alert_cooldown",
+            default_seconds=30 * 60,
+            logger=self.logger,
+        )
+        now = datetime.now(UTC)
+        if (
+            self._last_alert_at is not None
+            and (now - self._last_alert_at).total_seconds() < cooldown_seconds
+        ):
+            return
+
+        sent_threshold_label = (
+            f"sent>{int(sent_threshold)} B/interval"
+            if sent_threshold is not None
+            else "sent=disabled"
+        )
+        recv_threshold_label = (
+            f"recv>{int(recv_threshold)} B/interval"
+            if recv_threshold is not None
+            else "recv=disabled"
+        )
+
+        await self.ctx.event_bus.publish(
+            "alert.network.throughput_threshold_exceeded",
+            {
+                "event_type": "network_throughput_threshold_exceeded",
+                "bytes_sent": bytes_sent,
+                "bytes_recv": bytes_recv,
+                "threshold": f"{sent_threshold_label} or {recv_threshold_label}",
+                "triggered_metrics": triggered_metrics,
+                "timestamp": now.isoformat(),
+                "hostname": socket.gethostname(),
+            },
+        )
+        self._last_alert_at = now

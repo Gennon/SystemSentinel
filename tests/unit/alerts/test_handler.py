@@ -12,6 +12,7 @@ from system_sentinel.alerts.handler import (
     _format_connection_repeat_threshold,
     _format_cpu_threshold_exceeded,
     _format_disk_threshold_exceeded,
+    _format_network_threshold_exceeded,
     _format_old_files_daily_digest,
     _format_ram_threshold_exceeded,
     _format_service_failure_detected,
@@ -194,6 +195,16 @@ _DISK_THRESHOLD_PAYLOAD = {
     "hostname": "sentinel-host",
     "mountpoint": "/",
     "device": "/dev/sda1",
+}
+
+_NETWORK_THRESHOLD_PAYLOAD = {
+    "event_type": "network_throughput_threshold_exceeded",
+    "bytes_sent": 1600000,
+    "bytes_recv": 800000,
+    "threshold": "sent>1000000 B/interval or recv>1000000 B/interval",
+    "triggered_metrics": ["bytes_sent"],
+    "timestamp": "2024-01-01T00:00:00+00:00",
+    "hostname": "sentinel-host",
 }
 
 _SERVICE_FAILURE_PAYLOAD = {
@@ -465,6 +476,16 @@ def test_format_disk_threshold_fields_present() -> None:
     assert msg.fields["Device"] == "/dev/sda1"
 
 
+def test_format_network_threshold_fields_present() -> None:
+    msg = _format_network_threshold_exceeded(_NETWORK_THRESHOLD_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert msg.fields is not None
+    assert msg.fields["Event Type"] == "network_throughput_threshold_exceeded"
+    assert msg.fields["Bytes Sent"] == "1600000"
+    assert msg.fields["Bytes Received"] == "800000"
+    assert msg.fields["Triggered Metrics"] == "bytes_sent"
+
+
 @pytest.mark.asyncio
 async def test_handler_broadcasts_on_cpu_threshold_event() -> None:
     router, calls = _make_router()
@@ -496,6 +517,17 @@ async def test_handler_broadcasts_on_disk_threshold_event() -> None:
     await bus.publish("alert.disk.threshold_exceeded", _DISK_THRESHOLD_PAYLOAD)
     assert len(calls) == 1
     assert calls[0].severity == AlertSeverity.CRITICAL
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_network_threshold_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+    await bus.publish("alert.network.throughput_threshold_exceeded", _NETWORK_THRESHOLD_PAYLOAD)
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.WARNING
 
 
 def test_format_service_failure_detected_includes_logs() -> None:

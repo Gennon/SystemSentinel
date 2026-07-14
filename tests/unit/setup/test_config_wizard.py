@@ -161,6 +161,11 @@ class TestNoConfigInteractive:
         assert data["monitors"]["services"]["max_restart_attempts"] == 3
         assert data["monitors"]["services"]["journal_lines"] == 20
         assert data["monitors"]["services"]["critical_services"] == []
+        assert data["monitors"]["network"]["enabled"] is True
+        assert data["monitors"]["network"]["interval"] == "00:01:00"
+        assert data["monitors"]["network"]["alert_threshold_bytes_sent"] == 10_000_000
+        assert data["monitors"]["network"]["alert_threshold_bytes_recv"] == 10_000_000
+        assert data["monitors"]["network"]["alert_cooldown"] == "00:30:00"
         assert data["monitors"]["connections"]["enabled"] is True
         assert data["monitors"]["connections"]["classification"]["attempts_per_ip"] == {
             "suspicious": 3,

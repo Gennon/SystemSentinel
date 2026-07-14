@@ -107,3 +107,62 @@ async def test_collect_handles_psutil_failure_gracefully(
 
     with patch("psutil.net_io_counters", side_effect=RuntimeError("psutil error")):
         await monitor.collect()  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_collect_emits_network_alert_when_threshold_exceeded(
+    repo: MetricsRepository,
+) -> None:
+    ctx = _make_ctx()
+    monitor = NetworkMonitor(
+        {
+            "enabled": True,
+            "alert_threshold_bytes_sent": 400,
+            "alert_threshold_bytes_recv": 900,
+            "alert_cooldown": "00:30:00",
+        },
+        ctx,
+        metrics_repo=repo,
+    )
+
+    with patch("psutil.net_io_counters", return_value=_make_counters(1000, 2000)):
+        await monitor.collect()  # baseline
+
+    with patch("psutil.net_io_counters", return_value=_make_counters(1500, 3000)):
+        await monitor.collect()  # delta: sent=500 recv=1000
+
+    ctx.event_bus.publish.assert_awaited_once()
+    event_type, payload = ctx.event_bus.publish.call_args.args
+    assert event_type == "alert.network.throughput_threshold_exceeded"
+    assert payload["event_type"] == "network_throughput_threshold_exceeded"
+    assert payload["bytes_sent"] == 500
+    assert payload["bytes_recv"] == 1000
+    assert payload["threshold"] == "sent>400 B/interval or recv>900 B/interval"
+    assert payload["triggered_metrics"] == ["bytes_sent", "bytes_recv"]
+    assert "timestamp" in payload
+    assert "hostname" in payload
+
+
+@pytest.mark.asyncio
+async def test_collect_does_not_emit_network_alert_below_thresholds(
+    repo: MetricsRepository,
+) -> None:
+    ctx = _make_ctx()
+    monitor = NetworkMonitor(
+        {
+            "enabled": True,
+            "alert_threshold_bytes_sent": 5_000,
+            "alert_threshold_bytes_recv": 5_000,
+            "alert_cooldown": "00:30:00",
+        },
+        ctx,
+        metrics_repo=repo,
+    )
+
+    with patch("psutil.net_io_counters", return_value=_make_counters(1000, 2000)):
+        await monitor.collect()  # baseline
+
+    with patch("psutil.net_io_counters", return_value=_make_counters(1500, 2400)):
+        await monitor.collect()  # delta: sent=500 recv=400
+
+    ctx.event_bus.publish.assert_not_awaited()

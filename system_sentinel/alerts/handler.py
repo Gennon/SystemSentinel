@@ -15,6 +15,7 @@ _EVENT_SEVERITY_KEYS = {
     "alert.cpu.threshold_exceeded": "cpu",
     "alert.ram.threshold_exceeded": "ram",
     "alert.disk.threshold_exceeded": "disk",
+    "alert.network.throughput_threshold_exceeded": "network_throughput",
     "alert.login.brute_force_detected": "login",
     "alert.connection.unknown_ip_detected": "network_unknown_ip",
     "alert.connection.repeated_attempts_detected": "network_repeat",
@@ -344,6 +345,34 @@ def _format_disk_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessage:
     )
 
 
+def _format_network_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessage:
+    bytes_sent = int(payload.get("bytes_sent", 0))
+    bytes_recv = int(payload.get("bytes_recv", 0))
+    triggered_metrics = payload.get("triggered_metrics", [])
+    if isinstance(triggered_metrics, list):
+        triggered_str = ", ".join(str(metric) for metric in triggered_metrics) or "—"
+    else:
+        triggered_str = str(triggered_metrics)
+    return OutboundMessage(
+        title="⚠️ High Network Throughput",
+        text=(
+            f"Network alert on **{payload.get('hostname', 'unknown')}**: "
+            f"sent={bytes_sent} B, recv={bytes_recv} B "
+            f"(threshold {payload.get('threshold', '—')})."
+        ),
+        severity=AlertSeverity.WARNING,
+        fields={
+            "Event Type": str(payload.get("event_type", "network_throughput_threshold_exceeded")),
+            "Bytes Sent": str(bytes_sent),
+            "Bytes Received": str(bytes_recv),
+            "Threshold": str(payload.get("threshold", "—")),
+            "Triggered Metrics": triggered_str,
+            "Timestamp": str(payload.get("timestamp", "—")),
+            "Hostname": str(payload.get("hostname", "—")),
+        },
+    )
+
+
 class AlertHandler:
     """Subscribes to alert events on the event bus and forwards them to the ChatRouter."""
 
@@ -391,6 +420,10 @@ class AlertHandler:
         event_bus.subscribe("alert.cpu.threshold_exceeded", self._on_cpu_threshold_exceeded)
         event_bus.subscribe("alert.ram.threshold_exceeded", self._on_ram_threshold_exceeded)
         event_bus.subscribe("alert.disk.threshold_exceeded", self._on_disk_threshold_exceeded)
+        event_bus.subscribe(
+            "alert.network.throughput_threshold_exceeded",
+            self._on_network_threshold_exceeded,
+        )
         event_bus.subscribe("alert.service.failure_detected", self._on_service_failure_detected)
         event_bus.subscribe("alert.service.restart_result", self._on_service_restart_result)
         event_bus.subscribe("alert.service.restart_exhausted", self._on_service_restart_exhausted)
@@ -453,6 +486,15 @@ class AlertHandler:
     async def _on_disk_threshold_exceeded(self, event_type: str, payload: Any) -> None:
         self._logger.warning("Disk threshold exceeded: %s", payload.get("current_value"))
         msg = self._apply_severity(event_type, payload, _format_disk_threshold_exceeded(payload))
+        await self._notify_and_record(event_type, msg)
+
+    async def _on_network_threshold_exceeded(self, event_type: str, payload: Any) -> None:
+        self._logger.warning(
+            "Network throughput threshold exceeded: sent=%s recv=%s",
+            payload.get("bytes_sent"),
+            payload.get("bytes_recv"),
+        )
+        msg = self._apply_severity(event_type, payload, _format_network_threshold_exceeded(payload))
         await self._notify_and_record(event_type, msg)
 
     async def _on_service_failure_detected(self, event_type: str, payload: Any) -> None:
