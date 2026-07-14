@@ -53,6 +53,7 @@ sentinel = "system_sentinel.cli.main:cli"
 [project.entry-points."sentinel.tools"]
 security_update = "system_sentinel.tools.update.tool:SecurityUpdateTool"
 packages        = "system_sentinel.tools.packages.tool:RequiredPackagesTool"
+firewall        = "system_sentinel.tools.firewall.tool:FirewallTool"
 
 [project.entry-points."sentinel.monitors"]
 cpu            = "system_sentinel.monitors.cpu:CpuMonitor"

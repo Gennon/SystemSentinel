@@ -109,6 +109,7 @@ class TestFeature:
 class TestOptionalFeaturesRegistry:
     def test_all_expected_features_present(self) -> None:
         keys = {f.key for f in OPTIONAL_FEATURES}
+        assert "firewall" in keys
         assert "gpu" in keys
         assert "harden" in keys
         assert "snapshot" in keys

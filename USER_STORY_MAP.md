@@ -68,7 +68,7 @@ A Linux system management daemon that autonomously handles updates, security har
 
 ### Security & Hardening
 - [ ] As a user I want the system to auto-apply CIS or custom hardening benchmarks so the machine meets a security baseline.
-- [ ] As a user I want firewall rules managed declaratively with a desired-state config so rules are version-controlled and reproducible.
+- [x] As a user I want firewall rules managed declaratively with a desired-state config so rules are version-controlled and reproducible. **(US-014)**
 - [ ] As a user I want login anomaly detection (e.g. brute force patterns, off-hours logins) so suspicious behaviour is flagged automatically.
 - [x] As a user I want unknown inbound connection activity classified as likely scanning vs likely access attempt so I can prioritize real threats. **(US-039)**
 

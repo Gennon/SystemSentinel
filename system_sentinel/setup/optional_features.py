@@ -72,6 +72,13 @@ class Feature:
 
 OPTIONAL_FEATURES: list[Feature] = [
     Feature(
+        key="firewall",
+        display_name="Declarative firewall management",
+        description="Reconcile UFW/nftables rules against desired-state config",
+        pip_extra=None,
+        check_command=None,
+    ),
+    Feature(
         key="gpu",
         display_name="GPU monitoring",
         description="Metric collection for NVIDIA/AMD GPUs (auto-suggested if GPU detected)",
@@ -165,6 +172,7 @@ def select_features_step() -> WizardStep:
 
 # Config keys that each feature maps to for enabling in config.yaml
 _FEATURE_CONFIG: dict[str, dict[str, object]] = {
+    "firewall": {"tools": {"firewall": {"enabled": True}}},
     "gpu": {"monitors": {"gpu": {"enabled": True}}},
     "harden": {"tools": {"harden": {"enabled": True}}},
     "snapshot": {"updates": {"self_update": {"snapshots": {"backend": "auto"}}}},

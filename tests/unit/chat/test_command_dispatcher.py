@@ -44,6 +44,24 @@ class _FakeTool(BaseTool):
         )
 
 
+class _FakeFirewallTool(BaseTool):
+    name = "firewall"
+    display_name = "Firewall"
+    description = "fake"
+
+    async def run(self) -> ToolResult:
+        return ToolResult(
+            tool_name=self.name,
+            outcome=ToolOutcome.SUCCESS,
+            summary="ok",
+            started_at=datetime.now(UTC),
+            finished_at=datetime.now(UTC),
+        )
+
+    async def status_report(self) -> str:
+        return "Firewall backend: ufw\nDesired state: MATCH"
+
+
 async def _dispatcher(
     tmp_path: Path, config: dict, tools: dict[str, BaseTool]
 ) -> ChatCommandDispatcher:
@@ -106,6 +124,30 @@ async def test_help_command_returns_supported_commands(tmp_path: Path) -> None:
     assert "!status" in response.text
     assert "!cleanup" in response.text
     assert "!snapshots" in response.text
+
+
+@pytest.mark.asyncio
+async def test_firewall_command_uses_firewall_tool_status_report(tmp_path: Path) -> None:
+    db = DatabaseConnection(tmp_path / "sentinel.db")
+    await db.connect()
+    ctx = AppContext(
+        audit=AsyncMock(),
+        event_bus=AsyncMock(),
+        logger=logging.getLogger("test"),
+    )
+    firewall_tool = _FakeFirewallTool({}, ctx)
+    dispatcher = ChatCommandDispatcher(
+        config={"chat_adapters": {"discord": {"channel_id": "100"}}},
+        app_ctx=ctx,
+        scheduler=_FakeScheduler(),  # type: ignore[arg-type]
+        tools={"firewall": firewall_tool},
+        monitor_registry=_FakeMonitorRegistry(),  # type: ignore[arg-type]
+        db=db,
+    )
+
+    response = await dispatcher.handle_message(_message("!firewall"), ["!firewall"])
+    assert response is not None
+    assert "Desired state: MATCH" in response.text
 
 
 @pytest.mark.asyncio

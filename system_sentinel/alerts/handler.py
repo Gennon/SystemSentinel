@@ -24,6 +24,7 @@ _EVENT_SEVERITY_KEYS = {
     "alert.service.failure_detected": "service_failure",
     "alert.service.restart_result": "service_restart_result",
     "alert.service.restart_exhausted": "service_restart_exhausted",
+    "alert.firewall.drift_detected": "firewall_drift",
 }
 
 _SEVERITY_RANK: dict[AlertSeverity, int] = {
@@ -373,6 +374,37 @@ def _format_network_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessa
     )
 
 
+def _format_firewall_drift(payload: dict[str, Any]) -> OutboundMessage:
+    backend = str(payload.get("backend", "unknown"))
+    missing_rules = payload.get("missing_rules", [])
+    unexpected_rules = payload.get("unexpected_rules", [])
+    live_policy = str(payload.get("live_default_incoming_policy", "unknown"))
+    desired_policy = str(payload.get("desired_default_incoming_policy", "unknown"))
+    enforce = bool(payload.get("enforce", False))
+
+    return OutboundMessage(
+        title="⚠️ Firewall Drift Detected",
+        text=(
+            f"Firewall backend **{backend}** is out of sync with desired state.\n"
+            f"Missing rules: **{len(missing_rules) if isinstance(missing_rules, list) else 0}**\n"
+            f"Unexpected rules: **{len(unexpected_rules) if isinstance(unexpected_rules, list) else 0}**\n"
+            f"Default incoming policy: live=**{live_policy}**, desired=**{desired_policy}**\n"
+            f"Auto-enforcement: **{'enabled' if enforce else 'disabled'}**"
+        ),
+        severity=AlertSeverity.WARNING,
+        fields={
+            "Backend": backend,
+            "Missing Rules": str(len(missing_rules) if isinstance(missing_rules, list) else 0),
+            "Unexpected Rules": str(
+                len(unexpected_rules) if isinstance(unexpected_rules, list) else 0
+            ),
+            "Live Policy": live_policy,
+            "Desired Policy": desired_policy,
+            "Enforce": "true" if enforce else "false",
+        },
+    )
+
+
 class AlertHandler:
     """Subscribes to alert events on the event bus and forwards them to the ChatRouter."""
 
@@ -427,6 +459,7 @@ class AlertHandler:
         event_bus.subscribe("alert.service.failure_detected", self._on_service_failure_detected)
         event_bus.subscribe("alert.service.restart_result", self._on_service_restart_result)
         event_bus.subscribe("alert.service.restart_exhausted", self._on_service_restart_exhausted)
+        event_bus.subscribe("alert.firewall.drift_detected", self._on_firewall_drift)
 
     async def _on_unknown_connection(self, event_type: str, payload: Any) -> None:
         self._logger.warning(
@@ -521,6 +554,20 @@ class AlertHandler:
             payload.get("service_name"),
         )
         msg = self._apply_severity(event_type, payload, _format_service_restart_exhausted(payload))
+        await self._notify_and_record(event_type, msg)
+
+    async def _on_firewall_drift(self, event_type: str, payload: Any) -> None:
+        self._logger.warning(
+            "Firewall drift detected: backend=%s missing=%s unexpected=%s",
+            payload.get("backend"),
+            len(payload.get("missing_rules", []))
+            if isinstance(payload.get("missing_rules"), list)
+            else 0,
+            len(payload.get("unexpected_rules", []))
+            if isinstance(payload.get("unexpected_rules"), list)
+            else 0,
+        )
+        msg = self._apply_severity(event_type, payload, _format_firewall_drift(payload))
         await self._notify_and_record(event_type, msg)
 
     async def _notify_and_record(self, event_type: str, msg: OutboundMessage) -> None:

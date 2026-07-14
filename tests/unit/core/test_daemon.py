@@ -7,7 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import yaml
 
-from system_sentinel.core.daemon import DaemonRestartRequested, _load_config, run_daemon
+from system_sentinel.core.daemon import (
+    DaemonRestartRequested,
+    _load_config,
+    _register_tool_event_handlers,
+    _run_tools_on_startup,
+    run_daemon,
+)
 from system_sentinel.core.exceptions import ConfigError
 
 if TYPE_CHECKING:
@@ -176,3 +182,48 @@ class TestRunDaemon:
 
             with pytest.raises(DaemonRestartRequested):
                 await run_daemon(config_path=config_path, db_path=db_path)
+
+
+@pytest.mark.asyncio
+async def test_register_tool_event_handlers_runs_tool_on_scheduled_event() -> None:
+    bus = MagicMock()
+    bus.subscribe = MagicMock()
+    tool = MagicMock()
+    tool.run = AsyncMock()
+
+    _register_tool_event_handlers(bus, {"firewall": tool})
+
+    bus.subscribe.assert_called_once()
+    subscribed_handler = bus.subscribe.call_args.args[1]
+    await subscribed_handler("tool.firewall.scheduled", {"source": "scheduler"})
+    tool.run.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_tools_on_startup_runs_only_enabled_startup_tools() -> None:
+    startup_tool = MagicMock()
+    startup_tool.config = {"run_on_startup": True}
+    startup_tool.is_enabled.return_value = True
+    startup_tool.run = AsyncMock()
+
+    disabled_tool = MagicMock()
+    disabled_tool.config = {"run_on_startup": True}
+    disabled_tool.is_enabled.return_value = False
+    disabled_tool.run = AsyncMock()
+
+    non_startup_tool = MagicMock()
+    non_startup_tool.config = {"run_on_startup": False}
+    non_startup_tool.is_enabled.return_value = True
+    non_startup_tool.run = AsyncMock()
+
+    await _run_tools_on_startup(
+        {
+            "firewall": startup_tool,
+            "packages": disabled_tool,
+            "security_update": non_startup_tool,
+        }
+    )
+
+    startup_tool.run.assert_awaited_once()
+    disabled_tool.run.assert_not_awaited()
+    non_startup_tool.run.assert_not_awaited()

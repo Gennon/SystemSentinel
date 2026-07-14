@@ -166,6 +166,20 @@ _SAFE_DEFAULTS: dict[str, Any] = {
             "critical_services": [],
         },
     },
+    "tools": {
+        "firewall": {
+            "enabled": True,
+            "reconcile_interval": "00:10:00",
+            "run_on_startup": True,
+            "enforce": False,
+            "desired_state": {
+                "default_incoming_policy": "deny",
+                "allowed_ports": [22],
+                "allowed_sources": ["any"],
+                "allowed_protocols": ["tcp"],
+            },
+        }
+    },
 }
 
 # A validator callable: (field, value, token) -> error_message | None

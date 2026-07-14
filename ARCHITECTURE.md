@@ -598,6 +598,18 @@ tools:
       - ufw
       - fail2ban
 
+  firewall:
+    enabled: true
+    reconcile_interval: "00:10:00"
+    run_on_startup: true
+    enforce: false
+    backend: auto            # auto | ufw | nftables
+    desired_state:
+      default_incoming_policy: deny
+      allowed_ports: [22]
+      allowed_sources: [any]
+      allowed_protocols: [tcp]
+
 monitors:
   collection_interval: "00:01:00"
   retention: "30d 00:00:00"

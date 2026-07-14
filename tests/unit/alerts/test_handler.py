@@ -12,6 +12,7 @@ from system_sentinel.alerts.handler import (
     _format_connection_repeat_threshold,
     _format_cpu_threshold_exceeded,
     _format_disk_threshold_exceeded,
+    _format_firewall_drift,
     _format_network_threshold_exceeded,
     _format_old_files_daily_digest,
     _format_ram_threshold_exceeded,
@@ -93,6 +94,12 @@ def test_format_unknown_connection_fields_populated() -> None:
     assert msg.fields["Destination Port"] == "22"
 
 
+def test_format_firewall_drift_severity_is_warning() -> None:
+    msg = _format_firewall_drift(_FIREWALL_DRIFT_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert "out of sync" in msg.text
+
+
 # ---------------------------------------------------------------------------
 # AlertHandler integration tests — unknown connection
 # ---------------------------------------------------------------------------
@@ -121,6 +128,19 @@ async def test_handler_unknown_connection_message_severity_is_warning() -> None:
     await bus.publish("alert.connection.unknown_ip_detected", _UNKNOWN_CONNECTION_PAYLOAD)
 
     assert calls[0].severity == AlertSeverity.WARNING
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_firewall_drift_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.firewall.drift_detected", _FIREWALL_DRIFT_PAYLOAD)
+
+    assert len(calls) == 1
+    assert "Firewall backend" in calls[0].text
 
 
 _BRUTE_FORCE_PAYLOAD = {
@@ -237,6 +257,15 @@ _SERVICE_RESTART_EXHAUSTED_PAYLOAD = {
     "service_name": "nginx.service",
     "max_attempts": 3,
     "status_after_restart": "failed",
+}
+
+_FIREWALL_DRIFT_PAYLOAD = {
+    "backend": "ufw",
+    "missing_rules": [{"source": "any", "port": 22, "protocol": "tcp"}],
+    "unexpected_rules": [{"source": "any", "port": 8080, "protocol": "tcp"}],
+    "live_default_incoming_policy": "allow",
+    "desired_default_incoming_policy": "deny",
+    "enforce": False,
 }
 
 

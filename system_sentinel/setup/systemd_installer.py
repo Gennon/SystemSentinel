@@ -37,6 +37,14 @@ _TIMESHIFT_RULES = (
     "sentinel ALL=(root) NOPASSWD: /usr/sbin/timeshift *",
     "sentinel ALL=(root) NOPASSWD: /bin/timeshift *",
 )
+_UFW_RULES = (
+    "sentinel ALL=(root) NOPASSWD: /usr/sbin/ufw *",
+    "sentinel ALL=(root) NOPASSWD: /usr/bin/ufw *",
+)
+_NFT_RULES = (
+    "sentinel ALL=(root) NOPASSWD: /usr/sbin/nft *",
+    "sentinel ALL=(root) NOPASSWD: /usr/bin/nft *",
+)
 
 
 def create_sentinel_user_step() -> WizardStep:
@@ -349,6 +357,7 @@ def _required_sudoers_rules() -> list[str]:
     if _services_monitor_enabled(raw):
         rules.append(_SERVICE_RESTART_RULE)
     rules.extend(_snapshot_rules(raw))
+    rules.extend(_firewall_rules(raw))
     return rules
 
 
@@ -383,11 +392,30 @@ def _snapshot_rules(config: dict[str, object]) -> list[str]:
     return [*list(_SNAPPER_RULES), *list(_TIMESHIFT_RULES)]
 
 
+def _firewall_rules(config: dict[str, object]) -> list[str]:
+    tools = config.get("tools")
+    if not isinstance(tools, dict):
+        return []
+    firewall = tools.get("firewall")
+    if not isinstance(firewall, dict):
+        return []
+    if not bool(firewall.get("enabled", False)):
+        return []
+
+    backend_raw = firewall.get("backend", "auto")
+    backend = str(backend_raw).strip().lower()
+    if backend == "ufw":
+        return list(_UFW_RULES)
+    if backend in {"nft", "nftables"}:
+        return list(_NFT_RULES)
+    return [*list(_UFW_RULES), *list(_NFT_RULES)]
+
+
 def _build_sudoers_content(rules: list[str]) -> str:
     joined_rules = "\n".join(rules)
     return (
         "# Managed by SystemSentinel setup. Do not edit manually.\n"
-        "# Allows targeted service recovery operations for the sentinel user.\n"
+        "# Allows targeted privileged operations for the sentinel user.\n"
         f"{joined_rules}\n"
     )
 

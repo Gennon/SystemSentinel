@@ -83,6 +83,29 @@ def _discover_tools(
     return discovered
 
 
+def _register_tool_event_handlers(event_bus: InProcessEventBus, tools: dict[str, Any]) -> None:
+    if not isinstance(tools, dict):
+        return
+    for tool_name, tool in tools.items():
+        event_type = f"tool.{tool_name}.scheduled"
+
+        async def _run_tool(_event_type: str, _payload: Any, *, _tool: Any = tool) -> None:
+            await _tool.run()
+
+        event_bus.subscribe(event_type, _run_tool)
+
+
+async def _run_tools_on_startup(tools: dict[str, Any]) -> None:
+    if not isinstance(tools, dict):
+        return
+    for tool in tools.values():
+        if not bool(tool.config.get("run_on_startup", False)):
+            continue
+        if not tool.is_enabled():
+            continue
+        await tool.run()
+
+
 async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH) -> None:
     """Wire all components and run the daemon until SIGINT or SIGTERM."""
     _configure_logging()
@@ -154,6 +177,7 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
 
     scheduler = Scheduler(app_ctx)
     tools = _discover_tools(config.get("tools", {}), app_ctx, scheduler)
+    _register_tool_event_handlers(event_bus, tools)
 
     command_dispatcher = ChatCommandDispatcher(
         config=config,
@@ -256,6 +280,7 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
 
     await monitor_registry.start()
     scheduler.start()
+    await _run_tools_on_startup(tools)
     self_update_task = (
         asyncio.create_task(
             _self_update_loop(

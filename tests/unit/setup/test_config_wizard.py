@@ -173,6 +173,12 @@ class TestNoConfigInteractive:
             "suspicious": 3,
             "likely_access_attempt": 8,
         }
+        assert data["tools"]["firewall"]["enabled"] is True
+        assert data["tools"]["firewall"]["reconcile_interval"] == "00:10:00"
+        assert data["tools"]["firewall"]["run_on_startup"] is True
+        assert data["tools"]["firewall"]["enforce"] is False
+        assert data["tools"]["firewall"]["desired_state"]["default_incoming_policy"] == "deny"
+        assert data["tools"]["firewall"]["desired_state"]["allowed_ports"] == [22]
         assert data["updates"]["self_update"]["source_path"]
 
     def test_auto_update_can_be_disabled(self, tmp_path: Path) -> None:

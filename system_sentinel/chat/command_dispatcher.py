@@ -9,7 +9,7 @@ import json
 import os
 from pathlib import Path
 import shutil
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 import uuid
 
 import psutil
@@ -32,6 +32,11 @@ _COMMAND_ALIASES = {
     "!snaphsots": "!snapshots",
 }
 CommandCallable = Callable[[InboundMessage], Awaitable[OutboundMessage]]
+
+
+@runtime_checkable
+class FirewallStatusReporter(Protocol):
+    async def status_report(self) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -332,6 +337,11 @@ class ChatCommandDispatcher:
         return OutboundMessage(text="\n".join(lines), reply_to=message)
 
     async def _cmd_firewall(self, message: InboundMessage) -> OutboundMessage:
+        firewall_tool = self._tools.get("firewall")
+        if isinstance(firewall_tool, FirewallStatusReporter):
+            report = await firewall_tool.status_report()
+            return OutboundMessage(text=report[:3000], reply_to=message)
+
         ufw_path = shutil.which("ufw")
         if ufw_path:
             proc = await asyncio.create_subprocess_exec(
@@ -390,7 +400,7 @@ class ChatCommandDispatcher:
                 "!storage - generate storage usage report\n"
                 "!snapshots - list recent snapshot/rollback points\n"
                 "!anomalies - list recent login anomalies\n"
-                "!firewall - show firewall status\n"
+                "!firewall - show effective firewall rules and desired-state drift status\n"
                 "!hardening - show hardening audit results\n"
                 "!connections classify - list latest connection intent classifications\n"
                 "!help - show this help"
