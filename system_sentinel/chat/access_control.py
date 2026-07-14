@@ -16,6 +16,7 @@ _DEFAULT_READONLY_COMMANDS = {
     "!alerts",
     "!files",
     "!storage",
+    "!snapshots",
     "!anomalies",
     "!firewall",
     "!hardening",

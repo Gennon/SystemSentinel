@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from datetime import UTC, datetime
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from system_sentinel.core.snapshots import SnapshotError
 from system_sentinel.core.time_config import parse_duration_from_config
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
     import logging
+
+    from system_sentinel.core.snapshots import SnapshotManager
 
 _DEFAULT_INTERVAL_SECONDS = 300
 _MIN_INTERVAL_SECONDS = 30
@@ -68,10 +72,14 @@ class SelfUpdateMonitor:
         updates_cfg: dict[str, Any],
         logger: logging.Logger,
         on_update_start: Callable[[str, str], Awaitable[None]] | None = None,
+        snapshot_manager: SnapshotManager | None = None,
+        on_snapshot_warning: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         self._logger = logger.getChild("self_update")
         self.config = SelfUpdateConfig.from_updates_config(updates_cfg, self._logger)
         self._on_update_start = on_update_start
+        self._snapshot_manager = snapshot_manager
+        self._on_snapshot_warning = on_snapshot_warning
 
     @property
     def enabled(self) -> bool:
@@ -111,6 +119,20 @@ class SelfUpdateMonitor:
         if self._on_update_start is not None:
             await self._on_update_start(self.config.remote, self.config.branch)
 
+        if self._snapshot_manager is not None and self._snapshot_manager.enabled:
+            pre_label = (
+                f"pre-update {self.config.remote}/{self.config.branch} "
+                f"{datetime.now(UTC).isoformat()}"
+            )
+            try:
+                await self._snapshot_manager.create_snapshot(pre_label)
+            except SnapshotError as exc:
+                warning = f"Skipping self-update because pre-update snapshot creation failed: {exc}"
+                self._logger.warning(warning)
+                if self._on_snapshot_warning is not None:
+                    await self._on_snapshot_warning(warning)
+                return False
+
         self._logger.info(
             "New update detected on %s/%s — applying self-update.",
             self.config.remote,
@@ -135,6 +157,19 @@ class SelfUpdateMonitor:
 
         if self.config.reinstall:
             await _reinstall_editable(repo_path)
+
+        if self._snapshot_manager is not None and self._snapshot_manager.enabled:
+            post_label = (
+                f"post-update {self.config.remote}/{self.config.branch} "
+                f"{datetime.now(UTC).isoformat()}"
+            )
+            try:
+                await self._snapshot_manager.create_snapshot(post_label)
+            except SnapshotError as exc:
+                warning = f"Post-update snapshot creation failed: {exc}"
+                self._logger.warning(warning)
+                if self._on_snapshot_warning is not None:
+                    await self._on_snapshot_warning(warning)
 
         self._logger.info("Self-update applied successfully.")
         return True

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from system_sentinel.core.self_update import SelfUpdateError, SelfUpdateMonitor
+from system_sentinel.core.snapshots import SnapshotError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -38,6 +39,18 @@ def _monitor_config(tmp_path: Path, **overrides: Any) -> dict[str, Any]:
     }
     cfg["self_update"].update(overrides)
     return cfg
+
+
+class _FakeSnapshotManager:
+    def __init__(self, side_effect: Exception | None = None) -> None:
+        self._side_effect = side_effect
+        self.create_snapshot = AsyncMock(side_effect=self._create_snapshot)
+        self.enabled = True
+
+    async def _create_snapshot(self, label: str) -> object:
+        if self._side_effect is not None:
+            raise self._side_effect
+        return {"label": label}
 
 
 @pytest.mark.asyncio
@@ -153,3 +166,71 @@ def test_disabled_self_update_does_not_enable_monitor(tmp_path: Path) -> None:
         MagicMock(),
     )
     assert monitor.enabled is False
+
+
+@pytest.mark.asyncio
+async def test_pre_and_post_snapshots_created_around_update(tmp_path: Path) -> None:
+    async def fake_exec(*args: str, **kwargs: Any) -> _FakeProc:
+        if "fetch" in args:
+            return _proc()
+        if args[-2:] == ("rev-parse", "HEAD"):
+            return _proc(stdout="abc")
+        if args[-2:] == ("rev-parse", "origin/main"):
+            return _proc(stdout="def")
+        if "pull" in args:
+            return _proc()
+        raise AssertionError(f"Unexpected command: {args}")
+
+    snapshot_manager = _FakeSnapshotManager()
+    monitor = SelfUpdateMonitor(
+        _monitor_config(tmp_path),
+        MagicMock(),
+        snapshot_manager=snapshot_manager,  # type: ignore[arg-type]
+    )
+    with patch(
+        "system_sentinel.core.self_update.asyncio.create_subprocess_exec",
+        side_effect=fake_exec,
+    ):
+        updated = await monitor.check_and_apply_update()
+
+    assert updated is True
+    assert snapshot_manager.create_snapshot.await_count == 2
+    first_label = snapshot_manager.create_snapshot.await_args_list[0].args[0]
+    second_label = snapshot_manager.create_snapshot.await_args_list[1].args[0]
+    assert first_label.startswith("pre-update")
+    assert second_label.startswith("post-update")
+
+
+@pytest.mark.asyncio
+async def test_failed_pre_snapshot_skips_update_and_warns(tmp_path: Path) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    async def fake_exec(*args: str, **kwargs: Any) -> _FakeProc:
+        calls.append(args)
+        if "fetch" in args:
+            return _proc()
+        if args[-2:] == ("rev-parse", "HEAD"):
+            return _proc(stdout="abc")
+        if args[-2:] == ("rev-parse", "origin/main"):
+            return _proc(stdout="def")
+        if "pull" in args:
+            return _proc()
+        raise AssertionError(f"Unexpected command: {args}")
+
+    snapshot_manager = _FakeSnapshotManager(side_effect=SnapshotError("snapshot backend error"))
+    on_snapshot_warning = AsyncMock()
+    monitor = SelfUpdateMonitor(
+        _monitor_config(tmp_path),
+        MagicMock(),
+        snapshot_manager=snapshot_manager,  # type: ignore[arg-type]
+        on_snapshot_warning=on_snapshot_warning,
+    )
+    with patch(
+        "system_sentinel.core.self_update.asyncio.create_subprocess_exec",
+        side_effect=fake_exec,
+    ):
+        updated = await monitor.check_and_apply_update()
+
+    assert updated is False
+    assert not any("pull" in call for call in calls)
+    on_snapshot_warning.assert_awaited_once()

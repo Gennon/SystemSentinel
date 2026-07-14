@@ -21,6 +21,7 @@ from system_sentinel.core.event_bus import InProcessEventBus
 from system_sentinel.core.exceptions import ConfigError
 from system_sentinel.core.scheduler import Scheduler
 from system_sentinel.core.self_update import SelfUpdateError, SelfUpdateMonitor
+from system_sentinel.core.snapshots import SnapshotManager
 from system_sentinel.db.audit_repository import SqliteAuditRepository
 from system_sentinel.db.connection import DatabaseConnection
 from system_sentinel.db.metrics_repository import MetricsRepository
@@ -174,10 +175,28 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
             )
         )
 
+    async def _on_snapshot_warning(message: str) -> None:
+        await chat_router.broadcast(
+            OutboundMessage(
+                title="SystemSentinel snapshot warning",
+                text=message,
+            )
+        )
+
+    self_update_cfg = config.get("updates", {}).get("self_update", {})
+    self_update_cfg_dict = self_update_cfg if isinstance(self_update_cfg, dict) else {}
+    snapshot_manager = SnapshotManager.from_config(
+        self_update_cfg=self_update_cfg_dict,
+        audit=audit,
+        logger=logger,
+    )
+
     self_update_monitor = SelfUpdateMonitor(
         config.get("updates", {}),
         logger,
         on_update_start=_on_self_update_start,
+        snapshot_manager=snapshot_manager,
+        on_snapshot_warning=_on_snapshot_warning,
     )
 
     stop_event = asyncio.Event()

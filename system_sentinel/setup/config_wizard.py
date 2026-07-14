@@ -90,6 +90,10 @@ _SAFE_DEFAULTS: dict[str, Any] = {
             "remote": "origin",
             "branch": "main",
             "reinstall": True,
+            "snapshots": {
+                "backend": "auto",
+                "keep_last": 20,
+            },
         },
     },
     "monitors": {

@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import fnmatch
+import json
 import os
 from pathlib import Path
 import shutil
@@ -75,6 +76,7 @@ class ChatCommandDispatcher:
             "!files": self._cmd_files,
             "!alerts": self._cmd_alerts,
             "!storage": self._cmd_storage,
+            "!snapshots": self._cmd_snapshots,
             "!anomalies": self._cmd_anomalies,
             "!firewall": self._cmd_firewall,
             "!hardening": self._cmd_hardening,
@@ -292,6 +294,40 @@ class ChatCommandDispatcher:
             lines.append(f"- {row[0]} | {row[1]}")
         return OutboundMessage(text="\n".join(lines), reply_to=message)
 
+    async def _cmd_snapshots(self, message: InboundMessage) -> OutboundMessage:
+        cursor = await self._db.connection.execute(
+            """
+            SELECT timestamp, details_json
+            FROM audit_log
+            WHERE action_type = 'snapshot_create'
+              AND outcome = 'success'
+            ORDER BY id DESC
+            LIMIT 10
+            """
+        )
+        rows = await cursor.fetchall()
+        if not rows:
+            return OutboundMessage(text="No snapshots recorded yet.", reply_to=message)
+
+        lines = ["Recent snapshots:"]
+        for row in rows:
+            timestamp = str(row[0])
+            details_raw = row[1]
+            label = "snapshot"
+            backend = "unknown"
+            snapshot_id = "n/a"
+            if isinstance(details_raw, str):
+                try:
+                    details = json.loads(details_raw)
+                except json.JSONDecodeError:
+                    details = {}
+                if isinstance(details, dict):
+                    label = str(details.get("label", label))
+                    backend = str(details.get("backend", backend))
+                    snapshot_id = str(details.get("snapshot_id", snapshot_id))
+            lines.append(f"- {timestamp} | {backend} | {snapshot_id} | {label}")
+        return OutboundMessage(text="\n".join(lines), reply_to=message)
+
     async def _cmd_firewall(self, message: InboundMessage) -> OutboundMessage:
         ufw_path = shutil.which("ufw")
         if ufw_path:
@@ -349,6 +385,7 @@ class ChatCommandDispatcher:
                 "!files - list old files from latest scan\n"
                 "!alerts - list active alert conditions\n"
                 "!storage - generate storage usage report\n"
+                "!snapshots - list recent snapshot/rollback points\n"
                 "!anomalies - list recent login anomalies\n"
                 "!firewall - show firewall status\n"
                 "!hardening - show hardening audit results\n"
@@ -414,8 +451,6 @@ class ChatCommandDispatcher:
         )
         rows = await cursor.fetchall()
         latest_by_type = {str(row[0]): str(row[1]) for row in rows}
-
-        import json
 
         if "cpu" in latest_by_type:
             cpu_data = json.loads(latest_by_type["cpu"])

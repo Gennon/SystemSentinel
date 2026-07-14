@@ -5,6 +5,8 @@ import subprocess
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import yaml
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -340,6 +342,26 @@ class TestInstallOptionalFeaturesStep:
 
         assert results[0].outcome == StepOutcome.SUCCESS
         assert config_path.exists()
+
+    def test_snapshot_feature_writes_self_update_snapshot_backend(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        ctx = WizardContext(enabled_features=["snapshot"])
+
+        with (
+            patch(
+                "system_sentinel.setup.optional_features.CONFIG_PATH",
+                config_path,
+            ),
+            patch(
+                "system_sentinel.setup.optional_features.subprocess.run",
+                side_effect=_make_sudo_run(),
+            ),
+        ):
+            results, _ = _run_install_step(ctx)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        config = yaml.safe_load(config_path.read_text())
+        assert config["updates"]["self_update"]["snapshots"]["backend"] == "auto"
 
     def test_check_only_skips_install_and_write(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"

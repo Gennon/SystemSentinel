@@ -154,6 +154,8 @@ class TestNoConfigInteractive:
         assert "monitors" in data
         assert data["updates"]["self_update"]["enabled"] is True
         assert data["updates"]["self_update"]["check_interval"] == "00:05:00"
+        assert data["updates"]["self_update"]["snapshots"]["backend"] == "auto"
+        assert data["updates"]["self_update"]["snapshots"]["keep_last"] == 20
         assert data["monitors"]["collection_interval"] == "00:01:00"
         assert data["monitors"]["retention"] == "30d 00:00:00"
         assert data["monitors"]["services"]["enabled"] is True

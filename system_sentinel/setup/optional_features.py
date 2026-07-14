@@ -167,7 +167,7 @@ def select_features_step() -> WizardStep:
 _FEATURE_CONFIG: dict[str, dict[str, object]] = {
     "gpu": {"monitors": {"gpu": {"enabled": True}}},
     "harden": {"tools": {"harden": {"enabled": True}}},
-    "snapshot": {"tools": {"snapshot": {"enabled": True}}},
+    "snapshot": {"updates": {"self_update": {"snapshots": {"backend": "auto"}}}},
     "vulnscan": {"tools": {"vulnscan": {"enabled": True}}},
     "prometheus": {"metrics_export": {"prometheus": {"enabled": True}}},
 }

@@ -83,6 +83,8 @@ The following keys use duration parsing from `system_sentinel.core.time_config`:
 | `updates.self_update.remote` | string | `origin` | `SelfUpdateMonitor` | Git remote name. |
 | `updates.self_update.branch` | string | `main` | `SelfUpdateMonitor` | Git branch to track. |
 | `updates.self_update.reinstall` | bool | `true` | `SelfUpdateMonitor` | Runs `.venv/bin/pip install -e <repo>` after pull when available. |
+| `updates.self_update.snapshots.backend` | string | `auto` | `SelfUpdateMonitor` + `SnapshotManager` | `auto` probes `snapper` then `timeshift`; `snapper`/`timeshift` force a backend; `none` disables snapshots. |
+| `updates.self_update.snapshots.keep_last` | int | `20` | `SnapshotManager` | Maximum snapshots to keep before pruning oldest snapshots. |
 | *(signal)* `SIGHUP` | n/a | n/a | `run_daemon` | Reloads chat access control from `config.yaml` without restarting the daemon. |
 | `updates.enabled` | bool | `true` (wizard default) | setup wizard default only | Currently not consumed by runtime code. |
 | `updates.schedule` | `HH:MM` | `02:00` (wizard default) | setup wizard default only | Currently not consumed by runtime code. |
@@ -94,7 +96,7 @@ The following keys use duration parsing from `system_sentinel.core.time_config`:
 | `metrics_export.prometheus.enabled` | bool | none | optional-feature setup merge | Added when enabling `prometheus`; currently no runtime consumer in this repo. |
 | `monitors.gpu.enabled` | bool | none | optional-feature setup merge | Added when enabling `gpu`; currently no runtime consumer in this repo. |
 | `tools.harden.enabled` | bool | none | optional-feature setup merge | Added when enabling `harden`; currently no runtime consumer in this repo. |
-| `tools.snapshot.enabled` | bool | none | optional-feature setup merge | Added when enabling `snapshot`; currently no runtime consumer in this repo. |
+| `updates.self_update.snapshots.backend` | string | none | optional-feature setup merge | Added as `auto` when enabling `snapshot`. |
 | `tools.vulnscan.enabled` | bool | none | optional-feature setup merge | Added when enabling `vulnscan`; currently no runtime consumer in this repo. |
 
 ## Connection Intent Classification
@@ -156,6 +158,9 @@ updates:
     remote: "origin"
     branch: "main"
     reinstall: true
+    snapshots:
+      backend: "auto"
+      keep_last: 20
 
 monitors:
   collection_interval: "00:01:00"
