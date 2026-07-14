@@ -1009,7 +1009,9 @@ The daemon runs as a dedicated `sentinel` user with no broad root access. Featur
 # /etc/sudoers.d/sentinel  (installed by `sentinel setup`)
 sentinel ALL=(root) NOPASSWD: /bin/systemctl restart *
 sentinel ALL=(root) NOPASSWD: /bin/systemctl stop *
+sentinel ALL=(root) NOPASSWD: /bin/ufw *
 sentinel ALL=(root) NOPASSWD: /usr/sbin/ufw *
+sentinel ALL=(root) NOPASSWD: /bin/nft *
 sentinel ALL=(root) NOPASSWD: /usr/sbin/nft *
 ```
 

@@ -49,11 +49,11 @@ class FirewallBackend:
 def detect_backend() -> FirewallBackend:
     ufw_path = shutil.which("ufw")
     if ufw_path is not None:
-        return UfwBackend(ufw_path=Path(ufw_path))
+        return UfwBackend(ufw_path=_canonical_tool_path(ufw_path))
 
     nft_path = shutil.which("nft")
     if nft_path is not None:
-        return NftablesBackend(nft_path=Path(nft_path))
+        return NftablesBackend(nft_path=_canonical_tool_path(nft_path))
 
     raise UnsupportedFirewallBackendError(
         "No supported firewall backend detected. Install ufw or nftables."
@@ -318,6 +318,10 @@ def _normalize_policy_for_nft(policy: str) -> str:
     if lowered == "allow":
         return "accept"
     return lowered
+
+
+def _canonical_tool_path(raw_path: str) -> Path:
+    return Path(raw_path).resolve(strict=False)
 
 
 async def _run_exec(cmd: list[str]) -> tuple[str, str, int]:

@@ -698,7 +698,9 @@ class TestInstallSudoersRulesStep:
         config_path.write_text("tools:\n  firewall:\n    enabled: true\n    backend: auto\n")
         with patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_path):
             rules = _required_sudoers_rules()
+        assert "sentinel ALL=(root) NOPASSWD: /bin/ufw *" in rules
         assert "sentinel ALL=(root) NOPASSWD: /usr/sbin/ufw *" in rules
+        assert "sentinel ALL=(root) NOPASSWD: /bin/nft *" in rules
         assert "sentinel ALL=(root) NOPASSWD: /usr/sbin/nft *" in rules
 
     def test_firewall_enabled_ufw_requires_only_ufw_rules(self, tmp_path: Path) -> None:
@@ -706,6 +708,7 @@ class TestInstallSudoersRulesStep:
         config_path.write_text("tools:\n  firewall:\n    enabled: true\n    backend: ufw\n")
         with patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_path):
             rules = _required_sudoers_rules()
+        assert "sentinel ALL=(root) NOPASSWD: /bin/ufw *" in rules
         assert "sentinel ALL=(root) NOPASSWD: /usr/sbin/ufw *" in rules
         assert not any("/nft " in rule for rule in rules)
 

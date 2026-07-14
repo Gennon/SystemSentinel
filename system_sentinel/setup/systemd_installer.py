@@ -38,10 +38,12 @@ _TIMESHIFT_RULES = (
     "sentinel ALL=(root) NOPASSWD: /bin/timeshift *",
 )
 _UFW_RULES = (
+    "sentinel ALL=(root) NOPASSWD: /bin/ufw *",
     "sentinel ALL=(root) NOPASSWD: /usr/sbin/ufw *",
     "sentinel ALL=(root) NOPASSWD: /usr/bin/ufw *",
 )
 _NFT_RULES = (
+    "sentinel ALL=(root) NOPASSWD: /bin/nft *",
     "sentinel ALL=(root) NOPASSWD: /usr/sbin/nft *",
     "sentinel ALL=(root) NOPASSWD: /usr/bin/nft *",
 )
