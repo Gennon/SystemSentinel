@@ -28,6 +28,9 @@ if TYPE_CHECKING:
 _CONFIRMATION_EMOJI = "✅"
 _DEFAULT_PREFIX = "!"
 _CONFIRMATION_TTL_SECONDS = 300
+_COMMAND_ALIASES = {
+    "!snaphsots": "!snapshots",
+}
 CommandCallable = Callable[[InboundMessage], Awaitable[OutboundMessage]]
 
 
@@ -604,7 +607,8 @@ class ChatCommandDispatcher:
             token = text.strip().split(maxsplit=1)[0] if text.strip() else ""
         if not token.startswith(prefix):
             return None
-        return f"!{token[len(prefix) :].lower()}"
+        command = f"!{token[len(prefix) :].lower()}"
+        return _COMMAND_ALIASES.get(command, command)
 
     def _is_in_command_channel(self, message: InboundMessage) -> bool:
         chat_cfg = self._config.get("chat_adapters", {}).get(message.adapter, {})

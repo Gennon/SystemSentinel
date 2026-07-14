@@ -283,3 +283,48 @@ async def test_snapshots_command_lists_recent_snapshot_records(tmp_path: Path) -
     assert "Recent snapshots:" in response.text
     assert "pre-update origin/main" in response.text
     assert "snapper" in response.text
+
+
+@pytest.mark.asyncio
+async def test_snapshots_common_typo_alias_is_supported(tmp_path: Path) -> None:
+    db = DatabaseConnection(tmp_path / "sentinel.db")
+    await db.connect()
+    await db.connection.execute(
+        """
+        INSERT INTO audit_log
+            (timestamp, action_type, source, description, outcome, details_json)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            datetime.now(UTC).isoformat(),
+            "snapshot_create",
+            "self_update",
+            "snapper snapshot created",
+            "success",
+            json.dumps(
+                {
+                    "snapshot_id": "77",
+                    "label": "pre-update origin/main",
+                    "backend": "snapper",
+                }
+            ),
+        ),
+    )
+    await db.connection.commit()
+    ctx = AppContext(
+        audit=AsyncMock(),
+        event_bus=AsyncMock(),
+        logger=logging.getLogger("test"),
+    )
+    dispatcher = ChatCommandDispatcher(
+        config={"chat_adapters": {"discord": {"channel_id": "100"}}},
+        app_ctx=ctx,
+        scheduler=_FakeScheduler(),  # type: ignore[arg-type]
+        tools={},
+        monitor_registry=_FakeMonitorRegistry(),  # type: ignore[arg-type]
+        db=db,
+    )
+
+    response = await dispatcher.handle_message(_message("!snaphsots"), ["!snaphsots"])
+    assert response is not None
+    assert "Recent snapshots:" in response.text

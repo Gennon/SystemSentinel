@@ -21,6 +21,9 @@ _DEFAULT_READONLY_COMMANDS = {
     "!firewall",
     "!hardening",
 }
+_COMMAND_ALIASES = {
+    "!snaphsots": "!snapshots",
+}
 
 _DEFAULT_UNAUTHORIZED_MESSAGE = "Not authorised."
 
@@ -242,9 +245,11 @@ def _extract_command(text: str, args: list[str]) -> str | None:
     if args:
         candidate = args[0].strip().lower()
         if candidate.startswith("!"):
-            return candidate
+            return _COMMAND_ALIASES.get(candidate, candidate)
     stripped = text.strip().lower()
     if not stripped.startswith("!"):
         return None
     command = stripped.split(maxsplit=1)[0]
-    return command if command else None
+    if not command:
+        return None
+    return _COMMAND_ALIASES.get(command, command)
