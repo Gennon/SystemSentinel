@@ -315,7 +315,14 @@ def _error_text(result: _CommandResult) -> str:
         or "unknown snapshot backend failure"
     )
     lower = message.lower()
-    if "a password is required" in lower or "is not allowed to execute" in lower:
+    if (
+        "a password is required" in lower
+        or "is not allowed to execute" in lower
+        or "application needs admin access" in lower
+        or "permission denied" in lower
+        or "not in the sudoers file" in lower
+        or "a terminal is required to read the password" in lower
+    ):
         return (
             f"{message} "
             "(snapshot command needs NOPASSWD sudo for the sentinel user; rerun `sentinel setup` "

@@ -137,3 +137,18 @@ def test_error_text_includes_sudoers_hint_for_sudo_denials() -> None:
         )()
     )
     assert "NOPASSWD sudo" in message
+
+
+def test_error_text_includes_sudoers_hint_for_admin_access_message() -> None:
+    message = _error_text(
+        type(
+            "_R",
+            (),
+            {
+                "stdout": b"",
+                "stderr": b"Application needs admin access",
+                "returncode": 1,
+            },
+        )()
+    )
+    assert "NOPASSWD sudo" in message
