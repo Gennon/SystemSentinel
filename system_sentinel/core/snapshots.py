@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import os
 import re
 import shutil
 from typing import TYPE_CHECKING, Any
@@ -316,16 +317,30 @@ def _error_text(result: _CommandResult) -> str:
 
 
 async def _run_command(*args: str) -> _CommandResult:
+    command_args = _with_noninteractive_sudo(args)
     try:
         proc = await asyncio.create_subprocess_exec(
-            *args,
+            *command_args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
     except FileNotFoundError as exc:
-        raise SnapshotError(f"Command not found: {args[0]}") from exc
+        raise SnapshotError(f"Command not found: {command_args[0]}") from exc
     stdout, stderr = await proc.communicate()
     return _CommandResult(stdout=stdout, stderr=stderr, returncode=proc.returncode or 0)
+
+
+def _with_noninteractive_sudo(args: tuple[str, ...]) -> tuple[str, ...]:
+    if os.geteuid() == 0:
+        return args
+    if args and args[0] == "sudo":
+        return args
+    sudo_bin = shutil.which("sudo")
+    if sudo_bin is None:
+        raise SnapshotError(
+            "Snapshot commands require elevated privileges, but `sudo` is not available."
+        )
+    return (sudo_bin, "-n", *args)
 
 
 def _coerce_keep_last(raw_value: object, *, logger: logging.Logger) -> int:

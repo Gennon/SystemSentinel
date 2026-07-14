@@ -6,8 +6,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from system_sentinel.core.snapshots import (
+    SnapshotError,
     SnapshotManager,
     SnapshotRecord,
+    _run_command,
 )
 
 
@@ -80,3 +82,42 @@ def test_from_config_invalid_keep_last_uses_default() -> None:
         logger=logging.getLogger("test"),
     )
     assert manager.enabled is False
+
+
+class _FakeProc:
+    def __init__(self, returncode: int = 0) -> None:
+        self.returncode = returncode
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        return b"ok", b""
+
+
+@pytest.mark.asyncio
+async def test_run_command_uses_noninteractive_sudo_for_non_root() -> None:
+    called: list[tuple[str, ...]] = []
+
+    async def fake_exec(*args: str, **kwargs: object) -> _FakeProc:
+        called.append(args)
+        return _FakeProc()
+
+    with (
+        patch("system_sentinel.core.snapshots.os.geteuid", return_value=1000),
+        patch("system_sentinel.core.snapshots.shutil.which", return_value="/usr/bin/sudo"),
+        patch(
+            "system_sentinel.core.snapshots.asyncio.create_subprocess_exec",
+            side_effect=fake_exec,
+        ),
+    ):
+        await _run_command("snapper", "list")
+
+    assert called[0][:3] == ("/usr/bin/sudo", "-n", "snapper")
+
+
+@pytest.mark.asyncio
+async def test_run_command_raises_when_sudo_missing_for_non_root() -> None:
+    with (
+        patch("system_sentinel.core.snapshots.os.geteuid", return_value=1000),
+        patch("system_sentinel.core.snapshots.shutil.which", return_value=None),
+        pytest.raises(SnapshotError, match="sudo"),
+    ):
+        await _run_command("snapper", "list")

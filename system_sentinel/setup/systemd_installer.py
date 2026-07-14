@@ -27,6 +27,8 @@ _POLL_MAX_ATTEMPTS = 10
 _INSTALL_DIR_DEPTH = 3
 
 _SERVICE_RESTART_RULE = "sentinel ALL=(root) NOPASSWD: /bin/systemctl restart *"
+_SNAPPER_RULE = "sentinel ALL=(root) NOPASSWD: /usr/bin/snapper *"
+_TIMESHIFT_RULE = "sentinel ALL=(root) NOPASSWD: /usr/bin/timeshift *"
 
 
 def create_sentinel_user_step() -> WizardStep:
@@ -334,15 +336,43 @@ def _required_sudoers_rules() -> list[str]:
     raw = yaml.safe_load(CONFIG_PATH.read_text()) or {}
     if not isinstance(raw, dict):
         return []
-    monitors = raw.get("monitors")
+
+    rules: list[str] = []
+    if _services_monitor_enabled(raw):
+        rules.append(_SERVICE_RESTART_RULE)
+    rules.extend(_snapshot_rules(raw))
+    return rules
+
+
+def _services_monitor_enabled(config: dict[str, object]) -> bool:
+    monitors = config.get("monitors")
     if not isinstance(monitors, dict):
-        return []
+        return False
     services = monitors.get("services")
     if not isinstance(services, dict):
+        return False
+    return bool(services.get("enabled", True))
+
+
+def _snapshot_rules(config: dict[str, object]) -> list[str]:
+    updates = config.get("updates")
+    if not isinstance(updates, dict):
         return []
-    if not bool(services.get("enabled", True)):
+    self_update = updates.get("self_update")
+    if not isinstance(self_update, dict):
         return []
-    return [_SERVICE_RESTART_RULE]
+    if not bool(self_update.get("enabled", False)):
+        return []
+    snapshots = self_update.get("snapshots")
+    snapshots_cfg = snapshots if isinstance(snapshots, dict) else {}
+    backend = str(snapshots_cfg.get("backend", "auto")).strip().lower() or "auto"
+    if backend in {"none", "disabled"}:
+        return []
+    if backend == "snapper":
+        return [_SNAPPER_RULE]
+    if backend == "timeshift":
+        return [_TIMESHIFT_RULE]
+    return [_SNAPPER_RULE, _TIMESHIFT_RULE]
 
 
 def _build_sudoers_content(rules: list[str]) -> str:

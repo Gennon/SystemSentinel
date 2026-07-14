@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 from system_sentinel.setup.dependency_installer import CommandResult
 from system_sentinel.setup.systemd_installer import (
+    _required_sudoers_rules,
     add_sentinel_to_log_groups_step,
     create_data_dir_step,
     create_sentinel_user_step,
@@ -668,6 +669,27 @@ class TestInstallSudoersRulesStep:
         assert any("/usr/sbin/visudo" in c for c in calls)
         assert any("/bin/cp" in c for c in calls)
         assert any("/bin/chmod" in c for c in calls)
+
+    def test_snapshot_backend_auto_requires_snapper_and_timeshift_rules(
+        self, tmp_path: Path
+    ) -> None:
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "updates:\n  self_update:\n    enabled: true\n    snapshots:\n      backend: auto\n"
+        )
+        with patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_path):
+            rules = _required_sudoers_rules()
+        assert "sentinel ALL=(root) NOPASSWD: /usr/bin/snapper *" in rules
+        assert "sentinel ALL=(root) NOPASSWD: /usr/bin/timeshift *" in rules
+
+    def test_snapshot_backend_none_requires_no_sudoers_rules(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "updates:\n  self_update:\n    enabled: true\n    snapshots:\n      backend: none\n"
+        )
+        with patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_path):
+            rules = _required_sudoers_rules()
+        assert rules == []
 
 
 # ---------------------------------------------------------------------------
