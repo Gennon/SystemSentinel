@@ -219,9 +219,11 @@ async def test_failed_pre_snapshot_skips_update_and_warns(tmp_path: Path) -> Non
 
     snapshot_manager = _FakeSnapshotManager(side_effect=SnapshotError("snapshot backend error"))
     on_snapshot_warning = AsyncMock()
+    on_update_start = AsyncMock()
     monitor = SelfUpdateMonitor(
         _monitor_config(tmp_path),
         MagicMock(),
+        on_update_start=on_update_start,
         snapshot_manager=snapshot_manager,  # type: ignore[arg-type]
         on_snapshot_warning=on_snapshot_warning,
     )
@@ -234,3 +236,4 @@ async def test_failed_pre_snapshot_skips_update_and_warns(tmp_path: Path) -> Non
     assert updated is False
     assert not any("pull" in call for call in calls)
     on_snapshot_warning.assert_awaited_once()
+    on_update_start.assert_not_awaited()

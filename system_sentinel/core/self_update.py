@@ -116,9 +116,6 @@ class SelfUpdateMonitor:
         if local_head == remote_head:
             return False
 
-        if self._on_update_start is not None:
-            await self._on_update_start(self.config.remote, self.config.branch)
-
         if self._snapshot_manager is not None and self._snapshot_manager.enabled:
             pre_label = (
                 f"pre-update {self.config.remote}/{self.config.branch} "
@@ -132,6 +129,9 @@ class SelfUpdateMonitor:
                 if self._on_snapshot_warning is not None:
                     await self._on_snapshot_warning(warning)
                 return False
+
+        if self._on_update_start is not None:
+            await self._on_update_start(self.config.remote, self.config.branch)
 
         self._logger.info(
             "New update detected on %s/%s — applying self-update.",
