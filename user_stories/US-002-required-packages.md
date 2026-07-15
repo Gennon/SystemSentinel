@@ -2,6 +2,7 @@
 
 **Release:** 1 — Core / MVP
 **Area:** System Maintenance
+**Status:** Done
 
 ## Description
 As a user I want to define a list of required packages that are always installed so the system self-heals if software goes missing.

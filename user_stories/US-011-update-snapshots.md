@@ -2,6 +2,7 @@
 
 **Release:** 2 — Hardening & Intelligence
 **Area:** System Maintenance
+**Status:** Done
 
 ## Description
 As a user I want automatic pre/post-update snapshots or rollback points so I can recover if an update breaks something.

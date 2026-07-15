@@ -2,6 +2,7 @@
 
 **Release:** 2 — Hardening & Intelligence
 **Area:** Communication & Alerts
+**Status:** Done
 
 ## Description
 As a user I want to configure alert severity levels (info, warning, critical) so I can tune the signal-to-noise ratio.

@@ -2,6 +2,7 @@
 
 **Release:** 2 — Hardening & Intelligence
 **Area:** Security & Hardening
+**Status:** Done
 
 ## Description
 As a user I want unknown inbound connection activity classified as likely background scanning or likely access attempt so I can decide quickly whether to ignore, watch, or block.

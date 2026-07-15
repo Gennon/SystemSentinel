@@ -2,6 +2,7 @@
 
 **Release:** 1 — Core / MVP
 **Area:** Communication & Alerts
+**Status:** Done
 
 ## Description
 As a user I want a daily digest report sent via chat each morning so I start the day with a system overview.

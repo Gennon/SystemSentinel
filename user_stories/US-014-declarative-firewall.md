@@ -2,6 +2,7 @@
 
 **Release:** 2 — Hardening & Intelligence
 **Area:** Security & Hardening
+**Status:** Done
 
 ## Description
 As a user I want firewall rules managed declaratively (UFW/nftables) with a desired-state config so rules are version-controlled and reproducible.

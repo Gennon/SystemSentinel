@@ -2,6 +2,7 @@
 
 **Release:** 1 — Core / MVP
 **Area:** Communication & Alerts
+**Status:** Done
 
 ## Description
 As a user I want chat notifications for critical events (high CPU, failed logins, disk full) so I am notified immediately.

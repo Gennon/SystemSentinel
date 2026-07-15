@@ -2,6 +2,7 @@
 
 **Release:** 1 — Core / MVP
 **Area:** System Maintenance
+**Status:** Done
 
 ## Description
 As a user I want all duration-based config values to use a consistent `HH:MM:SS` format so configuration is predictable and easier to read.

@@ -2,6 +2,7 @@
 
 **Release:** 1 — Core / MVP
 **Area:** File Management
+**Status:** Done
 
 ## Description
 As a user I want to see a list of files older than N days in configured directories so I can decide what to clean up.

@@ -2,6 +2,7 @@
 
 **Release:** 1 — Core / MVP
 **Area:** System Maintenance
+**Status:** Done
 
 ## Description
 As a user I want to choose which optional features to enable during setup, with a clear explanation of each, so I only install what I need.

@@ -2,6 +2,7 @@
 
 **Release:** 2 — Hardening & Intelligence
 **Area:** System Maintenance
+**Status:** Done
 
 ## Description
 As a user I want service health checks and auto-restart on failure so critical services stay running.

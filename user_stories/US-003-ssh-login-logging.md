@@ -2,6 +2,7 @@
 
 **Release:** 1 — Core / MVP
 **Area:** Security & Hardening
+**Status:** Done
 
 ## Description
 As a user I want failed SSH login attempts logged with IP address, timestamp, and username so I can see who is trying to get in.

@@ -2,6 +2,7 @@
 
 **Release:** 1 — Core / MVP
 **Area:** Security & Hardening
+**Status:** Done
 
 ## Description
 As a user I want an alert when a new unknown IP connects to an open port so I am aware of unexpected network access.

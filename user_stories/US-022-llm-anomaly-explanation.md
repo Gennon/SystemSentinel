@@ -2,6 +2,7 @@
 
 **Release:** 2 — Hardening & Intelligence
 **Area:** AI / LLM Assistant
+**Status:** Done
 
 ## Description
 As a user I want to ask the bot a question (e.g. "why is CPU high?") and get an LLM-powered explanation so I can diagnose issues without SSHing in.

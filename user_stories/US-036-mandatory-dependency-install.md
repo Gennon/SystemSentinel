@@ -2,6 +2,7 @@
 
 **Release:** 1 — Core / MVP
 **Area:** System Maintenance
+**Status:** Done
 
 ## Description
 As a user I want all mandatory dependencies installed automatically during setup so the daemon works out of the box without me having to know what to install.

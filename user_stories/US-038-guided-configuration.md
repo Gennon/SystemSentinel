@@ -2,6 +2,7 @@
 
 **Release:** 1 — Core / MVP
 **Area:** Communication & Alerts
+**Status:** Done
 
 ## Description
 As a user I want the setup wizard to walk me through the minimum required configuration so I don't have to manually edit a config file to get started.

@@ -2,6 +2,7 @@
 
 **Release:** 1 — Core / MVP
 **Area:** System Maintenance
+**Status:** Done
 
 ## Description
 As a user I want a single command (`sentinel setup`) that launches a friendly interactive wizard so I can go from a fresh Linux machine to a running daemon without prior knowledge.

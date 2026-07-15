@@ -33,7 +33,7 @@ A Linux system management daemon that autonomously handles updates, security har
     - `sentinel run` starts the daemon, wires all components (scheduler, monitors, chat adapters, alert handler), and exits cleanly on SIGINT/SIGTERM
     - The systemd service starts successfully after setup with no permission errors
 - [x] As a user I want all mandatory dependencies installed automatically during setup so the daemon works out of the box. **(US-036)**
-- [x] As a user I want to choose which optional features to enable during setup so I only install what I need.
+- [x] As a user I want to choose which optional features to enable during setup so I only install what I need. **(US-037)**
 - [x] As a user I want the setup wizard to walk me through the minimum required configuration so I don't have to manually edit a config file to get started. **(US-038)**
 - [x] As a user I want all duration-based config values to use a consistent `HH:MM:SS` format so configuration is predictable and easier to read. **(US-042)**
 - [x] As a user I want the system to auto-apply security patches on a configurable schedule so the machine stays up to date without manual intervention. **(US-001)**
@@ -74,7 +74,7 @@ A Linux system management daemon that autonomously handles updates, security har
 
 ### Monitoring & Metrics
 - [ ] As a user I want GPU utilization metrics collected if a GPU is present so I can monitor AI/compute workloads.
-- [x] As a user I want to set alert thresholds per metric (e.g. alert if RAM > 85%) so I only get paged for real problems.
+- [x] As a user I want to set alert thresholds per metric (e.g. alert if RAM > 85%) so I only get paged for real problems. **(US-017)**
 
 ### File Management
 - [ ] As a user I want alerts when monitored directories change unexpectedly so I know about unauthorized file modifications.

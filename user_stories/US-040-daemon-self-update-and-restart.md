@@ -2,6 +2,7 @@
 
 **Release:** 1 — Core / MVP
 **Area:** System Maintenance
+**Status:** Done
 
 ## Description
 As a user I want the daemon to self-update from the configured update source and then restart itself so deployed instances stay current automatically.

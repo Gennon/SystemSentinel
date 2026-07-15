@@ -2,6 +2,7 @@
 
 **Release:** 2 — Hardening & Intelligence
 **Area:** Communication & Alerts
+**Status:** Done
 
 ## Description
 As a user I want to control who can interact with the chat bot so that only authorised users can trigger actions or receive sensitive system information.

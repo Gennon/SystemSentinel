@@ -2,6 +2,7 @@
 
 **Release:** 2 — Hardening & Intelligence
 **Area:** Communication & Alerts
+**Status:** Done
 
 ## Description
 As a user I want to send chat commands like `!status`, `!update`, and `!cleanup` to trigger actions remotely so I can manage the system from my phone.

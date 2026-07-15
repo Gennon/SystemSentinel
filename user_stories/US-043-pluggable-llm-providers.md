@@ -2,6 +2,7 @@
 
 **Release:** 2 — Hardening & Intelligence
 **Area:** AI / LLM Assistant
+**Status:** Done
 
 ## Description
 As a user I want LLM providers to be pluggable and selectable in config so I can switch between Ollama, OpenAI, Anthropic (Claude), and Mistral without core code changes.

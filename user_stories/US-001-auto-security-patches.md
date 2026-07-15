@@ -2,6 +2,7 @@
 
 **Release:** 1 — Core / MVP
 **Area:** System Maintenance
+**Status:** Done
 
 ## Description
 As a user I want the system to auto-apply security patches on a configurable schedule so the machine stays up to date without manual intervention.
