@@ -127,3 +127,32 @@ def _format_network_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessa
             "Hostname": str(payload.get("hostname", "—")),
         },
     )
+
+
+def _format_gpu_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessage:
+    triggered_metrics = payload.get("triggered_metrics", [])
+    if isinstance(triggered_metrics, list):
+        triggered_str = ", ".join(str(metric) for metric in triggered_metrics) or "—"
+    else:
+        triggered_str = str(triggered_metrics)
+    return OutboundMessage(
+        title="⚠️ GPU Threshold Exceeded",
+        text=(
+            f"GPU alert on **{payload.get('hostname', 'unknown')}**: "
+            f"util={payload.get('current_utilization_percent', '—')}, "
+            f"temp={payload.get('current_temperature_c', '—')} "
+            f"(threshold {payload.get('threshold', '—')})."
+        ),
+        severity=AlertSeverity.WARNING,
+        fields={
+            "Event Type": str(payload.get("event_type", "gpu_threshold_exceeded")),
+            "Current Utilization": str(payload.get("current_utilization_percent", "—")),
+            "Current Temperature": str(payload.get("current_temperature_c", "—")),
+            "Threshold": str(payload.get("threshold", "—")),
+            "Triggered Metrics": triggered_str,
+            "Vendor": str(payload.get("vendor", "—")),
+            "Device Count": str(payload.get("device_count", "—")),
+            "Timestamp": str(payload.get("timestamp", "—")),
+            "Hostname": str(payload.get("hostname", "—")),
+        },
+    )

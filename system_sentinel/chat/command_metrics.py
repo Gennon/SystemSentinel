@@ -25,6 +25,9 @@ async def get_active_alert_conditions(
     network_recv_threshold = (
         float(network_recv_threshold_raw) if network_recv_threshold_raw is not None else None
     )
+    gpu_cfg = monitors_cfg.get("gpu", {})
+    gpu_utilization_threshold = float(gpu_cfg.get("alert_threshold_utilization_percent", 95))
+    gpu_temperature_threshold = float(gpu_cfg.get("alert_threshold_temperature_c", 85))
 
     cursor = await db.connection.execute(
         """
@@ -74,5 +77,21 @@ async def get_active_alert_conditions(
         if network_recv_threshold is not None and recv_current > network_recv_threshold:
             conditions.append(
                 f"Network recv high: {int(recv_current)} B > {int(network_recv_threshold)} B ({now_iso})"
+            )
+    if "gpu" in latest_by_type:
+        gpu_data = json.loads(latest_by_type["gpu"])
+        gpu_utilization = float(
+            gpu_data.get("peak_utilization_percent", gpu_data.get("utilization_percent", 0.0))
+        )
+        gpu_temperature = float(gpu_data.get("temperature_c", 0.0))
+        if gpu_utilization > gpu_utilization_threshold:
+            conditions.append(
+                "GPU utilization high: "
+                f"{gpu_utilization:.1f}% > {gpu_utilization_threshold:.1f}% ({now_iso})"
+            )
+        if gpu_temperature > gpu_temperature_threshold:
+            conditions.append(
+                "GPU temperature high: "
+                f"{gpu_temperature:.1f}°C > {gpu_temperature_threshold:.1f}°C ({now_iso})"
             )
     return conditions

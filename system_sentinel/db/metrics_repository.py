@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from system_sentinel.db.aggregate_models import (
     DailyAggregates,
     DataGap,
+    GpuAggregates,
     MetricStats,
     NetworkAggregates,
     ProcessStats,
@@ -82,6 +83,20 @@ def _detect_gaps(
         gaps.append(DataGap(start=dts[-1], end=window_end))
 
     return gaps
+
+
+def _extract_numeric_values(
+    samples: list[dict[str, Any]],
+    *,
+    key: str,
+) -> list[float]:
+    values: list[float] = []
+    for sample in samples:
+        raw = sample.get(key)
+        if raw is None:
+            continue
+        values.append(float(raw))
+    return values
 
 
 class MetricsRepository:
@@ -166,12 +181,19 @@ class MetricsRepository:
         ram_samples = await self.query_range("ram", since=window_start, until=end)
         disk_samples = await self.query_range("disk", since=window_start, until=end)
         network_samples = await self.query_range("network", since=window_start, until=end)
+        gpu_samples = await self.query_range("gpu", since=window_start, until=end)
 
         # Unique timestamps across all types for gap detection and sample count.
         all_ts = sorted(
             {
                 s["timestamp"]
-                for samples in (cpu_samples, ram_samples, disk_samples, network_samples)
+                for samples in (
+                    cpu_samples,
+                    ram_samples,
+                    disk_samples,
+                    network_samples,
+                    gpu_samples,
+                )
                 for s in samples
             }
         )
@@ -229,6 +251,38 @@ class MetricsRepository:
                 ),
             )
 
+        # --- GPU ---
+        gpu_stats: GpuAggregates | None = None
+        if gpu_samples:
+            gpu_utilization_values = _extract_numeric_values(gpu_samples, key="utilization_percent")
+            gpu_temperature_values = _extract_numeric_values(gpu_samples, key="temperature_c")
+            gpu_power_values = _extract_numeric_values(gpu_samples, key="power_draw_w")
+            gpu_vram_used_values = _extract_numeric_values(gpu_samples, key="vram_used_mb")
+            gpu_vram_total_values = _extract_numeric_values(gpu_samples, key="vram_total_mb")
+
+            if gpu_utilization_values and gpu_temperature_values:
+                gpu_stats = GpuAggregates(
+                    utilization_percent=_compute_stats(
+                        gpu_utilization_values,
+                        th.get("gpu_utilization_percent"),
+                    ),
+                    temperature_c=_compute_stats(
+                        gpu_temperature_values,
+                        th.get("gpu_temperature_c"),
+                    ),
+                    power_draw_w=(
+                        _compute_stats(gpu_power_values, None) if gpu_power_values else None
+                    ),
+                    vram_used_mb=(
+                        _compute_stats(gpu_vram_used_values, None) if gpu_vram_used_values else None
+                    ),
+                    vram_total_mb=(
+                        _compute_stats(gpu_vram_total_values, None)
+                        if gpu_vram_total_values
+                        else None
+                    ),
+                )
+
         # --- Top processes ---
         top_by_cpu, top_by_ram = _aggregate_processes(cpu_samples)
 
@@ -242,6 +296,7 @@ class MetricsRepository:
             ram=ram_stats,
             disk=disk_stats,
             network=network_stats,
+            gpu=gpu_stats,
             top_processes_by_cpu=top_by_cpu,
             top_processes_by_ram=top_by_ram,
             gaps=gaps,

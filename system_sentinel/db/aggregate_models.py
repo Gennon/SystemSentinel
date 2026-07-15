@@ -26,6 +26,17 @@ class NetworkAggregates:
 
 
 @dataclass(frozen=True)
+class GpuAggregates:
+    """Aggregated GPU statistics for a time window."""
+
+    utilization_percent: MetricStats
+    temperature_c: MetricStats
+    power_draw_w: MetricStats | None = None
+    vram_used_mb: MetricStats | None = None
+    vram_total_mb: MetricStats | None = None
+
+
+@dataclass(frozen=True)
 class ProcessStats:
     """Average resource consumption for a named process over a time window."""
 
@@ -56,6 +67,7 @@ class DailyAggregates:
     ram: MetricStats | None
     disk: dict[str, MetricStats] = field(default_factory=dict)  # mountpoint -> stats
     network: NetworkAggregates | None = None
+    gpu: GpuAggregates | None = None
     top_processes_by_cpu: list[ProcessStats] = field(default_factory=list)
     top_processes_by_ram: list[ProcessStats] = field(default_factory=list)
     gaps: list[DataGap] = field(default_factory=list)

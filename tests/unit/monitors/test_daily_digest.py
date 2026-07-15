@@ -154,3 +154,55 @@ async def test_collect_notes_data_gap_when_metrics_are_sparse(
 
     payload = ctx.event_bus.publish.call_args.args[1]
     assert "gap" in payload["sections"]["24h Resource Usage"].lower()
+
+
+@pytest.mark.asyncio
+async def test_collect_includes_gpu_summary_when_gpu_metrics_exist(
+    db: DatabaseConnection,
+    metrics_repo: MetricsRepository,
+    login_repo: LoginRepository,
+    conn_repo: ConnectionRepository,
+) -> None:
+    now = datetime(2024, 1, 3, 8, 0, tzinfo=UTC)
+    await metrics_repo.insert(
+        "gpu",
+        {
+            "vendor": "nvidia",
+            "device_count": 1,
+            "gpus": [
+                {
+                    "utilization_percent": 72.0,
+                    "vram_used_mb": 6400.0,
+                    "vram_total_mb": 12288.0,
+                    "temperature_c": 76.0,
+                    "power_draw_w": 180.0,
+                }
+            ],
+            "utilization_percent": 72.0,
+            "peak_utilization_percent": 72.0,
+            "vram_used_mb": 6400.0,
+            "vram_total_mb": 12288.0,
+            "temperature_c": 76.0,
+            "power_draw_w": 180.0,
+        },
+        timestamp=now - timedelta(minutes=10),
+    )
+
+    ctx = _make_ctx()
+    monitor = DailyDigestMonitor(
+        {"enabled": True, "send_time_local": "08:00"},
+        ctx,
+        db=db,
+        metrics_repo=metrics_repo,
+        login_repo=login_repo,
+        connection_repo=conn_repo,
+    )
+
+    with (
+        patch.object(monitor, "_now_local", return_value=now),
+        patch.object(monitor, "_now_utc", return_value=now),
+    ):
+        await monitor.collect()
+
+    payload = ctx.event_bus.publish.call_args.args[1]
+    assert "gpu" in payload["sections"]["24h Resource Usage"].lower()

@@ -136,13 +136,17 @@ class DailyDigestMonitor(BaseMonitor):
         )
 
     def _build_resource_usage_summary(self, aggregates: DailyAggregates) -> str:
+        parts: list[str] = []
+
         cpu_part = "CPU avg n/a"
         if aggregates.cpu is not None:
             cpu_part = f"CPU avg {aggregates.cpu.average:.1f}%"
+        parts.append(cpu_part)
 
         ram_part = "RAM peak n/a"
         if aggregates.ram is not None:
             ram_part = f"RAM peak {aggregates.ram.peak:.1f}%"
+        parts.append(ram_part)
 
         if aggregates.disk:
             disk_parts = [
@@ -152,6 +156,22 @@ class DailyDigestMonitor(BaseMonitor):
             disk_part = "Disk " + ", ".join(disk_parts)
         else:
             disk_part = "Disk n/a"
+        parts.append(disk_part)
+
+        if aggregates.gpu is not None:
+            gpu_part = (
+                f"GPU avg util {aggregates.gpu.utilization_percent.average:.1f}% "
+                f"(peak {aggregates.gpu.utilization_percent.peak:.1f}%), "
+                f"temp peak {aggregates.gpu.temperature_c.peak:.1f}°C"
+            )
+            if aggregates.gpu.vram_used_mb is not None and aggregates.gpu.vram_total_mb is not None:
+                gpu_part = (
+                    f"{gpu_part}, VRAM peak "
+                    f"{aggregates.gpu.vram_used_mb.peak:.0f}/{aggregates.gpu.vram_total_mb.peak:.0f} MB"
+                )
+            if aggregates.gpu.power_draw_w is not None:
+                gpu_part = f"{gpu_part}, power peak {aggregates.gpu.power_draw_w.peak:.1f} W"
+            parts.append(gpu_part)
 
         if aggregates.gaps:
             total_gap_seconds = int(sum(g.duration_seconds for g in aggregates.gaps))
@@ -161,8 +181,9 @@ class DailyDigestMonitor(BaseMonitor):
             )
         else:
             gap_part = "No collection gaps detected."
+        parts.append(gap_part)
 
-        return f"{cpu_part}; {ram_part}; {disk_part}; {gap_part}"
+        return "; ".join(parts)
 
     async def _build_login_summary(self, login_repo: LoginRepository, since: datetime) -> str:
         rows = await login_repo.unique_ips_since(since)

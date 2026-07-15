@@ -142,6 +142,12 @@ _SAFE_DEFAULTS: dict[str, Any] = {
             "alert_threshold_bytes_recv": 10_000_000,
             "alert_cooldown": "00:30:00",
         },
+        "gpu": {
+            "enabled": True,
+            "alert_threshold_utilization_percent": 95,
+            "alert_threshold_temperature_c": 85,
+            "alert_cooldown": "00:30:00",
+        },
         "connections": {
             "enabled": True,
             "repeat_alert_count": 3,

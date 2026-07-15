@@ -132,6 +132,39 @@ async def _insert_network(
         )
 
 
+async def _insert_gpu(
+    repo: MetricsRepository,
+    base: datetime,
+    count: int = 3,
+    interval: int = _INTERVAL,
+) -> None:
+    for i in range(count):
+        ts = base + timedelta(seconds=i * interval)
+        await repo.insert(
+            "gpu",
+            {
+                "vendor": "nvidia",
+                "device_count": 1,
+                "gpus": [
+                    {
+                        "utilization_percent": 40.0 + i * 10,
+                        "vram_used_mb": 2000.0 + i * 100,
+                        "vram_total_mb": 8192.0,
+                        "temperature_c": 65.0 + i * 3,
+                        "power_draw_w": 120.0 + i * 5,
+                    }
+                ],
+                "utilization_percent": 40.0 + i * 10,
+                "peak_utilization_percent": 40.0 + i * 10,
+                "vram_used_mb": 2000.0 + i * 100,
+                "vram_total_mb": 8192.0,
+                "temperature_c": 65.0 + i * 3,
+                "power_draw_w": 120.0 + i * 5,
+            },
+            timestamp=ts,
+        )
+
+
 # ---------------------------------------------------------------------------
 # AC: basic stats for each metric type
 # ---------------------------------------------------------------------------
@@ -193,6 +226,22 @@ async def test_network_stats_bytes_sent_and_recv(repo: MetricsRepository) -> Non
     assert result.network.bytes_sent.peak == pytest.approx(3000.0)
     assert result.network.bytes_recv.average == pytest.approx(4000.0)  # (2000+4000+6000)/3
     assert result.network.bytes_recv.peak == pytest.approx(6000.0)
+
+
+@pytest.mark.asyncio
+async def test_gpu_stats_are_aggregated_when_present(repo: MetricsRepository) -> None:
+    start, end = _window()
+    base = start + timedelta(minutes=1)
+    await _insert_gpu(repo, base, count=3)
+
+    result = await repo.get_daily_aggregates(start, end, collection_interval_seconds=_INTERVAL)
+
+    assert result.gpu is not None
+    assert result.gpu.utilization_percent.average == pytest.approx(50.0)
+    assert result.gpu.utilization_percent.peak == pytest.approx(60.0)
+    assert result.gpu.temperature_c.peak == pytest.approx(71.0)
+    assert result.gpu.vram_total_mb is not None
+    assert result.gpu.vram_total_mb.peak == pytest.approx(8192.0)
 
 
 # ---------------------------------------------------------------------------

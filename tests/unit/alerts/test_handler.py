@@ -14,6 +14,7 @@ from system_sentinel.alerts.handler import (
     _format_cpu_threshold_exceeded,
     _format_disk_threshold_exceeded,
     _format_firewall_drift,
+    _format_gpu_threshold_exceeded,
     _format_impossible_travel,
     _format_network_threshold_exceeded,
     _format_new_user_login,
@@ -319,6 +320,18 @@ _NETWORK_THRESHOLD_PAYLOAD = {
     "bytes_recv": 800000,
     "threshold": "sent>1000000 B/interval or recv>1000000 B/interval",
     "triggered_metrics": ["bytes_sent"],
+    "timestamp": "2024-01-01T00:00:00+00:00",
+    "hostname": "sentinel-host",
+}
+
+_GPU_THRESHOLD_PAYLOAD = {
+    "event_type": "gpu_threshold_exceeded",
+    "current_utilization_percent": "98.0%",
+    "current_temperature_c": "86.0°C",
+    "threshold": "util>95.0% or temp>85.0°C",
+    "triggered_metrics": ["utilization", "temperature"],
+    "vendor": "nvidia",
+    "device_count": 1,
     "timestamp": "2024-01-01T00:00:00+00:00",
     "hostname": "sentinel-host",
 }
@@ -677,6 +690,17 @@ def test_format_network_threshold_fields_present() -> None:
     assert msg.fields["Triggered Metrics"] == "bytes_sent"
 
 
+def test_format_gpu_threshold_fields_present() -> None:
+    msg = _format_gpu_threshold_exceeded(_GPU_THRESHOLD_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert msg.fields is not None
+    assert msg.fields["Event Type"] == "gpu_threshold_exceeded"
+    assert msg.fields["Current Utilization"] == "98.0%"
+    assert msg.fields["Current Temperature"] == "86.0°C"
+    assert msg.fields["Triggered Metrics"] == "utilization, temperature"
+    assert msg.fields["Vendor"] == "nvidia"
+
+
 @pytest.mark.asyncio
 async def test_handler_broadcasts_on_cpu_threshold_event() -> None:
     router, calls = _make_router()
@@ -717,6 +741,17 @@ async def test_handler_broadcasts_on_network_threshold_event() -> None:
     bus = InProcessEventBus()
     handler.register(bus)
     await bus.publish("alert.network.throughput_threshold_exceeded", _NETWORK_THRESHOLD_PAYLOAD)
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.WARNING
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_gpu_threshold_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+    await bus.publish("alert.gpu.threshold_exceeded", _GPU_THRESHOLD_PAYLOAD)
     assert len(calls) == 1
     assert calls[0].severity == AlertSeverity.WARNING
 

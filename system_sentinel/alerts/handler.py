@@ -11,6 +11,7 @@ from system_sentinel.alerts.formatters import (
     _format_cpu_threshold_exceeded,
     _format_disk_threshold_exceeded,
     _format_firewall_drift,
+    _format_gpu_threshold_exceeded,
     _format_impossible_travel,
     _format_network_threshold_exceeded,
     _format_new_user_login,
@@ -36,6 +37,7 @@ _EVENT_SEVERITY_KEYS = {
     "alert.ram.threshold_exceeded": "ram",
     "alert.disk.threshold_exceeded": "disk",
     "alert.network.throughput_threshold_exceeded": "network_throughput",
+    "alert.gpu.threshold_exceeded": "gpu",
     "alert.login.brute_force_detected": "login",
     "alert.login.off_hours_detected": "login",
     "alert.login.new_user_detected": "login",
@@ -162,6 +164,7 @@ class AlertHandler:
             "alert.network.throughput_threshold_exceeded",
             self._on_network_threshold_exceeded,
         )
+        event_bus.subscribe("alert.gpu.threshold_exceeded", self._on_gpu_threshold_exceeded)
         event_bus.subscribe("alert.service.failure_detected", self._on_service_failure_detected)
         event_bus.subscribe("alert.service.restart_result", self._on_service_restart_result)
         event_bus.subscribe("alert.service.restart_exhausted", self._on_service_restart_exhausted)
@@ -262,6 +265,15 @@ class AlertHandler:
             payload.get("bytes_recv"),
         )
         msg = self._apply_severity(event_type, payload, _format_network_threshold_exceeded(payload))
+        await self._notify_and_record(event_type, payload, msg)
+
+    async def _on_gpu_threshold_exceeded(self, event_type: str, payload: Any) -> None:
+        self._logger.warning(
+            "GPU threshold exceeded: util=%s temp=%s",
+            payload.get("current_utilization_percent"),
+            payload.get("current_temperature_c"),
+        )
+        msg = self._apply_severity(event_type, payload, _format_gpu_threshold_exceeded(payload))
         await self._notify_and_record(event_type, payload, msg)
 
     async def _on_service_failure_detected(self, event_type: str, payload: Any) -> None:

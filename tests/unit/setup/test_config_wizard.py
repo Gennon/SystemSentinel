@@ -168,6 +168,10 @@ class TestNoConfigInteractive:
         assert data["monitors"]["network"]["alert_threshold_bytes_sent"] == 10_000_000
         assert data["monitors"]["network"]["alert_threshold_bytes_recv"] == 10_000_000
         assert data["monitors"]["network"]["alert_cooldown"] == "00:30:00"
+        assert data["monitors"]["gpu"]["enabled"] is True
+        assert data["monitors"]["gpu"]["alert_threshold_utilization_percent"] == 95
+        assert data["monitors"]["gpu"]["alert_threshold_temperature_c"] == 85
+        assert data["monitors"]["gpu"]["alert_cooldown"] == "00:30:00"
         assert data["monitors"]["connections"]["enabled"] is True
         assert data["monitors"]["connections"]["classification"]["attempts_per_ip"] == {
             "suspicious": 3,

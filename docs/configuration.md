@@ -110,6 +110,11 @@ monitors:
     alert_threshold_bytes_sent: 10000000
     alert_threshold_bytes_recv: 10000000
     alert_cooldown: "00:30:00"
+  gpu:
+    enabled: true
+    alert_threshold_utilization_percent: 95
+    alert_threshold_temperature_c: 85
+    alert_cooldown: "00:30:00"
   logins:
     enabled: true
     failed_login_alert_count: 5
@@ -284,6 +289,11 @@ monitors:
     enabled: true
     alert_threshold_percent: 88
     alert_cooldown: "00:45:00"
+  gpu:
+    enabled: true
+    alert_threshold_utilization_percent: 95
+    alert_threshold_temperature_c: 85
+    alert_cooldown: "00:30:00"
 ```
 
 #### Security monitor tuning example
@@ -512,6 +522,10 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `monitors.network.alert_threshold_bytes_sent` | number | unset | `NetworkMonitor` | Optional per-interval sent-bytes threshold; if unset, sent alerts are disabled. |
 | `monitors.network.alert_threshold_bytes_recv` | number | unset | `NetworkMonitor` | Optional per-interval received-bytes threshold; if unset, receive alerts are disabled. |
 | `monitors.network.alert_cooldown` | duration | `00:30:00` | `NetworkMonitor` | Cooldown between network throughput alerts. |
+| `monitors.gpu.data_dir` | path | `/var/lib/sentinel` | `GpuMonitor` | Used to locate `sentinel.db`. |
+| `monitors.gpu.alert_threshold_utilization_percent` | number | `95` | `GpuMonitor` | GPU utilization threshold (uses peak utilization across detected GPUs). |
+| `monitors.gpu.alert_threshold_temperature_c` | number | `85` | `GpuMonitor` | GPU temperature threshold in Celsius (uses hottest detected GPU). |
+| `monitors.gpu.alert_cooldown` | duration | `00:30:00` | `GpuMonitor` | Cooldown between GPU threshold alerts. |
 | `monitors.logins.data_dir` | path | `/var/lib/sentinel` | `LoginMonitor` | Used to locate `sentinel.db`. |
 | `monitors.logins.failed_login_alert_count` | int | `5` | `LoginMonitor` | Brute-force alert threshold. |
 | `monitors.logins.failed_login_window` | duration | `00:10:00` | `LoginMonitor` | Brute-force detection window. |
@@ -607,7 +621,6 @@ These keys are currently setup-only or merge-only (not consumed by runtime code 
 | `monitors.disk.interval` | duration | `00:05:00` (wizard default) | setup wizard default only | Currently not consumed by runtime code. |
 | `monitors.network.interval` | duration | `00:01:00` (wizard default) | setup wizard default only | Currently not consumed by runtime code. |
 | `metrics_export.prometheus.enabled` | bool | none | optional-feature setup merge | Added when enabling `prometheus`; currently no runtime consumer. |
-| `monitors.gpu.enabled` | bool | none | optional-feature setup merge | Added when enabling `gpu`; currently no runtime consumer. |
 | `tools.harden.enabled` | bool | none | optional-feature setup merge | Added when enabling `harden`; currently no runtime consumer. |
 | `updates.self_update.snapshots.backend` | string | none | optional-feature setup merge | Added as `auto` when enabling `snapshot`. |
 | `tools.vulnscan.enabled` | bool | none | optional-feature setup merge | Added when enabling `vulnscan`; currently no runtime consumer. |

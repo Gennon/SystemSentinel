@@ -73,7 +73,7 @@ A Linux system management daemon that autonomously handles updates, security har
 - [x] As a user I want unknown inbound connection activity classified as likely scanning vs likely access attempt so I can prioritize real threats. **(US-039)**
 
 ### Monitoring & Metrics
-- [ ] As a user I want GPU utilization metrics collected if a GPU is present so I can monitor AI/compute workloads.
+- [x] As a user I want GPU utilization metrics collected if a GPU is present so I can monitor AI/compute workloads. **(US-016)**
 - [x] As a user I want to set alert thresholds per metric (e.g. alert if RAM > 85%) so I only get paged for real problems. **(US-017)**
 
 ### File Management
