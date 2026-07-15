@@ -4,7 +4,6 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-import fnmatch
 import json
 import os
 from pathlib import Path
@@ -15,6 +14,10 @@ import uuid
 import psutil
 
 from system_sentinel.chat.base import InboundMessage, InboundReaction, OutboundMessage
+from system_sentinel.chat.maintenance_utils import (
+    parse_older_than_seconds,
+    run_cleanup_rules,
+)
 from system_sentinel.core.exceptions import LLMUnavailableError
 from system_sentinel.db.connection_repository import ConnectionRepository
 from system_sentinel.db.login_repository import LoginRepository
@@ -645,63 +648,10 @@ class ChatCommandDispatcher:
         return sizes[:limit]
 
     def _run_cleanup_rules_sync(self, raw_rules: list[Any]) -> tuple[int, int, int]:
-        deleted = 0
-        reclaimed = 0
-        failed = 0
-        now = datetime.now(UTC)
-        for raw_rule in raw_rules:
-            if not isinstance(raw_rule, dict):
-                continue
-            path = str(raw_rule.get("path", "")).strip()
-            pattern = str(raw_rule.get("pattern", "*")).strip() or "*"
-            if not path:
-                continue
-            older_than = self._parse_older_than_seconds(raw_rule.get("older_than"))
-            if older_than is None:
-                continue
-
-            root = Path(path)
-            if not root.exists() or not root.is_dir():
-                continue
-
-            for candidate in root.rglob("*"):
-                if not candidate.is_file():
-                    continue
-                if not fnmatch.fnmatch(candidate.name, pattern):
-                    continue
-                try:
-                    modified = datetime.fromtimestamp(candidate.stat().st_mtime, tz=UTC)
-                    if (now - modified).total_seconds() < older_than:
-                        continue
-                    size = candidate.stat().st_size
-                    candidate.unlink()
-                    deleted += 1
-                    reclaimed += int(size)
-                except OSError:
-                    failed += 1
-        return deleted, reclaimed, failed
+        return run_cleanup_rules(raw_rules)
 
     def _parse_older_than_seconds(self, raw: object) -> float | None:
-        if not isinstance(raw, str):
-            return None
-        value = raw.strip()
-        if not value:
-            return None
-        days = 0
-        if "d " in value:
-            day_part, value = value.split("d ", maxsplit=1)
-            if day_part.isdigit():
-                days = int(day_part)
-        parts = value.split(":")
-        if len(parts) != 3:
-            return None
-        try:
-            hours = int(parts[0])
-            minutes = int(parts[1])
-            seconds = int(parts[2])
-        except ValueError:
-            return None
-        return float(days * 86400 + hours * 3600 + minutes * 60 + seconds)
+        return parse_older_than_seconds(raw)
 
     def _extract_command(self, adapter_name: str, text: str, args: list[str]) -> str | None:
         prefix = self._command_prefix_for_adapter(adapter_name)
