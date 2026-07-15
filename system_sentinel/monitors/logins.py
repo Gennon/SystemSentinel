@@ -1,99 +1,26 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, time, timedelta
-from ipaddress import ip_address
-import math
-import re
 import socket
 from typing import TYPE_CHECKING, Any
 
 from system_sentinel.core.time_config import parse_duration_from_config
 from system_sentinel.geoip import choose_geoip_database_path, geoip_city_lat_lon
 from system_sentinel.monitors.base import BaseMonitor
+from system_sentinel.monitors.login_log_sources import read_auth_log_lines, read_journald_lines
+from system_sentinel.monitors.login_parsing import (
+    as_dict,
+    haversine_km,
+    is_private_or_loopback_ip,
+    is_time_within_window,
+    parse_failed_ssh_line,
+    parse_hhmm,
+    parse_successful_ssh_line,
+)
 
 if TYPE_CHECKING:
     from system_sentinel.core.context import AppContext
     from system_sentinel.db.login_repository import LoginRepository
-
-
-# Matches both:
-#   "Failed password for root from 1.2.3.4 port 22 ssh2"
-#   "Failed password for invalid user admin from 1.2.3.4 port 22 ssh2"
-#   "Connection closed by invalid user test 1.2.3.4 port 22 [preauth]"
-_FAILED_PASSWORD_RE = re.compile(
-    r"Failed password for (?:invalid user )?(\S+) from ([\d.:a-fA-F]+) port (\d+)"
-)
-_CONN_CLOSED_RE = re.compile(
-    r"Connection closed by (?:invalid user )?(\S+) ([\d.:a-fA-F]+) port (\d+)"
-)
-_ACCEPTED_LOGIN_RE = re.compile(
-    r"Accepted (\S+) for (?:invalid user )?(\S+) from ([\d.:a-fA-F]+) port (\d+)"
-)
-
-
-def parse_failed_ssh_line(line: str) -> dict[str, Any] | None:
-    """Parse a single auth log line and return extracted fields, or None if not a failure."""
-    for pattern in (_FAILED_PASSWORD_RE, _CONN_CLOSED_RE):
-        match = pattern.search(line)
-        if match:
-            username, ip_address, port_str = match.groups()
-            return {
-                "username": username,
-                "ip_address": ip_address,
-                "port": int(port_str),
-            }
-    return None
-
-
-def parse_successful_ssh_line(line: str) -> dict[str, Any] | None:
-    """Parse a successful SSH login auth line and return extracted fields."""
-    match = _ACCEPTED_LOGIN_RE.search(line)
-    if match is None:
-        return None
-    auth_method, username, ip_address_str, port_str = match.groups()
-    return {
-        "username": username,
-        "ip_address": ip_address_str,
-        "port": int(port_str),
-        "auth_method": auth_method,
-    }
-
-
-def _as_dict(value: object) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
-def _parse_hhmm(value: object, default: time) -> time:
-    if not isinstance(value, str):
-        return default
-    parsed = value.strip()
-    match = re.fullmatch(r"(\d{1,2}):(\d{2})", parsed)
-    if match is None:
-        return default
-    hours = int(match.group(1))
-    minutes = int(match.group(2))
-    if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
-        return default
-    return time(hour=hours, minute=minutes)
-
-
-def _is_time_within_window(current: time, start: time, end: time) -> bool:
-    if start <= end:
-        return start <= current <= end
-    return current >= start or current <= end
-
-
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    radius_km = 6371.0
-    lat1_rad = math.radians(lat1)
-    lon1_rad = math.radians(lon1)
-    lat2_rad = math.radians(lat2)
-    lon2_rad = math.radians(lon2)
-    dlat = lat2_rad - lat1_rad
-    dlon = lon2_rad - lon1_rad
-    a = math.sin(dlat / 2) ** 2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return radius_km * c
 
 
 class LoginMonitor(BaseMonitor):
@@ -133,13 +60,13 @@ class LoginMonitor(BaseMonitor):
     async def collect(self) -> None:
         """Read new auth log entries, store them, and fire alert events as needed."""
         repo = await self._get_login_repo()
-        anomaly_cfg = _as_dict(self.config.get("anomaly_detection"))
+        anomaly_cfg = as_dict(self.config.get("anomaly_detection"))
         brute_force_enabled = bool(anomaly_cfg.get("brute_force_enabled", True))
         off_hours_enabled = bool(anomaly_cfg.get("off_hours_enabled", True))
         new_user_enabled = bool(anomaly_cfg.get("new_user_enabled", True))
         impossible_travel_enabled = bool(anomaly_cfg.get("impossible_travel_enabled", True))
-        off_hours_start = _parse_hhmm(anomaly_cfg.get("off_hours_start"), default=time(7, 0))
-        off_hours_end = _parse_hhmm(anomaly_cfg.get("off_hours_end"), default=time(22, 0))
+        off_hours_start = parse_hhmm(anomaly_cfg.get("off_hours_start"), default=time(7, 0))
+        off_hours_end = parse_hhmm(anomaly_cfg.get("off_hours_end"), default=time(22, 0))
         impossible_travel_window_seconds = parse_duration_from_config(
             anomaly_cfg,
             key="impossible_travel_window",
@@ -216,7 +143,7 @@ class LoginMonitor(BaseMonitor):
                 timestamp=observed_at,
             )
 
-            if off_hours_enabled and not _is_time_within_window(
+            if off_hours_enabled and not is_time_within_window(
                 observed_at.time(), off_hours_start, off_hours_end
             ):
                 off_hours_payload = {
@@ -274,8 +201,8 @@ class LoginMonitor(BaseMonitor):
                 if (
                     distance_km is not None
                     and distance_km >= impossible_travel_min_distance_km
-                    and not self._is_private_or_loopback_ip(success_ip)
-                    and not self._is_private_or_loopback_ip(previous_ip)
+                    and not is_private_or_loopback_ip(success_ip)
+                    and not is_private_or_loopback_ip(previous_ip)
                 ):
                     impossible_payload = {
                         "anomaly_type": "impossible_travel",
@@ -389,7 +316,7 @@ class LoginMonitor(BaseMonitor):
         current_location = geoip_city_lat_lon(current_ip, geoip_database_path)
         if previous_location is None or current_location is None:
             return None
-        return _haversine_km(
+        return haversine_km(
             previous_location[0],
             previous_location[1],
             current_location[0],
@@ -397,18 +324,7 @@ class LoginMonitor(BaseMonitor):
         )
 
     def _is_private_or_loopback_ip(self, ip_address_str: str) -> bool:
-        try:
-            parsed = ip_address(ip_address_str)
-        except ValueError:
-            return True
-        return bool(
-            parsed.is_private
-            or parsed.is_loopback
-            or parsed.is_link_local
-            or parsed.is_reserved
-            or parsed.is_multicast
-            or parsed.is_unspecified
-        )
+        return is_private_or_loopback_ip(ip_address_str)
 
     async def _read_new_log_lines(self) -> list[str]:
         """Return new auth log lines since the last collection run.
@@ -434,31 +350,7 @@ class LoginMonitor(BaseMonitor):
             return []
 
     def _read_journald(self) -> list[str]:
-        import subprocess
-
-        window_seconds = parse_duration_from_config(
-            self.config,
-            key="failed_login_window",
-            default_seconds=10 * 60,
-            logger=self.logger,
-        )
-        window_minutes = max(1, int(window_seconds // 60))
-        result = subprocess.run(
-            [
-                "/usr/bin/journalctl",
-                "--identifier=sshd",
-                f"--since={window_minutes} minutes ago",
-                "--no-pager",
-                "--output=short",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"journalctl exited {result.returncode}: {result.stderr}")
-        return result.stdout.splitlines()
+        return read_journald_lines(config=self.config, logger=self.logger)
 
     def _read_auth_log(self) -> list[str]:
-        with open("/var/log/auth.log") as fh:
-            return fh.readlines()
+        return read_auth_log_lines()
