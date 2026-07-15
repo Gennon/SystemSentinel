@@ -3,12 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 import subprocess
-import tempfile
 import time
 
-import yaml
-
 from system_sentinel.setup.dependency_installer import run_command
+from system_sentinel.setup.sudoers_steps import (
+    install_sudoers_rules_runner,
+    required_sudoers_rules,
+)
+from system_sentinel.setup.systemd_service_steps import (
+    enable_systemd_service_runner,
+    install_systemd_service_runner,
+    start_systemd_service_runner,
+)
 from system_sentinel.setup.wizard import StepOutcome, WizardContext, WizardStep, WizardStepResult
 
 SERVICE_TEMPLATE_PATH = Path(__file__).resolve().parents[2] / "packaging" / "sentinel.service"
@@ -349,76 +355,13 @@ def create_data_dir_step() -> WizardStep:
 
 
 def _required_sudoers_rules() -> list[str]:
-    if not CONFIG_PATH.exists():
-        return []
-    raw = yaml.safe_load(CONFIG_PATH.read_text()) or {}
-    if not isinstance(raw, dict):
-        return []
-
-    rules: list[str] = []
-    if _services_monitor_enabled(raw):
-        rules.append(_SERVICE_RESTART_RULE)
-    rules.extend(_snapshot_rules(raw))
-    rules.extend(_firewall_rules(raw))
-    return rules
-
-
-def _services_monitor_enabled(config: dict[str, object]) -> bool:
-    monitors = config.get("monitors")
-    if not isinstance(monitors, dict):
-        return False
-    services = monitors.get("services")
-    if not isinstance(services, dict):
-        return False
-    return bool(services.get("enabled", True))
-
-
-def _snapshot_rules(config: dict[str, object]) -> list[str]:
-    updates = config.get("updates")
-    if not isinstance(updates, dict):
-        return []
-    self_update = updates.get("self_update")
-    if not isinstance(self_update, dict):
-        return []
-    if not bool(self_update.get("enabled", False)):
-        return []
-    snapshots = self_update.get("snapshots")
-    snapshots_cfg = snapshots if isinstance(snapshots, dict) else {}
-    backend = str(snapshots_cfg.get("backend", "auto")).strip().lower() or "auto"
-    if backend in {"none", "disabled"}:
-        return []
-    if backend == "snapper":
-        return list(_SNAPPER_RULES)
-    if backend == "timeshift":
-        return list(_TIMESHIFT_RULES)
-    return [*list(_SNAPPER_RULES), *list(_TIMESHIFT_RULES)]
-
-
-def _firewall_rules(config: dict[str, object]) -> list[str]:
-    tools = config.get("tools")
-    if not isinstance(tools, dict):
-        return []
-    firewall = tools.get("firewall")
-    if not isinstance(firewall, dict):
-        return []
-    if not bool(firewall.get("enabled", False)):
-        return []
-
-    backend_raw = firewall.get("backend", "auto")
-    backend = str(backend_raw).strip().lower()
-    if backend == "ufw":
-        return list(_UFW_RULES)
-    if backend in {"nft", "nftables"}:
-        return list(_NFT_RULES)
-    return [*list(_UFW_RULES), *list(_NFT_RULES)]
-
-
-def _build_sudoers_content(rules: list[str]) -> str:
-    joined_rules = "\n".join(rules)
-    return (
-        "# Managed by SystemSentinel setup. Do not edit manually.\n"
-        "# Allows targeted privileged operations for the sentinel user.\n"
-        f"{joined_rules}\n"
+    return required_sudoers_rules(
+        config_path=CONFIG_PATH,
+        service_restart_rule=_SERVICE_RESTART_RULE,
+        snapper_rules=_SNAPPER_RULES,
+        timeshift_rules=_TIMESHIFT_RULES,
+        ufw_rules=_UFW_RULES,
+        nft_rules=_NFT_RULES,
     )
 
 
@@ -426,91 +369,17 @@ def install_sudoers_rules_step() -> WizardStep:
     """Return a WizardStep that installs required sudoers rules for enabled features."""
 
     def runner(ctx: WizardContext) -> WizardStepResult:
-        required_rules = _required_sudoers_rules()
-        if not required_rules:
-            return WizardStepResult(
-                step_name="install_sudoers_rules",
-                outcome=StepOutcome.SUCCESS,
-                message="No sudoers rules required for enabled features.",
-            )
-
-        if ctx.check_only:
-            if not SUDOERS_INSTALL_PATH.exists():
-                return WizardStepResult(
-                    step_name="install_sudoers_rules",
-                    outcome=StepOutcome.FAILURE,
-                    message=f"Sudoers file not found at {SUDOERS_INSTALL_PATH}.",
-                    error="Run sentinel setup to install required sudoers rules.",
-                )
-            content = SUDOERS_INSTALL_PATH.read_text()
-            missing = [rule for rule in required_rules if rule not in content]
-            if missing:
-                return WizardStepResult(
-                    step_name="install_sudoers_rules",
-                    outcome=StepOutcome.FAILURE,
-                    message="Sudoers file is missing required rule(s).",
-                    error="; ".join(missing),
-                )
-            return WizardStepResult(
-                step_name="install_sudoers_rules",
-                outcome=StepOutcome.SUCCESS,
-                message="Required sudoers rules are installed.",
-            )
-
-        content = _build_sudoers_content(required_rules)
-        tmp_path: Path | None = None
-        try:
-            with tempfile.NamedTemporaryFile("w", delete=False) as tmp_file:
-                tmp_file.write(content)
-                tmp_file.flush()
-                tmp_path = Path(tmp_file.name)
-
-            assert tmp_path is not None
-
-            validate = run_command(["/usr/sbin/visudo", "-c", "-f", str(tmp_path)])
-            if validate.returncode != 0:
-                return WizardStepResult(
-                    step_name="install_sudoers_rules",
-                    outcome=StepOutcome.FAILURE,
-                    message="Generated sudoers file failed validation.",
-                    error=validate.stderr.strip() or validate.stdout.strip(),
-                )
-
-            mkdir = run_command(["sudo", "/bin/mkdir", "-p", str(SUDOERS_INSTALL_PATH.parent)])
-            if mkdir.returncode != 0:
-                return WizardStepResult(
-                    step_name="install_sudoers_rules",
-                    outcome=StepOutcome.FAILURE,
-                    message=f"Failed to create {SUDOERS_INSTALL_PATH.parent}.",
-                    error=mkdir.stderr.strip() or mkdir.stdout.strip(),
-                )
-
-            copy = run_command(["sudo", "/bin/cp", str(tmp_path), str(SUDOERS_INSTALL_PATH)])
-            if copy.returncode != 0:
-                return WizardStepResult(
-                    step_name="install_sudoers_rules",
-                    outcome=StepOutcome.FAILURE,
-                    message=f"Failed to install sudoers file at {SUDOERS_INSTALL_PATH}.",
-                    error=copy.stderr.strip() or copy.stdout.strip(),
-                )
-
-            chmod = run_command(["sudo", "/bin/chmod", "440", str(SUDOERS_INSTALL_PATH)])
-            if chmod.returncode != 0:
-                return WizardStepResult(
-                    step_name="install_sudoers_rules",
-                    outcome=StepOutcome.FAILURE,
-                    message=f"Failed to set permissions on {SUDOERS_INSTALL_PATH}.",
-                    error=chmod.stderr.strip() or chmod.stdout.strip(),
-                )
-
-            return WizardStepResult(
-                step_name="install_sudoers_rules",
-                outcome=StepOutcome.SUCCESS,
-                message=f"Installed sudoers rules to {SUDOERS_INSTALL_PATH}.",
-            )
-        finally:
-            if tmp_path is not None:
-                tmp_path.unlink(missing_ok=True)
+        return install_sudoers_rules_runner(
+            ctx=ctx,
+            config_path=CONFIG_PATH,
+            sudoers_install_path=SUDOERS_INSTALL_PATH,
+            run_command_fn=run_command,
+            service_restart_rule=_SERVICE_RESTART_RULE,
+            snapper_rules=_SNAPPER_RULES,
+            timeshift_rules=_TIMESHIFT_RULES,
+            ufw_rules=_UFW_RULES,
+            nft_rules=_NFT_RULES,
+        )
 
     return WizardStep(
         name="install_sudoers_rules",
@@ -524,58 +393,13 @@ def install_systemd_service_step() -> WizardStep:
     """Return a WizardStep that writes the systemd unit file."""
 
     def runner(ctx: WizardContext) -> WizardStepResult:
-        if ctx.check_only:
-            if SERVICE_INSTALL_PATH.exists():
-                return WizardStepResult(
-                    step_name="install_systemd_service",
-                    outcome=StepOutcome.SUCCESS,
-                    message=f"Service file found at {SERVICE_INSTALL_PATH}.",
-                )
-            return WizardStepResult(
-                step_name="install_systemd_service",
-                outcome=StepOutcome.FAILURE,
-                message=f"Service file not found at {SERVICE_INSTALL_PATH}.",
-                error="Run sentinel setup to install the service.",
-            )
-
-        exec_path = shutil.which("sentinel")
-        if exec_path is None:
-            return WizardStepResult(
-                step_name="install_systemd_service",
-                outcome=StepOutcome.FAILURE,
-                message="sentinel executable not found in PATH.",
-                error="Ensure system-sentinel is installed: pip install -e .",
-            )
-
-        template = SERVICE_TEMPLATE_PATH.read_text()
-        unit_content = template.replace("{exec_path}", exec_path)
-        tee = subprocess.run(
-            ["sudo", "tee", str(SERVICE_INSTALL_PATH)],
-            input=unit_content,
-            capture_output=True,
-            text=True,
-        )
-        if tee.returncode != 0:
-            return WizardStepResult(
-                step_name="install_systemd_service",
-                outcome=StepOutcome.FAILURE,
-                message="Failed to write service file.",
-                error=tee.stderr.strip(),
-            )
-
-        reload = run_command(["sudo", "/usr/bin/systemctl", "daemon-reload"])
-        if reload.returncode != 0:
-            return WizardStepResult(
-                step_name="install_systemd_service",
-                outcome=StepOutcome.FAILURE,
-                message="systemctl daemon-reload failed.",
-                error=reload.stderr.strip(),
-            )
-
-        return WizardStepResult(
-            step_name="install_systemd_service",
-            outcome=StepOutcome.SUCCESS,
-            message=f"Service file installed to {SERVICE_INSTALL_PATH}.",
+        return install_systemd_service_runner(
+            ctx=ctx,
+            service_install_path=SERVICE_INSTALL_PATH,
+            service_template_path=SERVICE_TEMPLATE_PATH,
+            run_command_fn=run_command,
+            which_fn=shutil.which,
+            subprocess_run_fn=subprocess.run,
         )
 
     return WizardStep(
@@ -590,43 +414,9 @@ def enable_systemd_service_step() -> WizardStep:
     """Return a WizardStep that enables the sentinel service on boot."""
 
     def runner(ctx: WizardContext) -> WizardStepResult:
-        check = run_command(["/usr/bin/systemctl", "is-enabled", "sentinel"])
-        is_enabled = check.returncode == 0
-
-        if ctx.check_only:
-            if is_enabled:
-                return WizardStepResult(
-                    step_name="enable_systemd_service",
-                    outcome=StepOutcome.SUCCESS,
-                    message="Service sentinel is enabled.",
-                )
-            return WizardStepResult(
-                step_name="enable_systemd_service",
-                outcome=StepOutcome.FAILURE,
-                message="Service sentinel is not enabled.",
-                error="Run sentinel setup to enable the service.",
-            )
-
-        if is_enabled:
-            return WizardStepResult(
-                step_name="enable_systemd_service",
-                outcome=StepOutcome.SUCCESS,
-                message="Service sentinel already enabled.",
-            )
-
-        result = run_command(["sudo", "/usr/bin/systemctl", "enable", "sentinel"])
-        if result.returncode != 0:
-            return WizardStepResult(
-                step_name="enable_systemd_service",
-                outcome=StepOutcome.FAILURE,
-                message="Failed to enable sentinel service.",
-                error=result.stderr.strip(),
-            )
-
-        return WizardStepResult(
-            step_name="enable_systemd_service",
-            outcome=StepOutcome.SUCCESS,
-            message="Service sentinel enabled.",
+        return enable_systemd_service_runner(
+            ctx=ctx,
+            run_command_fn=run_command,
         )
 
     return WizardStep(
@@ -641,54 +431,12 @@ def start_systemd_service_step() -> WizardStep:
     """Return a WizardStep that starts the sentinel service."""
 
     def runner(ctx: WizardContext) -> WizardStepResult:
-        check = run_command(["/usr/bin/systemctl", "is-active", "sentinel"])
-        is_active = check.returncode == 0
-
-        if ctx.check_only:
-            if is_active:
-                return WizardStepResult(
-                    step_name="start_systemd_service",
-                    outcome=StepOutcome.SUCCESS,
-                    message="Service sentinel is active.",
-                )
-            return WizardStepResult(
-                step_name="start_systemd_service",
-                outcome=StepOutcome.FAILURE,
-                message="Service sentinel is not active.",
-                error="Run sentinel setup to start the service.",
-            )
-
-        if is_active:
-            return WizardStepResult(
-                step_name="start_systemd_service",
-                outcome=StepOutcome.SUCCESS,
-                message="Service sentinel already active.",
-            )
-
-        start = run_command(["sudo", "/usr/bin/systemctl", "start", "sentinel"])
-        if start.returncode != 0:
-            return WizardStepResult(
-                step_name="start_systemd_service",
-                outcome=StepOutcome.FAILURE,
-                message="Failed to start sentinel service.",
-                error=start.stderr.strip(),
-            )
-
-        for _ in range(_POLL_MAX_ATTEMPTS):
-            time.sleep(_POLL_INTERVAL)
-            poll = run_command(["/usr/bin/systemctl", "is-active", "sentinel"])
-            if poll.returncode == 0:
-                return WizardStepResult(
-                    step_name="start_systemd_service",
-                    outcome=StepOutcome.SUCCESS,
-                    message="Service sentinel started and active.",
-                )
-
-        return WizardStepResult(
-            step_name="start_systemd_service",
-            outcome=StepOutcome.FAILURE,
-            message="Service sentinel timed out waiting to become active.",
-            error="Check logs with: journalctl -u sentinel -n 50",
+        return start_systemd_service_runner(
+            ctx=ctx,
+            run_command_fn=run_command,
+            sleep_fn=time.sleep,
+            poll_interval=_POLL_INTERVAL,
+            poll_max_attempts=_POLL_MAX_ATTEMPTS,
         )
 
     return WizardStep(
