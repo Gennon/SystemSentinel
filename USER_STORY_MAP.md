@@ -87,7 +87,7 @@ A Linux system management daemon that autonomously handles updates, security har
 
 ### AI / LLM Assistant
 - [x] As a user I want LLM providers to be pluggable and selectable in config so I can switch between Ollama, OpenAI, Anthropic (Claude), and Mistral without core code changes. **(US-043)**
-- [ ] As a user I want to ask the bot a natural-language question about system health and get an LLM-powered explanation so I can diagnose issues without SSHing in.
+- [x] As a user I want to ask the bot a natural-language question about system health and get an LLM-powered explanation so I can diagnose issues without SSHing in. **(US-022)**
 - [ ] As a user I want the system to auto-suggest remediation steps when an anomaly is detected so I know what action to take.
 
 ---

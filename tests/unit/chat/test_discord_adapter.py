@@ -315,6 +315,42 @@ async def test_on_message_sends_handler_reply_to_channel() -> None:
 
 
 @pytest.mark.asyncio
+async def test_on_message_sends_thinking_message_before_slow_reply() -> None:
+    adapter = _make_adapter()
+    await adapter.start()
+
+    async def _handler(_message, _args):  # type: ignore[no-untyped-def]
+        await asyncio.sleep(0.02)
+        return OutboundMessage(text="final answer")
+
+    adapter.on_message(_handler)
+
+    channel = await adapter._client.fetch_channel(445)
+    message = MagicMock()
+    message.author = MagicMock()
+    message.author.id = 12345
+    message.author.__str__.return_value = "tester#0001"
+    message.channel = channel
+    message.content = "!ask why is cpu high?"
+    on_message = adapter._client._event_handlers["on_message"]
+
+    with patch(
+        "system_sentinel.chat.adapters.discord.adapter._COMMAND_RESPONSE_TIMEOUT_SECONDS",
+        0.001,
+        create=True,
+    ):
+        await on_message(message)
+
+    assert channel.send.await_count == 2
+    first_embed = channel.send.await_args_list[0].kwargs["embed"]
+    second_embed = channel.send.await_args_list[1].kwargs["embed"]
+    assert first_embed.description is not None
+    assert first_embed.description.lower().startswith("thinking")
+    assert second_embed.description == "final answer"
+    await adapter.stop()
+
+
+@pytest.mark.asyncio
 async def test_on_reaction_sends_handler_reply_to_channel() -> None:
     adapter = _make_adapter()
     await adapter.start()

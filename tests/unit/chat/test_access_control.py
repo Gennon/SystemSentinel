@@ -44,6 +44,17 @@ def test_readonly_user_can_run_readonly_command() -> None:
     assert decision.role is UserRole.READONLY
 
 
+def test_readonly_user_can_run_ask_command() -> None:
+    access = _access(
+        {"chat_adapters": {"discord": {"allowed_users": [{"id": "2002", "role": "readonly"}]}}},
+    )
+    decision = access.authorize(
+        _msg("2002", "!ask why is cpu high"), ["!ask", "why", "is", "cpu", "high"]
+    )
+    assert decision.authorized is True
+    assert decision.role is UserRole.READONLY
+
+
 def test_readonly_user_can_run_snapshots_typo_alias() -> None:
     access = _access(
         {"chat_adapters": {"discord": {"allowed_users": [{"id": "2002", "role": "readonly"}]}}},

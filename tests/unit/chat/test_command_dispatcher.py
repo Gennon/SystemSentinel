@@ -37,6 +37,7 @@ class _FakeLLMClient:
     def __init__(self) -> None:
         self.active_provider_name = "ollama"
         self.is_enabled = True
+        self.last_prompt: str | None = None
 
     async def complete(
         self,
@@ -46,7 +47,8 @@ class _FakeLLMClient:
         model: str | None = None,
         timeout_seconds: float | None = None,
     ) -> LLMResponse:
-        _ = prompt, system_prompt, model, timeout_seconds
+        _ = system_prompt, model, timeout_seconds
+        self.last_prompt = prompt
         return LLMResponse(
             text="Likely high load from package updates.",
             model_used="llama3.2",
@@ -197,11 +199,12 @@ async def test_help_command_returns_supported_commands(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_ask_command_routes_to_llm(tmp_path: Path) -> None:
+    llm = _FakeLLMClient()
     dispatcher = await _dispatcher(
         tmp_path,
         {"chat_adapters": {"discord": {"channel_id": "100"}}},
         {},
-        llm=_FakeLLMClient(),
+        llm=llm,
     )
 
     response = await dispatcher.handle_message(
@@ -211,6 +214,78 @@ async def test_ask_command_routes_to_llm(tmp_path: Path) -> None:
     assert response is not None
     assert "[ollama:llama3.2]" in response.text
     assert "Likely high load from package updates." in response.text
+    assert llm.last_prompt is not None
+    assert "Current system context:" in llm.last_prompt
+
+
+@pytest.mark.asyncio
+async def test_ask_command_context_includes_recent_alerts_and_top_processes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    llm = _FakeLLMClient()
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {"chat_adapters": {"discord": {"channel_id": "100"}}},
+        {},
+        llm=llm,
+    )
+    await dispatcher._db.connection.execute(  # type: ignore[attr-defined]
+        """
+        INSERT INTO system_metrics (timestamp, metric_type, data_json)
+        VALUES (?, 'cpu', ?)
+        """,
+        (
+            datetime.now(UTC).isoformat(),
+            json.dumps(
+                {
+                    "overall_percent": 92.5,
+                    "top_processes": [
+                        {"name": "python", "pid": 111, "cpu_percent": 45.0, "ram_bytes": 1_000_000},
+                        {
+                            "name": "postgres",
+                            "pid": 222,
+                            "cpu_percent": 22.0,
+                            "ram_bytes": 2_000_000,
+                        },
+                    ],
+                }
+            ),
+        ),
+    )
+    await dispatcher._db.connection.execute(  # type: ignore[attr-defined]
+        """
+        INSERT INTO audit_log
+            (timestamp, action_type, source, description, outcome, details_json)
+        VALUES (?, 'alert_fired', 'alert.cpu.threshold_exceeded', '⚠️ High CPU Usage', 'success', ?)
+        """,
+        (
+            datetime.now(UTC).isoformat(),
+            json.dumps({"severity": "warning", "chat_notification_suppressed": False}),
+        ),
+    )
+    await dispatcher._db.connection.commit()  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(
+        "system_sentinel.chat.command_dispatcher.psutil.cpu_percent", lambda interval=None: 91.2
+    )
+    monkeypatch.setattr(
+        "system_sentinel.chat.command_dispatcher.psutil.virtual_memory",
+        lambda: type("vmem", (), {"percent": 73.3})(),
+    )
+    monkeypatch.setattr(
+        "system_sentinel.chat.command_dispatcher.psutil.disk_usage",
+        lambda _path: type("dsk", (), {"percent": 68.4})(),
+    )
+
+    response = await dispatcher.handle_message(
+        _message("!ask why is CPU so high?"), ["!ask", "why?"]
+    )
+    assert response is not None
+    assert llm.last_prompt is not None
+    assert "Recent alerts:" in llm.last_prompt
+    assert "alert.cpu.threshold_exceeded" in llm.last_prompt
+    assert "Top processes by CPU (latest sample):" in llm.last_prompt
+    assert "python (pid=111, cpu=45.0%" in llm.last_prompt
 
 
 @pytest.mark.asyncio

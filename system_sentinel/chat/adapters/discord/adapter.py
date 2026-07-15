@@ -37,6 +37,7 @@ _EMBED_FIELD_NAME_MAX = 256
 _EMBED_FIELD_VALUE_MAX = 1024
 _EMBED_FIELDS_MAX = 25
 _EMBED_TOTAL_CHARS_MAX = 6000
+_COMMAND_RESPONSE_TIMEOUT_SECONDS = 30.0
 
 
 def _truncate(value: str | None, max_len: int) -> str | None:
@@ -90,7 +91,23 @@ class DiscordAdapter(BaseChatAdapter):
             )
             args = message.content.split()
             try:
-                response = await self._message_handler(inbound, args)
+                response_future: asyncio.Future[OutboundMessage | None] = asyncio.ensure_future(
+                    self._message_handler(inbound, args)
+                )
+                try:
+                    response = await asyncio.wait_for(
+                        asyncio.shield(response_future),
+                        timeout=_COMMAND_RESPONSE_TIMEOUT_SECONDS,
+                    )
+                except TimeoutError:
+                    await self.send(
+                        str(message.channel.id),
+                        OutboundMessage(
+                            text="Thinking... still working on that. I'll reply shortly.",
+                            reply_to=inbound,
+                        ),
+                    )
+                    response = await response_future
                 if response is not None:
                     await self.send(str(message.channel.id), response)
             except Exception:

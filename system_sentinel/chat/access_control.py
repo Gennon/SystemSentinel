@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 _DEFAULT_READONLY_COMMANDS = {
     "!help",
     "!status",
+    "!ask",
     "!alerts",
     "!files",
     "!storage",

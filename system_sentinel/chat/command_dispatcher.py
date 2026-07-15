@@ -783,6 +783,8 @@ class ChatCommandDispatcher:
         ram = psutil.virtual_memory().percent
         disk = psutil.disk_usage("/").percent
         active_alerts = await self._active_alert_conditions()
+        recent_alerts = await self._recent_alerts_for_llm(limit=5)
+        top_processes = await self._latest_top_processes_for_llm(limit=5)
         lines = [
             f"CPU percent: {cpu:.1f}",
             f"RAM percent: {ram:.1f}",
@@ -793,6 +795,16 @@ class ChatCommandDispatcher:
             lines.extend(active_alerts[:8])
         else:
             lines.append("Active alerts: none")
+        if recent_alerts:
+            lines.append("Recent alerts:")
+            lines.extend(recent_alerts)
+        else:
+            lines.append("Recent alerts: none")
+        if top_processes:
+            lines.append("Top processes by CPU (latest sample):")
+            lines.extend(top_processes)
+        else:
+            lines.append("Top processes by CPU (latest sample): unavailable")
         return "\n".join(lines)
 
     def _extract_prompt_after_command(self, text: str) -> str | None:
@@ -801,3 +813,69 @@ class ChatCommandDispatcher:
             return None
         prompt = parts[1].strip()
         return prompt or None
+
+    async def _recent_alerts_for_llm(self, *, limit: int) -> list[str]:
+        cursor = await self._db.connection.execute(
+            """
+            SELECT timestamp, source, description, details_json
+            FROM audit_log
+            WHERE action_type = 'alert_fired'
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (max(1, limit),),
+        )
+        rows = await cursor.fetchall()
+        alerts: list[str] = []
+        for row in rows:
+            severity = "unknown"
+            details_raw = row[3]
+            if isinstance(details_raw, str):
+                try:
+                    details = json.loads(details_raw)
+                except json.JSONDecodeError:
+                    details = {}
+                if isinstance(details, dict):
+                    severity_raw = details.get("severity")
+                    if isinstance(severity_raw, str) and severity_raw.strip():
+                        severity = severity_raw.strip()
+            alerts.append(f"- {row[0]} | {row[1]} | {severity} | {row[2]}")
+        return alerts
+
+    async def _latest_top_processes_for_llm(self, *, limit: int) -> list[str]:
+        cursor = await self._db.connection.execute(
+            """
+            SELECT data_json
+            FROM system_metrics
+            WHERE metric_type = 'cpu'
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return []
+
+        data_raw = row[0]
+        if not isinstance(data_raw, str):
+            return []
+        try:
+            data = json.loads(data_raw)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(data, dict):
+            return []
+        top_processes = data.get("top_processes")
+        if not isinstance(top_processes, list):
+            return []
+
+        lines: list[str] = []
+        for process in top_processes[: max(1, limit)]:
+            if not isinstance(process, dict):
+                continue
+            name = str(process.get("name", "unknown"))
+            pid = process.get("pid")
+            cpu_percent = float(process.get("cpu_percent", 0.0))
+            ram_bytes = int(process.get("ram_bytes", 0))
+            lines.append(f"- {name} (pid={pid}, cpu={cpu_percent:.1f}%, ram={ram_bytes} bytes)")
+        return lines
