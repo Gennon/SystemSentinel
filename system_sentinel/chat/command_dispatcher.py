@@ -4,7 +4,6 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-import json
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -23,6 +22,12 @@ from system_sentinel.chat.command_handlers import (
     handle_snapshots_command,
     handle_storage_command,
 )
+from system_sentinel.chat.command_insights import (
+    build_llm_context_summary,
+    build_status_text,
+    extract_prompt_after_command,
+)
+from system_sentinel.chat.command_metrics import get_active_alert_conditions
 from system_sentinel.chat.command_support import (
     command_prefix_for_adapter,
     extract_command,
@@ -236,26 +241,13 @@ class ChatCommandDispatcher:
         )
 
     async def _cmd_status(self, message: InboundMessage) -> OutboundMessage:
-        cpu = psutil.cpu_percent(interval=None)
-        ram = psutil.virtual_memory()
-        disk = psutil.disk_usage("/")
-        uptime_seconds = int(
-            (datetime.now(UTC) - datetime.fromtimestamp(psutil.boot_time(), tz=UTC)).total_seconds()
+        text = build_status_text(
+            config=self._config,
+            monitor_count=len(self._monitor_registry.monitors),
+            tool_count=len(self._tools),
+            llm_client=self._ctx.llm,
+            psutil_module=psutil,
         )
-        adapters_count = len(self._config.get("chat_adapters", {}))
-        monitors_count = len(self._monitor_registry.monitors)
-        tools_count = len(self._tools)
-        text = (
-            f"CPU {cpu:.1f}% | RAM {ram.percent:.1f}% | Disk {disk.percent:.1f}%\n"
-            f"Uptime {uptime_seconds}s\n"
-            f"Service health: daemon=running, adapters={adapters_count}, "
-            f"monitors={monitors_count}, tools={tools_count}"
-        )
-        if self._ctx.llm is not None and self._ctx.llm.is_enabled:
-            provider = self._ctx.llm.active_provider_name or "unknown"
-            text = f"{text}\nLLM: enabled ({provider})"
-        else:
-            text = f"{text}\nLLM: disabled"
         return OutboundMessage(text=text, reply_to=message)
 
     async def _cmd_ask(self, message: InboundMessage) -> OutboundMessage:
@@ -362,73 +354,11 @@ class ChatCommandDispatcher:
         )
 
     async def _active_alert_conditions(self) -> list[str]:
-        conditions: list[str] = []
-        monitors_cfg = self._config.get("monitors", {})
-        now = datetime.now(UTC).isoformat()
-
-        cpu_threshold = float(monitors_cfg.get("cpu", {}).get("alert_threshold_percent", 90))
-        ram_threshold = float(monitors_cfg.get("ram", {}).get("alert_threshold_percent", 90))
-        disk_threshold = float(monitors_cfg.get("disk", {}).get("alert_threshold_percent", 85))
-        network_cfg = monitors_cfg.get("network", {})
-        network_sent_threshold_raw = network_cfg.get("alert_threshold_bytes_sent")
-        network_recv_threshold_raw = network_cfg.get("alert_threshold_bytes_recv")
-        network_sent_threshold = (
-            float(network_sent_threshold_raw) if network_sent_threshold_raw is not None else None
+        return await get_active_alert_conditions(
+            config=self._config,
+            db=self._db,
+            now_iso=datetime.now(UTC).isoformat(),
         )
-        network_recv_threshold = (
-            float(network_recv_threshold_raw) if network_recv_threshold_raw is not None else None
-        )
-
-        cursor = await self._db.connection.execute(
-            """
-            SELECT metric_type, data_json
-            FROM system_metrics
-            WHERE id IN (
-                SELECT MAX(id) FROM system_metrics GROUP BY metric_type
-            )
-            """
-        )
-        rows = await cursor.fetchall()
-        latest_by_type = {str(row[0]): str(row[1]) for row in rows}
-
-        if "cpu" in latest_by_type:
-            cpu_data = json.loads(latest_by_type["cpu"])
-            cpu_current = float(cpu_data.get("overall_percent", 0.0))
-            if cpu_current > cpu_threshold:
-                conditions.append(f"CPU high: {cpu_current:.1f}% > {cpu_threshold:.1f}% ({now})")
-
-        if "ram" in latest_by_type:
-            ram_data = json.loads(latest_by_type["ram"])
-            ram_current = float(ram_data.get("percent", 0.0))
-            if ram_current > ram_threshold:
-                conditions.append(f"RAM high: {ram_current:.1f}% > {ram_threshold:.1f}% ({now})")
-
-        if "disk" in latest_by_type:
-            disk_data = json.loads(latest_by_type["disk"])
-            partitions = disk_data.get("partitions", [])
-            if isinstance(partitions, list):
-                for part in partitions:
-                    if not isinstance(part, dict):
-                        continue
-                    current = float(part.get("percent", 0.0))
-                    mount = str(part.get("mountpoint", "unknown"))
-                    if current > disk_threshold:
-                        conditions.append(
-                            f"Disk high on {mount}: {current:.1f}% > {disk_threshold:.1f}% ({now})"
-                        )
-        if "network" in latest_by_type:
-            network_data = json.loads(latest_by_type["network"])
-            sent_current = float(network_data.get("bytes_sent", 0.0))
-            recv_current = float(network_data.get("bytes_recv", 0.0))
-            if network_sent_threshold is not None and sent_current > network_sent_threshold:
-                conditions.append(
-                    f"Network sent high: {int(sent_current)} B > {int(network_sent_threshold)} B ({now})"
-                )
-            if network_recv_threshold is not None and recv_current > network_recv_threshold:
-                conditions.append(
-                    f"Network recv high: {int(recv_current)} B > {int(network_recv_threshold)} B ({now})"
-                )
-        return conditions
 
     def _build_storage_report_sync(self, paths: list[str]) -> str:
         lines: list[str] = []
@@ -535,103 +465,12 @@ class ChatCommandDispatcher:
         )
 
     async def _llm_context_summary(self) -> str:
-        cpu = psutil.cpu_percent(interval=None)
-        ram = psutil.virtual_memory().percent
-        disk = psutil.disk_usage("/").percent
         active_alerts = await self._active_alert_conditions()
-        recent_alerts = await self._recent_alerts_for_llm(limit=5)
-        top_processes = await self._latest_top_processes_for_llm(limit=5)
-        lines = [
-            f"CPU percent: {cpu:.1f}",
-            f"RAM percent: {ram:.1f}",
-            f"Disk percent: {disk:.1f}",
-        ]
-        if active_alerts:
-            lines.append("Active alerts:")
-            lines.extend(active_alerts[:8])
-        else:
-            lines.append("Active alerts: none")
-        if recent_alerts:
-            lines.append("Recent alerts:")
-            lines.extend(recent_alerts)
-        else:
-            lines.append("Recent alerts: none")
-        if top_processes:
-            lines.append("Top processes by CPU (latest sample):")
-            lines.extend(top_processes)
-        else:
-            lines.append("Top processes by CPU (latest sample): unavailable")
-        return "\n".join(lines)
+        return await build_llm_context_summary(
+            db=self._db,
+            psutil_module=psutil,
+            active_alerts=active_alerts,
+        )
 
     def _extract_prompt_after_command(self, text: str) -> str | None:
-        parts = text.strip().split(maxsplit=1)
-        if len(parts) < 2:
-            return None
-        prompt = parts[1].strip()
-        return prompt or None
-
-    async def _recent_alerts_for_llm(self, *, limit: int) -> list[str]:
-        cursor = await self._db.connection.execute(
-            """
-            SELECT timestamp, source, description, details_json
-            FROM audit_log
-            WHERE action_type = 'alert_fired'
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            (max(1, limit),),
-        )
-        rows = await cursor.fetchall()
-        alerts: list[str] = []
-        for row in rows:
-            severity = "unknown"
-            details_raw = row[3]
-            if isinstance(details_raw, str):
-                try:
-                    details = json.loads(details_raw)
-                except json.JSONDecodeError:
-                    details = {}
-                if isinstance(details, dict):
-                    severity_raw = details.get("severity")
-                    if isinstance(severity_raw, str) and severity_raw.strip():
-                        severity = severity_raw.strip()
-            alerts.append(f"- {row[0]} | {row[1]} | {severity} | {row[2]}")
-        return alerts
-
-    async def _latest_top_processes_for_llm(self, *, limit: int) -> list[str]:
-        cursor = await self._db.connection.execute(
-            """
-            SELECT data_json
-            FROM system_metrics
-            WHERE metric_type = 'cpu'
-            ORDER BY id DESC
-            LIMIT 1
-            """
-        )
-        row = await cursor.fetchone()
-        if row is None:
-            return []
-
-        data_raw = row[0]
-        if not isinstance(data_raw, str):
-            return []
-        try:
-            data = json.loads(data_raw)
-        except json.JSONDecodeError:
-            return []
-        if not isinstance(data, dict):
-            return []
-        top_processes = data.get("top_processes")
-        if not isinstance(top_processes, list):
-            return []
-
-        lines: list[str] = []
-        for process in top_processes[: max(1, limit)]:
-            if not isinstance(process, dict):
-                continue
-            name = str(process.get("name", "unknown"))
-            pid = process.get("pid")
-            cpu_percent = float(process.get("cpu_percent", 0.0))
-            ram_bytes = int(process.get("ram_bytes", 0))
-            lines.append(f"- {name} (pid={pid}, cpu={cpu_percent:.1f}%, ram={ram_bytes} bytes)")
-        return lines
+        return extract_prompt_after_command(text)
