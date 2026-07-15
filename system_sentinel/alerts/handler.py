@@ -17,6 +17,9 @@ _EVENT_SEVERITY_KEYS = {
     "alert.disk.threshold_exceeded": "disk",
     "alert.network.throughput_threshold_exceeded": "network_throughput",
     "alert.login.brute_force_detected": "login",
+    "alert.login.off_hours_detected": "login",
+    "alert.login.new_user_detected": "login",
+    "alert.login.impossible_travel_detected": "login",
     "alert.connection.unknown_ip_detected": "network_unknown_ip",
     "alert.connection.repeated_attempts_detected": "network_repeat",
     "alert.connection.daily_digest": "network_digest",
@@ -287,6 +290,79 @@ def _format_brute_force(payload: dict[str, Any]) -> OutboundMessage:
     )
 
 
+def _format_off_hours_login(payload: dict[str, Any]) -> OutboundMessage:
+    username = str(payload.get("username", "unknown"))
+    ip = str(payload.get("ip_address", "unknown"))
+    allowed_hours = str(payload.get("allowed_hours", "07:00-22:00"))
+    return OutboundMessage(
+        title="⚠️ Off-Hours Login Detected",
+        text=(
+            f"Successful SSH login by **{username}** from **{ip}** "
+            f"outside allowed hours (**{allowed_hours}**)."
+        ),
+        severity=AlertSeverity.WARNING,
+        fields={
+            "Anomaly Type": str(payload.get("anomaly_type", "off_hours")),
+            "Event Type": str(payload.get("event_type", "successful_ssh_login")),
+            "Username": username,
+            "IP Address": ip,
+            "Auth Method": str(payload.get("auth_method", "unknown")),
+            "Port": str(payload.get("port", "—")),
+            "Timestamp": str(payload.get("timestamp", "—")),
+            "Hostname": str(payload.get("hostname", "—")),
+            "Allowed Hours": allowed_hours,
+        },
+    )
+
+
+def _format_new_user_login(payload: dict[str, Any]) -> OutboundMessage:
+    username = str(payload.get("username", "unknown"))
+    ip = str(payload.get("ip_address", "unknown"))
+    return OutboundMessage(
+        title="⚠️ New User Login Detected",
+        text=f"First recorded successful SSH login for user **{username}** from **{ip}**.",
+        severity=AlertSeverity.WARNING,
+        fields={
+            "Anomaly Type": str(payload.get("anomaly_type", "new_user")),
+            "Event Type": str(payload.get("event_type", "successful_ssh_login")),
+            "Username": username,
+            "IP Address": ip,
+            "Auth Method": str(payload.get("auth_method", "unknown")),
+            "Port": str(payload.get("port", "—")),
+            "Timestamp": str(payload.get("timestamp", "—")),
+            "Hostname": str(payload.get("hostname", "—")),
+        },
+    )
+
+
+def _format_impossible_travel(payload: dict[str, Any]) -> OutboundMessage:
+    username = str(payload.get("username", "unknown"))
+    ip = str(payload.get("ip_address", "unknown"))
+    previous_ip = str(payload.get("previous_ip_address", "unknown"))
+    distance_km = str(payload.get("distance_km", "—"))
+    previous_timestamp = str(payload.get("previous_timestamp", "—"))
+    return OutboundMessage(
+        title="🚨 Impossible Travel Login Detected",
+        text=(
+            f"User **{username}** logged in from **{previous_ip}** and **{ip}** "
+            f"within a short window (distance ≈ **{distance_km} km**)."
+        ),
+        severity=AlertSeverity.CRITICAL,
+        fields={
+            "Anomaly Type": str(payload.get("anomaly_type", "impossible_travel")),
+            "Event Type": str(payload.get("event_type", "successful_ssh_login")),
+            "Username": username,
+            "Current IP": ip,
+            "Previous IP": previous_ip,
+            "Distance (km)": distance_km,
+            "Window (min)": str(payload.get("window_minutes", "—")),
+            "Current Timestamp": str(payload.get("timestamp", "—")),
+            "Previous Timestamp": previous_timestamp,
+            "Hostname": str(payload.get("hostname", "—")),
+        },
+    )
+
+
 def _format_cpu_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessage:
     return OutboundMessage(
         title="⚠️ High CPU Usage",
@@ -441,6 +517,9 @@ class AlertHandler:
     def register(self, event_bus: InProcessEventBus) -> None:
         """Wire this handler into *event_bus* by subscribing to known alert events."""
         event_bus.subscribe("alert.login.brute_force_detected", self._on_brute_force)
+        event_bus.subscribe("alert.login.off_hours_detected", self._on_off_hours_login)
+        event_bus.subscribe("alert.login.new_user_detected", self._on_new_user_login)
+        event_bus.subscribe("alert.login.impossible_travel_detected", self._on_impossible_travel)
         event_bus.subscribe("alert.connection.unknown_ip_detected", self._on_unknown_connection)
         event_bus.subscribe(
             "alert.connection.repeated_attempts_detected",
@@ -478,6 +557,34 @@ class AlertHandler:
             payload.get("attempt_count", 0),
         )
         msg = self._apply_severity(event_type, payload, _format_brute_force(payload))
+        await self._notify_and_record(event_type, msg)
+
+    async def _on_off_hours_login(self, event_type: str, payload: Any) -> None:
+        self._logger.warning(
+            "Off-hours login detected: user=%s ip=%s",
+            payload.get("username"),
+            payload.get("ip_address"),
+        )
+        msg = self._apply_severity(event_type, payload, _format_off_hours_login(payload))
+        await self._notify_and_record(event_type, msg)
+
+    async def _on_new_user_login(self, event_type: str, payload: Any) -> None:
+        self._logger.warning(
+            "New user login detected: user=%s ip=%s",
+            payload.get("username"),
+            payload.get("ip_address"),
+        )
+        msg = self._apply_severity(event_type, payload, _format_new_user_login(payload))
+        await self._notify_and_record(event_type, msg)
+
+    async def _on_impossible_travel(self, event_type: str, payload: Any) -> None:
+        self._logger.warning(
+            "Impossible travel login detected: user=%s current=%s previous=%s",
+            payload.get("username"),
+            payload.get("ip_address"),
+            payload.get("previous_ip_address"),
+        )
+        msg = self._apply_severity(event_type, payload, _format_impossible_travel(payload))
         await self._notify_and_record(event_type, msg)
 
     async def _on_connection_repeat_threshold(self, event_type: str, payload: Any) -> None:

@@ -4,6 +4,8 @@ from dataclasses import dataclass
 import socket
 from typing import Any
 
+from system_sentinel.geoip import choose_geoip_database_path, geoip_country_code
+
 
 @dataclass(frozen=True)
 class ConnectionIntentEnrichment:
@@ -96,7 +98,11 @@ def classify_connection_intent(
         if not reasons:
             reasons.append("low_signal_background_activity")
 
-    enrichment = _enrich_ip(ip_address, enrichment_cfg)
+    enrichment = _enrich_ip(
+        ip_address,
+        enrichment_cfg,
+        geoip_database_path=str(config.get("geoip_database_path", "")).strip(),
+    )
     return ConnectionIntentClassification(
         category=category,
         confidence=round(confidence, 2),
@@ -106,7 +112,9 @@ def classify_connection_intent(
     )
 
 
-def _enrich_ip(ip_address: str, cfg: dict[str, Any]) -> ConnectionIntentEnrichment:
+def _enrich_ip(
+    ip_address: str, cfg: dict[str, Any], *, geoip_database_path: str
+) -> ConnectionIntentEnrichment:
     if not bool(cfg.get("enabled", False)):
         return ConnectionIntentEnrichment(
             reverse_dns=None,
@@ -116,8 +124,12 @@ def _enrich_ip(ip_address: str, cfg: dict[str, Any]) -> ConnectionIntentEnrichme
 
     reverse_dns = _reverse_dns(ip_address) if bool(cfg.get("enable_reverse_dns", True)) else None
     asn_org = _asn_org(ip_address) if bool(cfg.get("enable_asn_lookup", True)) else None
+    effective_geoip_path = choose_geoip_database_path(
+        cfg.get("geoip_database_path"),
+        geoip_database_path,
+    )
     geoip_country = (
-        _geoip_country(ip_address, str(cfg.get("geoip_database_path", "")).strip())
+        geoip_country_code(ip_address, effective_geoip_path)
         if bool(cfg.get("enable_geoip", True))
         else None
     )
@@ -151,25 +163,6 @@ def _asn_org(ip_address: str) -> str | None:
         return None
     name = network.get("name")
     return str(name) if isinstance(name, str) and name.strip() else None
-
-
-def _geoip_country(ip_address: str, db_path: str) -> str | None:
-    if not db_path:
-        return None
-    try:
-        import geoip2.database  # type: ignore[import-not-found]
-        import geoip2.errors  # type: ignore[import-not-found]
-    except ImportError:
-        return None
-
-    try:
-        with geoip2.database.Reader(db_path) as reader:
-            response = reader.country(ip_address)
-    except (FileNotFoundError, OSError, ValueError, geoip2.errors.AddressNotFoundError):
-        return None
-
-    country = response.country.iso_code
-    return str(country) if isinstance(country, str) and country.strip() else None
 
 
 def _as_dict(value: object) -> dict[str, Any]:

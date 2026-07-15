@@ -53,6 +53,7 @@ updates:
 monitors:
   collection_interval: "00:01:00"
   retention: "30d 00:00:00"
+  geoip_database_path: ""
   cpu:
     enabled: true
     alert_threshold_percent: 90
@@ -76,6 +77,15 @@ monitors:
     failed_login_alert_count: 5
     failed_login_window: "00:10:00"
     alert_cooldown: "00:30:00"
+    anomaly_detection:
+      brute_force_enabled: true
+      off_hours_enabled: true
+      new_user_enabled: true
+      impossible_travel_enabled: true
+      off_hours_start: "07:00"
+      off_hours_end: "22:00"
+      impossible_travel_window: "02:00:00"
+      impossible_travel_min_distance_km: 500
   connections:
     enabled: true
     whitelist: []
@@ -104,7 +114,6 @@ monitors:
         enable_reverse_dns: true
         enable_asn_lookup: true
         enable_geoip: true
-        geoip_database_path: ""
   services:
     enabled: true
     check_interval: "00:01:00"
@@ -207,11 +216,21 @@ monitors:
 
 ```yaml
 monitors:
+  geoip_database_path: "/usr/share/GeoIP/GeoLite2-City.mmdb"
   logins:
     enabled: true
     failed_login_alert_count: 7
     failed_login_window: "00:15:00"
     alert_cooldown: "00:30:00"
+    anomaly_detection:
+      brute_force_enabled: true
+      off_hours_enabled: true
+      new_user_enabled: true
+      impossible_travel_enabled: true
+      off_hours_start: "07:00"
+      off_hours_end: "22:00"
+      impossible_travel_window: "02:00:00"
+      impossible_travel_min_distance_km: 500
   services:
     enabled: true
     check_interval: "00:01:00"
@@ -379,6 +398,7 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 |---|---|---|---|---|
 | `monitors.collection_interval` | duration | `00:01:00` | `MonitorRegistry` | Global monitor collection loop interval. |
 | `monitors.retention` | duration | `30d 00:00:00` | `MonitorRegistry` | Metric retention window (daily purge). |
+| `monitors.geoip_database_path` | path | `""` | `LoginMonitor`, `ConnectionMonitor` | Canonical GeoIP DB path shared across monitors. |
 | `monitors.<monitor>.enabled` | bool | `true` | `MonitorRegistry`/`BaseMonitor` | Per-monitor enable/disable switch. |
 | `monitors.cpu.data_dir` | path | `/var/lib/sentinel` | `CpuMonitor` | Used to locate `sentinel.db`. |
 | `monitors.cpu.alert_threshold_percent` | number | `90` | `CpuMonitor` | CPU usage alert threshold. |
@@ -398,6 +418,14 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `monitors.logins.failed_login_alert_count` | int | `5` | `LoginMonitor` | Brute-force alert threshold. |
 | `monitors.logins.failed_login_window` | duration | `00:10:00` | `LoginMonitor` | Brute-force detection window. |
 | `monitors.logins.alert_cooldown` | duration | `00:30:00` | `LoginMonitor` | Minimum time between alerts per source IP. |
+| `monitors.logins.anomaly_detection.brute_force_enabled` | bool | `true` | `LoginMonitor` | Enables/disables brute-force anomaly alerts. |
+| `monitors.logins.anomaly_detection.off_hours_enabled` | bool | `true` | `LoginMonitor` | Enables/disables off-hours successful-login alerts. |
+| `monitors.logins.anomaly_detection.new_user_enabled` | bool | `true` | `LoginMonitor` | Enables/disables first-seen user successful-login alerts. |
+| `monitors.logins.anomaly_detection.impossible_travel_enabled` | bool | `true` | `LoginMonitor` | Enables/disables impossible-travel detection. |
+| `monitors.logins.anomaly_detection.off_hours_start` | `HH:MM` | `07:00` | `LoginMonitor` | Off-hours window start (inclusive). |
+| `monitors.logins.anomaly_detection.off_hours_end` | `HH:MM` | `22:00` | `LoginMonitor` | Off-hours window end (inclusive). |
+| `monitors.logins.anomaly_detection.impossible_travel_window` | duration | `02:00:00` | `LoginMonitor` | Max interval between successful logins to consider impossible travel. |
+| `monitors.logins.anomaly_detection.impossible_travel_min_distance_km` | float | `500` | `LoginMonitor` | Minimum great-circle distance threshold for impossible-travel alerts. |
 | `monitors.connections.data_dir` | path | `/var/lib/sentinel` | `ConnectionMonitor` | Used to locate `sentinel.db`. |
 | `monitors.connections.whitelist` | list[string] | `[]` | `ConnectionMonitor` | Entries can be IPs or CIDR ranges. |
 | `monitors.connections.repeat_alert_count` | int | `3` | `ConnectionMonitor` | Repeated-attempt alert threshold. |
@@ -418,7 +446,6 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `monitors.connections.classification.ip_enrichment.enable_reverse_dns` | bool | `true` | `ConnectionMonitor` | Reverse DNS enrichment flag. |
 | `monitors.connections.classification.ip_enrichment.enable_asn_lookup` | bool | `true` | `ConnectionMonitor` | ASN enrichment flag (`ipwhois`). |
 | `monitors.connections.classification.ip_enrichment.enable_geoip` | bool | `true` | `ConnectionMonitor` | GeoIP enrichment flag (`geoip2`). |
-| `monitors.connections.classification.ip_enrichment.geoip_database_path` | path | `""` (empty) | `ConnectionMonitor` | MaxMind database path (when GeoIP enabled). |
 | `monitors.services.critical_services` | list[string] | `[]` | `ServiceMonitor` | Critical systemd units to check/restart. |
 | `monitors.services.services` | list[string] | `[]` | `ServiceMonitor` | Legacy alias for `critical_services`; used if `critical_services` is not set. |
 | `monitors.services.check_interval` | duration | `00:01:00` | `ServiceMonitor` | Service health-check interval. |

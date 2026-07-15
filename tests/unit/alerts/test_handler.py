@@ -13,7 +13,10 @@ from system_sentinel.alerts.handler import (
     _format_cpu_threshold_exceeded,
     _format_disk_threshold_exceeded,
     _format_firewall_drift,
+    _format_impossible_travel,
     _format_network_threshold_exceeded,
+    _format_new_user_login,
+    _format_off_hours_login,
     _format_old_files_daily_digest,
     _format_ram_threshold_exceeded,
     _format_service_failure_detected,
@@ -148,6 +151,42 @@ _BRUTE_FORCE_PAYLOAD = {
     "attempt_count": 7,
     "usernames": ["root", "admin", "ubuntu"],
     "window_minutes": 10,
+}
+
+_OFF_HOURS_PAYLOAD = {
+    "anomaly_type": "off_hours",
+    "event_type": "successful_ssh_login",
+    "username": "alice",
+    "ip_address": "8.8.8.8",
+    "auth_method": "password",
+    "port": 22,
+    "timestamp": "2024-01-01T01:00:00+00:00",
+    "hostname": "sentinel-host",
+    "allowed_hours": "07:00-22:00",
+}
+
+_NEW_USER_PAYLOAD = {
+    "anomaly_type": "new_user",
+    "event_type": "successful_ssh_login",
+    "username": "newadmin",
+    "ip_address": "9.9.9.9",
+    "auth_method": "publickey",
+    "port": 22,
+    "timestamp": "2024-01-01T12:00:00+00:00",
+    "hostname": "sentinel-host",
+}
+
+_IMPOSSIBLE_TRAVEL_PAYLOAD = {
+    "anomaly_type": "impossible_travel",
+    "event_type": "successful_ssh_login",
+    "username": "alice",
+    "ip_address": "203.0.113.7",
+    "previous_ip_address": "1.2.3.4",
+    "distance_km": 8800.0,
+    "window_minutes": 120,
+    "timestamp": "2024-01-01T12:00:00+00:00",
+    "previous_timestamp": "2024-01-01T11:20:00+00:00",
+    "hostname": "sentinel-host",
 }
 
 _CONNECTION_REPEAT_PAYLOAD = {
@@ -310,6 +349,30 @@ def test_format_brute_force_fields_populated() -> None:
     assert msg.fields["Hostname"] == "—"
 
 
+def test_format_off_hours_login_fields_populated() -> None:
+    msg = _format_off_hours_login(_OFF_HOURS_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert msg.fields is not None
+    assert msg.fields["Anomaly Type"] == "off_hours"
+    assert msg.fields["Username"] == "alice"
+
+
+def test_format_new_user_login_fields_populated() -> None:
+    msg = _format_new_user_login(_NEW_USER_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert msg.fields is not None
+    assert msg.fields["Anomaly Type"] == "new_user"
+    assert msg.fields["Username"] == "newadmin"
+
+
+def test_format_impossible_travel_fields_populated() -> None:
+    msg = _format_impossible_travel(_IMPOSSIBLE_TRAVEL_PAYLOAD)
+    assert msg.severity == AlertSeverity.CRITICAL
+    assert msg.fields is not None
+    assert msg.fields["Anomaly Type"] == "impossible_travel"
+    assert msg.fields["Current IP"] == "203.0.113.7"
+
+
 # ---------------------------------------------------------------------------
 # AlertHandler integration tests
 # ---------------------------------------------------------------------------
@@ -364,6 +427,48 @@ async def test_handler_message_severity_is_critical() -> None:
     await bus.publish("alert.login.brute_force_detected", _BRUTE_FORCE_PAYLOAD)
 
     assert calls[0].severity == AlertSeverity.CRITICAL
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_off_hours_login_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.login.off_hours_detected", _OFF_HOURS_PAYLOAD)
+
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.WARNING
+    assert "alice" in calls[0].text
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_new_user_login_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.login.new_user_detected", _NEW_USER_PAYLOAD)
+
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.WARNING
+    assert "newadmin" in calls[0].text
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_impossible_travel_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.login.impossible_travel_detected", _IMPOSSIBLE_TRAVEL_PAYLOAD)
+
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.CRITICAL
+    assert "Impossible Travel" in (calls[0].title or "")
 
 
 def test_format_connection_repeat_threshold_severity_is_critical() -> None:

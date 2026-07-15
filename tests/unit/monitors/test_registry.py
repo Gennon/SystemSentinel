@@ -129,6 +129,26 @@ class TestDiscover:
         monitors.clear()
         assert len(registry.monitors) == 1  # original list unaffected
 
+    def test_injects_global_geoip_path_into_monitor_config(
+        self, app_ctx: AppContext, metrics_repo: MetricsRepository
+    ) -> None:
+        config = {
+            "geoip_database_path": "/usr/share/GeoIP/GeoLite2-City.mmdb",
+            "logins": {"enabled": True},
+        }
+        registry = MonitorRegistry(config, app_ctx, metrics_repo)
+
+        mock_cls = MagicMock(return_value=MagicMock())
+        ep = _mock_entry_point("logins", mock_cls)
+
+        with patch("system_sentinel.monitors.registry.entry_points", return_value=[ep]):
+            registry.discover()
+
+        mock_cls.assert_called_once_with(
+            {"enabled": True, "geoip_database_path": "/usr/share/GeoIP/GeoLite2-City.mmdb"},
+            app_ctx,
+        )
+
 
 class TestCollectionLoop:
     @pytest.mark.asyncio

@@ -99,6 +99,7 @@ _SAFE_DEFAULTS: dict[str, Any] = {
     "monitors": {
         "collection_interval": "00:01:00",
         "retention": "30d 00:00:00",
+        "geoip_database_path": "",
         "cpu": {
             "enabled": True,
             "interval": "00:01:00",
@@ -123,6 +124,16 @@ _SAFE_DEFAULTS: dict[str, Any] = {
             "failed_login_alert_count": 5,
             "failed_login_window": "00:10:00",
             "alert_cooldown": "00:30:00",
+            "anomaly_detection": {
+                "brute_force_enabled": True,
+                "off_hours_enabled": True,
+                "new_user_enabled": True,
+                "impossible_travel_enabled": True,
+                "off_hours_start": "07:00",
+                "off_hours_end": "22:00",
+                "impossible_travel_window": "02:00:00",
+                "impossible_travel_min_distance_km": 500,
+            },
         },
         "network": {
             "enabled": True,
@@ -154,7 +165,6 @@ _SAFE_DEFAULTS: dict[str, Any] = {
                     "enable_reverse_dns": True,
                     "enable_asn_lookup": True,
                     "enable_geoip": True,
-                    "geoip_database_path": "",
                 },
             },
         },

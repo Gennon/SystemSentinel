@@ -61,8 +61,19 @@ class MonitorRegistry:
     def discover(self) -> None:
         """Load all enabled monitors registered via the ``sentinel.monitors`` entry-point group."""
         eps = entry_points(group=self._ENTRY_POINT_GROUP)
+        global_geoip_database_path = self._config.get("geoip_database_path")
+        global_geoip = (
+            global_geoip_database_path.strip()
+            if isinstance(global_geoip_database_path, str)
+            else ""
+        )
         for ep in eps:
-            monitor_config: dict[str, Any] = self._config.get(ep.name, {})
+            raw_monitor_config = self._config.get(ep.name, {})
+            monitor_config: dict[str, Any] = (
+                dict(raw_monitor_config) if isinstance(raw_monitor_config, dict) else {}
+            )
+            if global_geoip and "geoip_database_path" not in monitor_config:
+                monitor_config["geoip_database_path"] = global_geoip
             if not monitor_config.get("enabled", True):
                 self._logger.debug("Monitor %r is disabled — skipping", ep.name)
                 continue

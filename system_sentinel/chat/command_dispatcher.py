@@ -16,6 +16,7 @@ import psutil
 
 from system_sentinel.chat.base import InboundMessage, InboundReaction, OutboundMessage
 from system_sentinel.db.connection_repository import ConnectionRepository
+from system_sentinel.db.login_repository import LoginRepository
 from system_sentinel.db.old_files_repository import OldFilesRepository
 from system_sentinel.tools.firewall.backends import (
     FirewallBackendError,
@@ -72,6 +73,7 @@ class ChatCommandDispatcher:
         self._db = db
         self._old_files_repo = OldFilesRepository(db)
         self._connection_repo = ConnectionRepository(db)
+        self._login_repo = LoginRepository(db)
         self._pending_actions: dict[tuple[str, str, str], PendingAction] = {}
 
     async def handle_message(
@@ -283,27 +285,29 @@ class ChatCommandDispatcher:
         return OutboundMessage(text=report, reply_to=message)
 
     async def _cmd_anomalies(self, message: InboundMessage) -> OutboundMessage:
-        since = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
-        cursor = await self._db.connection.execute(
-            """
-            SELECT timestamp, source, details_json
-            FROM audit_log
-            WHERE action_type = 'alert_fired'
-              AND source = 'alert.login.brute_force_detected'
-              AND timestamp >= ?
-            ORDER BY id DESC
-            LIMIT 10
-            """,
-            (since,),
-        )
-        rows = await cursor.fetchall()
-        if not rows:
+        since = datetime.now(UTC) - timedelta(hours=24)
+        anomalies = await self._login_repo.anomalies_since(since, limit=10)
+        if not anomalies:
             return OutboundMessage(
                 text="No login anomalies in the last 24 hours.", reply_to=message
             )
         lines = ["Recent login anomalies:"]
-        for row in rows:
-            lines.append(f"- {row[0]} | {row[1]}")
+        for row in anomalies:
+            anomaly_type = str(row["anomaly_type"]).replace("_", " ")
+            username = str(row["username"])
+            ip_address = str(row["ip_address"])
+            observed_at = str(row["observed_at"])
+            details = row["details"] if isinstance(row["details"], dict) else {}
+            summary = f"- {observed_at} | {anomaly_type} | user={username} | ip={ip_address}"
+            if row["anomaly_type"] == "brute_force":
+                attempts = details.get("attempt_count")
+                if attempts is not None:
+                    summary = f"{summary} | attempts={attempts}"
+            if row["anomaly_type"] == "impossible_travel":
+                distance = details.get("distance_km")
+                if distance is not None:
+                    summary = f"{summary} | distance_km={distance}"
+            lines.append(summary)
         return OutboundMessage(text="\n".join(lines), reply_to=message)
 
     async def _cmd_snapshots(self, message: InboundMessage) -> OutboundMessage:

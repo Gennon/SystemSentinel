@@ -135,9 +135,20 @@ class ConnectionMonitor(BaseMonitor):
         )
         threshold_window_minutes = int(threshold_window_seconds // 60)
         classification_cfg = self.config.get("classification", {})
+        effective_classification_cfg: dict[str, Any]
+        if isinstance(classification_cfg, dict):
+            effective_classification_cfg = dict(classification_cfg)
+        else:
+            effective_classification_cfg = {}
+        global_geoip_path = self.config.get("geoip_database_path")
+        if isinstance(global_geoip_path, str) and global_geoip_path.strip():
+            effective_classification_cfg.setdefault(
+                "geoip_database_path",
+                global_geoip_path.strip(),
+            )
         recurrence_cfg = (
-            classification_cfg.get("recurrence_over_time", {})
-            if isinstance(classification_cfg, dict)
+            effective_classification_cfg.get("recurrence_over_time", {})
+            if isinstance(effective_classification_cfg, dict)
             else {}
         )
         recurrence_window_seconds = parse_duration_from_config(
@@ -200,7 +211,7 @@ class ConnectionMonitor(BaseMonitor):
                 distinct_ports=len(observed_ports),
                 recurrence_count=recurrence_count,
                 observed_ports=observed_ports,
-                config=classification_cfg if isinstance(classification_cfg, dict) else {},
+                config=effective_classification_cfg,
             )
             await self.ctx.event_bus.publish(
                 "alert.connection.repeated_attempts_detected",

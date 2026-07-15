@@ -13,6 +13,7 @@ from system_sentinel.chat.command_dispatcher import ChatCommandDispatcher
 from system_sentinel.core.context import AppContext
 from system_sentinel.db.connection import DatabaseConnection
 from system_sentinel.db.connection_repository import ConnectionRepository
+from system_sentinel.db.login_repository import LoginRepository
 from system_sentinel.tools.base import BaseTool, ToolOutcome, ToolResult
 from system_sentinel.tools.firewall.backends import UnsupportedFirewallBackendError
 
@@ -413,3 +414,36 @@ async def test_snapshots_common_typo_alias_is_supported(tmp_path: Path) -> None:
     response = await dispatcher.handle_message(_message("!snaphsots"), ["!snaphsots"])
     assert response is not None
     assert "Recent snapshots:" in response.text
+
+
+@pytest.mark.asyncio
+async def test_anomalies_command_lists_recent_login_anomalies(tmp_path: Path) -> None:
+    db = DatabaseConnection(tmp_path / "sentinel.db")
+    await db.connect()
+    login_repo = LoginRepository(db)
+    await login_repo.record_anomaly(
+        observed_at=datetime.now(UTC),
+        anomaly_type="new_user",
+        username="alice",
+        ip_address="1.2.3.4",
+        details={"anomaly_type": "new_user"},
+    )
+    ctx = AppContext(
+        audit=AsyncMock(),
+        event_bus=AsyncMock(),
+        logger=logging.getLogger("test"),
+    )
+    dispatcher = ChatCommandDispatcher(
+        config={"chat_adapters": {"discord": {"channel_id": "100"}}},
+        app_ctx=ctx,
+        scheduler=_FakeScheduler(),  # type: ignore[arg-type]
+        tools={},
+        monitor_registry=_FakeMonitorRegistry(),  # type: ignore[arg-type]
+        db=db,
+    )
+
+    response = await dispatcher.handle_message(_message("!anomalies"), ["!anomalies"])
+    assert response is not None
+    assert "Recent login anomalies:" in response.text
+    assert "new user" in response.text
+    assert "alice" in response.text
