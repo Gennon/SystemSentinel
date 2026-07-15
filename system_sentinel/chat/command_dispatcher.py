@@ -23,6 +23,13 @@ from system_sentinel.chat.command_handlers import (
     handle_snapshots_command,
     handle_storage_command,
 )
+from system_sentinel.chat.command_support import (
+    command_prefix_for_adapter,
+    extract_command,
+    is_in_command_channel,
+    record_command,
+    record_reaction_command,
+)
 from system_sentinel.chat.maintenance_utils import (
     parse_older_than_seconds,
     run_cleanup_rules,
@@ -476,32 +483,24 @@ class ChatCommandDispatcher:
         return parse_older_than_seconds(raw)
 
     def _extract_command(self, adapter_name: str, text: str, args: list[str]) -> str | None:
-        prefix = self._command_prefix_for_adapter(adapter_name)
-        if args:
-            token = args[0].strip()
-        else:
-            token = text.strip().split(maxsplit=1)[0] if text.strip() else ""
-        if not token.startswith(prefix):
-            return None
-        command = f"!{token[len(prefix) :].lower()}"
-        return _COMMAND_ALIASES.get(command, command)
+        return extract_command(
+            config=self._config,
+            adapter_name=adapter_name,
+            text=text,
+            args=args,
+            default_prefix=_DEFAULT_PREFIX,
+            aliases=_COMMAND_ALIASES,
+        )
 
     def _is_in_command_channel(self, message: InboundMessage) -> bool:
-        chat_cfg = self._config.get("chat_adapters", {}).get(message.adapter, {})
-        if not isinstance(chat_cfg, dict):
-            return False
-        command_channel_id = chat_cfg.get("command_channel_id", chat_cfg.get("channel_id"))
-        if command_channel_id is None:
-            return True
-        return str(command_channel_id) == message.channel_id
+        return is_in_command_channel(config=self._config, message=message)
 
     def _command_prefix_for_adapter(self, adapter_name: str) -> str:
-        adapter_cfg = self._config.get("chat_adapters", {}).get(adapter_name, {})
-        if isinstance(adapter_cfg, dict):
-            raw = adapter_cfg.get("command_prefix")
-            if isinstance(raw, str) and raw.strip():
-                return raw.strip()
-        return _DEFAULT_PREFIX
+        return command_prefix_for_adapter(
+            config=self._config,
+            adapter_name=adapter_name,
+            default_prefix=_DEFAULT_PREFIX,
+        )
 
     async def _record_command(
         self,
@@ -511,19 +510,12 @@ class ChatCommandDispatcher:
         outcome: str,
         result: str,
     ) -> None:
-        await self._ctx.audit.append(
-            action_type="chat_command",
-            source=f"chat:{message.adapter}:{message.user_id}",
-            description=f"Processed chat command {command}.",
+        await record_command(
+            audit=self._ctx.audit,
+            message=message,
+            command=command,
             outcome=outcome,
-            details={
-                "adapter": message.adapter,
-                "channel_id": message.channel_id,
-                "user_id": message.user_id,
-                "username": message.username,
-                "command": command,
-                "result": result,
-            },
+            result=result,
         )
 
     async def _record_reaction_command(
@@ -534,20 +526,12 @@ class ChatCommandDispatcher:
         outcome: str,
         result: str,
     ) -> None:
-        await self._ctx.audit.append(
-            action_type="chat_command",
-            source=f"chat:{reaction.adapter}:{reaction.user_id}",
-            description=f"Processed confirmed chat command {command}.",
+        await record_reaction_command(
+            audit=self._ctx.audit,
+            reaction=reaction,
+            command=command,
             outcome=outcome,
-            details={
-                "adapter": reaction.adapter,
-                "channel_id": reaction.channel_id,
-                "user_id": reaction.user_id,
-                "username": reaction.username,
-                "command": command,
-                "emoji": str(reaction.emoji),
-                "result": result,
-            },
+            result=result,
         )
 
     async def _llm_context_summary(self) -> str:
