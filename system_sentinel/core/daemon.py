@@ -182,7 +182,7 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
         adapter.on_message(_handle_inbound_message)
         adapter.on_reaction(_handle_inbound_reaction)
 
-    alert_handler = AlertHandler(chat_router, audit=audit, config=config)
+    alert_handler = AlertHandler(chat_router, audit=audit, llm=app_ctx.llm, config=config)
     alert_handler.register(event_bus)
 
     metrics_repo = MetricsRepository(db)

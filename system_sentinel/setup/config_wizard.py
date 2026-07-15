@@ -196,6 +196,7 @@ _SAFE_DEFAULTS: dict[str, Any] = {
         "model": "llama3.2",
         "timeout_seconds": 30,
     },
+    "llm_remediation": False,
     "llm_providers": {
         "ollama": {
             "enabled": True,

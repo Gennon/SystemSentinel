@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from unittest.mock import AsyncMock
 
@@ -28,6 +29,7 @@ from system_sentinel.alerts.handler import (
 from system_sentinel.chat.base import AlertSeverity, OutboundMessage
 from system_sentinel.chat.router import ChatRouter
 from system_sentinel.core.event_bus import InProcessEventBus
+from system_sentinel.llm.base import LLMResponse
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -54,6 +56,61 @@ def _make_router() -> tuple[ChatRouter, list[OutboundMessage]]:
 
     router.register(_RecordingAdapter())  # type: ignore[arg-type]
     return router, broadcast_calls
+
+
+class _FakeRemediationLLMClient:
+    def __init__(self) -> None:
+        self.is_enabled = True
+        self.active_provider_name = "ollama"
+        self.calls = 0
+        self.last_prompt: str | None = None
+        self.last_timeout_seconds: float | None = None
+
+    async def complete(
+        self,
+        *,
+        prompt: str,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> LLMResponse:
+        _ = system_prompt, model
+        self.calls += 1
+        self.last_prompt = prompt
+        self.last_timeout_seconds = timeout_seconds
+        return LLMResponse(
+            text="1) Check load; 2) identify top process; 3) restart only if safe.",
+            model_used="llama3.2",
+            provider="ollama",
+        )
+
+    async def list_models(self) -> list[str]:
+        return ["llama3.2"]
+
+    async def health_check(self) -> bool:
+        return True
+
+
+class _DelayedRemediationLLMClient(_FakeRemediationLLMClient):
+    def __init__(self, gate: asyncio.Event) -> None:
+        super().__init__()
+        self._gate = gate
+
+    async def complete(
+        self,
+        *,
+        prompt: str,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> LLMResponse:
+        await self._gate.wait()
+        return await super().complete(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            timeout_seconds=timeout_seconds,
+        )
 
 
 _UNKNOWN_CONNECTION_PAYLOAD = {
@@ -789,3 +846,86 @@ async def test_handler_rule_override_severity_takes_precedence() -> None:
 
     assert len(calls) == 1
     assert calls[0].severity == AlertSeverity.CRITICAL
+
+
+@pytest.mark.asyncio
+async def test_handler_adds_ai_remediation_follow_up_for_critical_alerts() -> None:
+    router, calls = _make_router()
+    llm = _FakeRemediationLLMClient()
+    handler = AlertHandler(router, llm=llm, config={"llm_remediation": True})
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.disk.threshold_exceeded", _DISK_THRESHOLD_PAYLOAD)
+
+    assert llm.calls == 1
+    assert llm.last_timeout_seconds == 30.0
+    assert llm.last_prompt is not None
+    assert "Alert event type: alert.disk.threshold_exceeded" in llm.last_prompt
+    assert "Alert metrics/details:" in llm.last_prompt
+    assert "Recent system context:" in llm.last_prompt
+    assert len(calls) == 2
+    assert calls[0].title == "🔴 Disk Usage Critical"
+    assert calls[1].title == "🤖 AI remediation suggestion"
+    assert "Advisory only" in calls[1].text
+
+
+@pytest.mark.asyncio
+async def test_handler_does_not_call_llm_when_remediation_disabled() -> None:
+    router, calls = _make_router()
+    llm = _FakeRemediationLLMClient()
+    handler = AlertHandler(router, llm=llm, config={"llm_remediation": False})
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.disk.threshold_exceeded", _DISK_THRESHOLD_PAYLOAD)
+
+    assert llm.calls == 0
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_handler_does_not_call_llm_for_non_critical_alerts() -> None:
+    router, calls = _make_router()
+    llm = _FakeRemediationLLMClient()
+    handler = AlertHandler(router, llm=llm, config={"llm_remediation": True})
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.cpu.threshold_exceeded", _CPU_THRESHOLD_PAYLOAD)
+
+    assert llm.calls == 0
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.WARNING
+
+
+@pytest.mark.asyncio
+async def test_handler_sends_delayed_ai_follow_up_when_generation_exceeds_15_seconds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    router, calls = _make_router()
+    gate = asyncio.Event()
+    llm = _DelayedRemediationLLMClient(gate)
+    handler = AlertHandler(router, llm=llm, config={"llm_remediation": True})
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    original_wait_for = asyncio.wait_for
+
+    async def _patched_wait_for(awaitable: object, timeout: float) -> object:
+        if timeout == 15.0:
+            raise TimeoutError
+        return await original_wait_for(awaitable, timeout)
+
+    monkeypatch.setattr("system_sentinel.alerts.handler.asyncio.wait_for", _patched_wait_for)
+
+    await bus.publish("alert.disk.threshold_exceeded", _DISK_THRESHOLD_PAYLOAD)
+    assert len(calls) == 1
+
+    gate.set()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert llm.calls == 1
+    assert len(calls) == 2
+    assert calls[1].title == "🤖 AI remediation suggestion (delayed)"
