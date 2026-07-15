@@ -53,7 +53,9 @@ class TestLoadConfig:
         result = _load_config(config_file)
         assert result == {}
 
-    def test_env_reference_resolves_from_environment(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_env_reference_resolves_from_environment(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setenv("LLM_TOKEN", "super-secret-token")
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
@@ -71,7 +73,9 @@ class TestLoadConfig:
 
     def test_missing_env_reference_raises_config_error(self, tmp_path: Path) -> None:
         config_file = tmp_path / "config.yaml"
-        config_file.write_text(yaml.dump({"chat_adapters": {"discord": {"token": "env:MISSING_TOKEN"}}}))
+        config_file.write_text(
+            yaml.dump({"chat_adapters": {"discord": {"token": "env:MISSING_TOKEN"}}})
+        )
 
         with pytest.raises(ConfigError, match="MISSING_TOKEN"):
             _load_config(config_file)
