@@ -20,6 +20,14 @@ Tool schedules accept:
 - `HH:MM` (daily at local time), example: `"02:00"`
 - Cron expression, example: `"0 */6 * * *"`
 
+### Environment variable references
+
+Any string config value can reference an environment variable using:
+
+- `env:VARIABLE_NAME`
+
+At load time, SystemSentinel replaces the value with the variable contents. If the variable is not set, startup fails with a config error.
+
 ## Full configuration example
 
 ```yaml
@@ -242,7 +250,7 @@ llm_providers:
   anthropic:
     enabled: true
     endpoint: "https://api.anthropic.com"
-    api_key: "${ANTHROPIC_API_KEY}"
+    api_key: "env:ANTHROPIC_API_KEY"
     model: "claude-3-5-sonnet-latest"
     api_version: "2023-06-01"
     max_tokens: 1024

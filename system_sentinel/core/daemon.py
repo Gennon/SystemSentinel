@@ -4,6 +4,7 @@ import asyncio
 from contextlib import suppress
 from importlib.metadata import entry_points
 import logging
+import os
 from pathlib import Path
 import signal
 from typing import Any
@@ -33,6 +34,7 @@ _CONFIG_PATH = Path("/etc/sentinel/config.yaml")
 _DB_PATH = Path("/var/lib/sentinel/sentinel.db")
 
 _TOOL_ENTRY_POINT_GROUP = "sentinel.tools"
+_ENV_REF_PREFIX = "env:"
 
 
 class DaemonRestartRequested(RuntimeError):
@@ -49,7 +51,44 @@ def _load_config(config_path: Path) -> dict[str, Any]:
         raise ConfigError(f"Failed to parse {config_path}: {exc}") from exc
     if not isinstance(data, dict):
         raise ConfigError(f"{config_path} must contain a YAML mapping, got {type(data).__name__}")
-    return data
+    return _resolve_env_references(data, path="config")
+
+
+def _resolve_env_references(value: Any, *, path: str) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _resolve_env_references(
+                nested_value,
+                path=f"{path}.{key}" if isinstance(key, str) else f"{path}[{key!r}]",
+            )
+            for key, nested_value in value.items()
+        }
+    if isinstance(value, list):
+        return [
+            _resolve_env_references(nested_value, path=f"{path}[{index}]")
+            for index, nested_value in enumerate(value)
+        ]
+    if not isinstance(value, str):
+        return value
+
+    resolved = value.strip()
+    if not resolved.startswith(_ENV_REF_PREFIX):
+        return value
+
+    env_var_name = resolved[len(_ENV_REF_PREFIX) :].strip()
+    if not env_var_name:
+        raise ConfigError(
+            f"Invalid environment reference at {path}: expected format "
+            f"{_ENV_REF_PREFIX}<VARIABLE_NAME>."
+        )
+
+    env_value = os.getenv(env_var_name)
+    if env_value is None:
+        raise ConfigError(
+            f"Config value {path} references environment variable {env_var_name!r}, "
+            "but it is not set."
+        )
+    return env_value
 
 
 def _configure_logging() -> None:
