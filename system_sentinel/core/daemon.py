@@ -7,7 +7,7 @@ import logging
 import os
 from pathlib import Path
 import signal
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -51,7 +51,13 @@ def _load_config(config_path: Path) -> dict[str, Any]:
         raise ConfigError(f"Failed to parse {config_path}: {exc}") from exc
     if not isinstance(data, dict):
         raise ConfigError(f"{config_path} must contain a YAML mapping, got {type(data).__name__}")
-    return _resolve_env_references(data, path="config")
+    resolved = _resolve_env_references(data, path="config")
+    if not isinstance(resolved, dict):
+        raise ConfigError(
+            f"{config_path} must contain a YAML mapping after env resolution, "
+            f"got {type(resolved).__name__}"
+        )
+    return cast("dict[str, Any]", resolved)
 
 
 def _resolve_env_references(value: Any, *, path: str) -> Any:
