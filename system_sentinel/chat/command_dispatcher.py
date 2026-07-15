@@ -15,6 +15,7 @@ import uuid
 import psutil
 
 from system_sentinel.chat.base import InboundMessage, InboundReaction, OutboundMessage
+from system_sentinel.core.exceptions import LLMUnavailableError
 from system_sentinel.db.connection_repository import ConnectionRepository
 from system_sentinel.db.login_repository import LoginRepository
 from system_sentinel.db.old_files_repository import OldFilesRepository
@@ -87,6 +88,7 @@ class ChatCommandDispatcher:
 
         handlers: dict[str, CommandCallable] = {
             "!status": self._cmd_status,
+            "!ask": self._cmd_ask,
             "!files": self._cmd_files,
             "!alerts": self._cmd_alerts,
             "!storage": self._cmd_storage,
@@ -239,7 +241,70 @@ class ChatCommandDispatcher:
             f"Service health: daemon=running, adapters={adapters_count}, "
             f"monitors={monitors_count}, tools={tools_count}"
         )
+        if self._ctx.llm is not None and self._ctx.llm.is_enabled:
+            provider = self._ctx.llm.active_provider_name or "unknown"
+            text = f"{text}\nLLM: enabled ({provider})"
+        else:
+            text = f"{text}\nLLM: disabled"
         return OutboundMessage(text=text, reply_to=message)
+
+    async def _cmd_ask(self, message: InboundMessage) -> OutboundMessage:
+        llm_client = self._ctx.llm
+        if llm_client is None:
+            return OutboundMessage(
+                text="LLM assistant is not configured. Configure `llm` and `llm_providers` in config.yaml.",
+                reply_to=message,
+            )
+
+        question = self._extract_prompt_after_command(message.text)
+        if question is None:
+            return OutboundMessage(
+                text="Usage: !ask <question>",
+                reply_to=message,
+            )
+
+        context = await self._llm_context_summary()
+        prompt = f"User question:\n{question}\n\nCurrent system context:\n{context}"
+        system_prompt = (
+            "You are SystemSentinel assistant. Explain likely causes and practical next steps. "
+            "If uncertain, say so clearly."
+        )
+        try:
+            result = await llm_client.complete(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                timeout_seconds=30.0,
+            )
+        except LLMUnavailableError as exc:
+            return OutboundMessage(
+                text=f"LLM assistant unavailable: {exc}",
+                reply_to=message,
+            )
+
+        await self._ctx.audit.append(
+            action_type="llm_query",
+            source=f"chat:{message.adapter}:{message.user_id}",
+            description="Processed chat LLM query.",
+            outcome="success",
+            details={
+                "adapter": message.adapter,
+                "channel_id": message.channel_id,
+                "user_id": message.user_id,
+                "username": message.username,
+                "question": question,
+                "provider": result.provider,
+                "model": result.model_used,
+                "prompt_tokens": result.prompt_tokens,
+                "completion_tokens": result.completion_tokens,
+                "context": context,
+                "response": result.text,
+            },
+        )
+
+        return OutboundMessage(
+            text=f"[{result.provider}:{result.model_used}]\n{result.text[:2800]}",
+            reply_to=message,
+        )
 
     async def _cmd_files(self, message: InboundMessage) -> OutboundMessage:
         monitored = (
@@ -421,6 +486,7 @@ class ChatCommandDispatcher:
             text=(
                 "Available commands:\n"
                 "!status - CPU, RAM, disk, uptime, and service health\n"
+                "!ask <question> - ask the configured LLM provider for diagnostics help\n"
                 "!update - run security updates (confirmation required)\n"
                 "!cleanup - run file cleanup (confirmation required)\n"
                 "!files - list old files from latest scan\n"
@@ -711,3 +777,27 @@ class ChatCommandDispatcher:
                 "result": result,
             },
         )
+
+    async def _llm_context_summary(self) -> str:
+        cpu = psutil.cpu_percent(interval=None)
+        ram = psutil.virtual_memory().percent
+        disk = psutil.disk_usage("/").percent
+        active_alerts = await self._active_alert_conditions()
+        lines = [
+            f"CPU percent: {cpu:.1f}",
+            f"RAM percent: {ram:.1f}",
+            f"Disk percent: {disk:.1f}",
+        ]
+        if active_alerts:
+            lines.append("Active alerts:")
+            lines.extend(active_alerts[:8])
+        else:
+            lines.append("Active alerts: none")
+        return "\n".join(lines)
+
+    def _extract_prompt_after_command(self, text: str) -> str | None:
+        parts = text.strip().split(maxsplit=1)
+        if len(parts) < 2:
+            return None
+        prompt = parts[1].strip()
+        return prompt or None

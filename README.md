@@ -1,6 +1,6 @@
 # SystemSentinel
 
-A Linux system management daemon that autonomously handles updates, security hardening, monitoring, and user communication — surfacing insights and alerts via chat and a local LLM assistant.
+A Linux system management daemon that autonomously handles updates, security hardening, monitoring, and user communication — surfacing insights and alerts via chat and a pluggable LLM assistant.
 
 ## Installation
 
@@ -54,7 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/Gennon/SystemSentinel/main/install.
 
 ## Tech stack
 
-Python · SQLite · APScheduler · Discord · Ollama (local LLM) · systemd
+Python · SQLite · APScheduler · Discord · Ollama/OpenAI/Anthropic/Mistral · systemd
 
 ## Development
 

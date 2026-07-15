@@ -25,6 +25,8 @@ from system_sentinel.core.snapshots import SnapshotManager
 from system_sentinel.db.audit_repository import SqliteAuditRepository
 from system_sentinel.db.connection import DatabaseConnection
 from system_sentinel.db.metrics_repository import MetricsRepository
+from system_sentinel.llm.client import LLMClient
+from system_sentinel.llm.registry import LLMRegistry
 from system_sentinel.monitors.registry import MonitorRegistry
 
 _CONFIG_PATH = Path("/etc/sentinel/config.yaml")
@@ -119,6 +121,19 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
     event_bus = InProcessEventBus()
     audit = SqliteAuditRepository(db)
     app_ctx = AppContext(audit=audit, event_bus=event_bus, logger=logger)
+
+    llm_providers_cfg_raw = config.get("llm_providers", {})
+    llm_providers_cfg = llm_providers_cfg_raw if isinstance(llm_providers_cfg_raw, dict) else {}
+    llm_cfg_raw = config.get("llm", {})
+    llm_cfg = llm_cfg_raw if isinstance(llm_cfg_raw, dict) else {}
+
+    llm_registry = LLMRegistry(llm_providers_cfg, app_ctx)
+    llm_registry.discover()
+    app_ctx.llm = LLMClient(
+        llm_config=llm_cfg,
+        providers=llm_registry.providers,
+        logger=logger.getChild("llm.client"),
+    )
 
     chat_router = ChatRouter()
     chat_registry = ChatRegistry(config.get("chat_adapters", {}), app_ctx)

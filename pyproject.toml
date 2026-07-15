@@ -69,6 +69,12 @@ daily_digest   = "system_sentinel.monitors.daily_digest:DailyDigestMonitor"
 [project.entry-points."sentinel.chat_adapters"]
 discord = "system_sentinel.chat.adapters.discord.adapter:DiscordAdapter"
 
+[project.entry-points."sentinel.llm_providers"]
+ollama = "system_sentinel.llm.providers.ollama.provider:OllamaProvider"
+openai = "system_sentinel.llm.providers.openai.provider:OpenAIProvider"
+anthropic = "system_sentinel.llm.providers.anthropic.provider:AnthropicProvider"
+mistral = "system_sentinel.llm.providers.mistral.provider:MistralProvider"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

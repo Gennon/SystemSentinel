@@ -98,14 +98,22 @@ system_sentinel/                         # Root Python package
 ├── llm/                                 # LLM Interface — plugin point #3
 │   ├── __init__.py
 │   ├── base.py                          # BaseLLMProvider ABC
+│   ├── client.py                        # Active-provider facade
 │   ├── registry.py
 │   ├── context_builder.py              # Gathers system context for prompts
 │   └── providers/
 │       ├── ollama/
 │       │   ├── __init__.py
 │       │   └── provider.py             # OllamaProvider
-│       ├── openai/                      # (future)
-│       └── anthropic/                   # (future)
+│       ├── openai/
+│       │   ├── __init__.py
+│       │   └── provider.py             # OpenAIProvider
+│       ├── anthropic/
+│       │   ├── __init__.py
+│       │   └── provider.py             # AnthropicProvider
+│       └── mistral/
+│           ├── __init__.py
+│           └── provider.py             # MistralProvider
 │
 ├── charts/                              # Chart rendering — plugin point #4 (Release 3)
 │   ├── __init__.py
@@ -683,14 +691,32 @@ chat:
     time: "08:00"
 
 llm:
-  provider: ollama           # ollama | openai | anthropic | none
+  enabled: true
+  provider: "ollama"         # ollama | openai | anthropic | mistral
+  model: "llama3.2"
+  timeout_seconds: 30
+
+llm_providers:
   ollama:
+    enabled: true
     endpoint: "http://localhost:11434"
     model: "llama3.2"
-    timeout_seconds: 30
-  # openai:
-  #   api_key: "env:OPENAI_API_KEY"
-  #   model: "gpt-4o-mini"
+  openai:
+    enabled: false
+    endpoint: "https://api.openai.com"
+    api_key: "env:OPENAI_API_KEY"
+    model: "gpt-4o-mini"
+  anthropic:
+    enabled: false
+    endpoint: "https://api.anthropic.com"
+    api_key: "env:ANTHROPIC_API_KEY"
+    model: "claude-3-5-sonnet-latest"
+    api_version: "2023-06-01"
+  mistral:
+    enabled: false
+    endpoint: "https://api.mistral.ai"
+    api_key: "env:MISTRAL_API_KEY"
+    model: "mistral-large-latest"
 
 metrics_export:
   prometheus:
@@ -775,6 +801,9 @@ discord = "system_sentinel.chat.adapters.discord.adapter:DiscordAdapter"
 
 [project.entry-points."sentinel.llm_providers"]
 ollama = "system_sentinel.llm.providers.ollama.provider:OllamaProvider"
+openai = "system_sentinel.llm.providers.openai.provider:OpenAIProvider"
+anthropic = "system_sentinel.llm.providers.anthropic.provider:AnthropicProvider"
+mistral = "system_sentinel.llm.providers.mistral.provider:MistralProvider"
 ```
 
 Each registry loads its group with `importlib.metadata.entry_points(group="sentinel.tools")` at daemon startup.

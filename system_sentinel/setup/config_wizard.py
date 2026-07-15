@@ -190,6 +190,39 @@ _SAFE_DEFAULTS: dict[str, Any] = {
             },
         }
     },
+    "llm": {
+        "enabled": False,
+        "provider": "ollama",
+        "model": "llama3.2",
+        "timeout_seconds": 30,
+    },
+    "llm_providers": {
+        "ollama": {
+            "enabled": True,
+            "endpoint": "http://localhost:11434",
+            "model": "llama3.2",
+        },
+        "openai": {
+            "enabled": False,
+            "endpoint": "https://api.openai.com",
+            "api_key": "",
+            "model": "gpt-4o-mini",
+        },
+        "anthropic": {
+            "enabled": False,
+            "endpoint": "https://api.anthropic.com",
+            "api_key": "",
+            "model": "claude-3-5-sonnet-latest",
+            "api_version": "2023-06-01",
+            "max_tokens": 1024,
+        },
+        "mistral": {
+            "enabled": False,
+            "endpoint": "https://api.mistral.ai",
+            "api_key": "",
+            "model": "mistral-large-latest",
+        },
+    },
 }
 
 # A validator callable: (field, value, token) -> error_message | None

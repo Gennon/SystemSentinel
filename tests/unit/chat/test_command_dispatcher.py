@@ -11,9 +11,11 @@ import pytest
 from system_sentinel.chat.base import InboundMessage, InboundReaction
 from system_sentinel.chat.command_dispatcher import ChatCommandDispatcher
 from system_sentinel.core.context import AppContext
+from system_sentinel.core.exceptions import LLMUnavailableError
 from system_sentinel.db.connection import DatabaseConnection
 from system_sentinel.db.connection_repository import ConnectionRepository
 from system_sentinel.db.login_repository import LoginRepository
+from system_sentinel.llm.base import LLMResponse
 from system_sentinel.tools.base import BaseTool, ToolOutcome, ToolResult
 from system_sentinel.tools.firewall.backends import UnsupportedFirewallBackendError
 
@@ -29,6 +31,48 @@ class _FakeMonitorRegistry:
     @property
     def monitors(self) -> list[object]:
         return []
+
+
+class _FakeLLMClient:
+    def __init__(self) -> None:
+        self.active_provider_name = "ollama"
+        self.is_enabled = True
+
+    async def complete(
+        self,
+        *,
+        prompt: str,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> LLMResponse:
+        _ = prompt, system_prompt, model, timeout_seconds
+        return LLMResponse(
+            text="Likely high load from package updates.",
+            model_used="llama3.2",
+            provider="ollama",
+            prompt_tokens=100,
+            completion_tokens=25,
+        )
+
+    async def list_models(self) -> list[str]:
+        return ["llama3.2"]
+
+    async def health_check(self) -> bool:
+        return True
+
+
+class _FailingLLMClient(_FakeLLMClient):
+    async def complete(
+        self,
+        *,
+        prompt: str,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> LLMResponse:
+        _ = prompt, system_prompt, model, timeout_seconds
+        raise LLMUnavailableError("provider offline")
 
 
 class _FakeTool(BaseTool):
@@ -83,7 +127,10 @@ class _FailingFirewallTool(BaseTool):
 
 
 async def _dispatcher(
-    tmp_path: Path, config: dict, tools: dict[str, BaseTool]
+    tmp_path: Path,
+    config: dict,
+    tools: dict[str, BaseTool],
+    llm: _FakeLLMClient | None = None,
 ) -> ChatCommandDispatcher:
     db = DatabaseConnection(tmp_path / "sentinel.db")
     await db.connect()
@@ -91,6 +138,7 @@ async def _dispatcher(
         audit=AsyncMock(),
         event_bus=AsyncMock(),
         logger=logging.getLogger("test"),
+        llm=llm,
     )
     dispatcher = ChatCommandDispatcher(
         config=config,
@@ -144,6 +192,39 @@ async def test_help_command_returns_supported_commands(tmp_path: Path) -> None:
     assert "!status" in response.text
     assert "!cleanup" in response.text
     assert "!snapshots" in response.text
+    assert "!ask <question>" in response.text
+
+
+@pytest.mark.asyncio
+async def test_ask_command_routes_to_llm(tmp_path: Path) -> None:
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {"chat_adapters": {"discord": {"channel_id": "100"}}},
+        {},
+        llm=_FakeLLMClient(),
+    )
+
+    response = await dispatcher.handle_message(
+        _message("!ask why is CPU so high?"),
+        ["!ask", "why", "is", "CPU", "so", "high?"],
+    )
+    assert response is not None
+    assert "[ollama:llama3.2]" in response.text
+    assert "Likely high load from package updates." in response.text
+
+
+@pytest.mark.asyncio
+async def test_ask_command_reports_provider_unavailable(tmp_path: Path) -> None:
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {"chat_adapters": {"discord": {"channel_id": "100"}}},
+        {},
+        llm=_FailingLLMClient(),
+    )
+
+    response = await dispatcher.handle_message(_message("!ask why?"), ["!ask", "why?"])
+    assert response is not None
+    assert "LLM assistant unavailable" in response.text
 
 
 @pytest.mark.asyncio

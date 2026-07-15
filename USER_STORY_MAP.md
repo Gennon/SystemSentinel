@@ -8,7 +8,7 @@ A Linux system management daemon that autonomously handles updates, security har
 |---|---|
 | Language | Python |
 | Chat integration | Plugin-based (Discord first) — full bot with two-way commands + alerts |
-| LLM | Local Ollama (fully offline) |
+| LLM | Plugin-based providers (Ollama default, plus OpenAI, Anthropic/Claude, Mistral) |
 | Packaging | `pip install` + systemd service |
 | Config | YAML |
 | Metrics storage | SQLite |
@@ -86,6 +86,7 @@ A Linux system management daemon that autonomously handles updates, security har
 - [x] As a user I want to configure alert severity levels (info, warning, critical) so I can tune the signal-to-noise ratio. **(US-021)**
 
 ### AI / LLM Assistant
+- [x] As a user I want LLM providers to be pluggable and selectable in config so I can switch between Ollama, OpenAI, Anthropic (Claude), and Mistral without core code changes. **(US-043)**
 - [ ] As a user I want to ask the bot a natural-language question about system health and get an LLM-powered explanation so I can diagnose issues without SSHing in.
 - [ ] As a user I want the system to auto-suggest remediation steps when an anomaly is detected so I know what action to take.
 
@@ -114,7 +115,7 @@ A Linux system management daemon that autonomously handles updates, security har
 - [ ] As a user I want configurable quiet hours for non-urgent alerts so I am not woken up by low-priority notifications.
 
 ### AI / LLM Assistant
-- [ ] As a user I want to choose which LLM model (via Ollama) is used for explanations so I can balance speed vs quality.
+- [ ] As a user I want policy-based model routing (by command type/severity) so I can tune cost, latency, and quality automatically.
 
 ---
 

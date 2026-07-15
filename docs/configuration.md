@@ -38,6 +38,35 @@ chat_adapters:
       - id: "222222222222222222"
         role: "readonly"
 
+llm:
+  enabled: true
+  provider: "ollama" # ollama | openai | anthropic | mistral
+  model: "llama3.2"
+  timeout_seconds: 30
+
+llm_providers:
+  ollama:
+    enabled: true
+    endpoint: "http://localhost:11434"
+    model: "llama3.2"
+  openai:
+    enabled: false
+    endpoint: "https://api.openai.com"
+    api_key: ""
+    model: "gpt-4o-mini"
+  anthropic:
+    enabled: false
+    endpoint: "https://api.anthropic.com"
+    api_key: ""
+    model: "claude-3-5-sonnet-latest"
+    api_version: "2023-06-01"
+    max_tokens: 1024
+  mistral:
+    enabled: false
+    endpoint: "https://api.mistral.ai"
+    api_key: ""
+    model: "mistral-large-latest"
+
 updates:
   self_update:
     enabled: true
@@ -185,6 +214,41 @@ chat_adapters:
         role: "admin"
       - id: "222222222222222222"
         role: "readonly"
+```
+
+### LLM assistant
+
+Use `llm` for active-provider selection and defaults, and `llm_providers.<provider>` for provider-specific credentials/endpoints.
+
+```yaml
+llm:
+  enabled: true
+  provider: "anthropic"
+  model: "claude-3-5-sonnet-latest"
+  timeout_seconds: 30
+
+llm_providers:
+  ollama:
+    enabled: true
+    endpoint: "http://localhost:11434"
+    model: "llama3.2"
+  openai:
+    enabled: false
+    endpoint: "https://api.openai.com"
+    api_key: ""
+    model: "gpt-4o-mini"
+  anthropic:
+    enabled: true
+    endpoint: "https://api.anthropic.com"
+    api_key: "${ANTHROPIC_API_KEY}"
+    model: "claude-3-5-sonnet-latest"
+    api_version: "2023-06-01"
+    max_tokens: 1024
+  mistral:
+    enabled: false
+    endpoint: "https://api.mistral.ai"
+    api_key: ""
+    model: "mistral-large-latest"
 ```
 
 ### Monitors
@@ -391,6 +455,29 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `chat_adapters.<adapter>.unauthorized_response` | string | `silent` | `ChatAccessControl` | `silent` or `deny_message`. |
 | `chat_adapters.<adapter>.unauthorized_message` | string | `Not authorised.` | `ChatAccessControl` | Used when `unauthorized_response=deny_message`. |
 | `chat_adapters.<adapter>.readonly_commands` | list[string] | built-in readonly set | `ChatAccessControl` | Allowed commands for `readonly` users. |
+
+### LLM keys
+
+| Key | Type | Default | Used by | Notes |
+|---|---|---|---|---|
+| `llm.enabled` | bool | `false` | `LLMClient` | Global LLM enable flag. |
+| `llm.provider` | string | first loaded provider | `LLMClient` | Active provider key (must match an enabled `llm_providers.<name>`). |
+| `llm.model` | string | unset | `LLMClient` | Default model override passed to providers when a request has no model. |
+| `llm.timeout_seconds` | int/float | `30` | callers (e.g. chat `!ask`) | Request timeout preference; call sites may override. |
+| `llm_providers.<provider>.enabled` | bool | `false` | `LLMRegistry` | Must be `true` to load provider plugin. |
+| `llm_providers.ollama.endpoint` | string | `http://localhost:11434` | `OllamaProvider` | Ollama base URL. |
+| `llm_providers.ollama.model` | string | unset | `OllamaProvider` | Fallback model when request/model default is absent. |
+| `llm_providers.openai.endpoint` | string | `https://api.openai.com` | `OpenAIProvider` | OpenAI-compatible base URL. |
+| `llm_providers.openai.api_key` | string | none | `OpenAIProvider` | Required for authenticated OpenAI calls. |
+| `llm_providers.openai.model` | string | unset | `OpenAIProvider` | Fallback model when request/model default is absent. |
+| `llm_providers.anthropic.endpoint` | string | `https://api.anthropic.com` | `AnthropicProvider` | Anthropic API base URL. |
+| `llm_providers.anthropic.api_key` | string | none | `AnthropicProvider` | Required for authenticated Anthropic calls. |
+| `llm_providers.anthropic.model` | string | unset | `AnthropicProvider` | Fallback model when request/model default is absent. |
+| `llm_providers.anthropic.api_version` | string | `2023-06-01` | `AnthropicProvider` | Sent as `anthropic-version` header. |
+| `llm_providers.anthropic.max_tokens` | int | `1024` | `AnthropicProvider` | Upper bound for generated tokens per request. |
+| `llm_providers.mistral.endpoint` | string | `https://api.mistral.ai` | `MistralProvider` | Mistral API base URL. |
+| `llm_providers.mistral.api_key` | string | none | `MistralProvider` | Required for authenticated Mistral calls. |
+| `llm_providers.mistral.model` | string | unset | `MistralProvider` | Fallback model when request/model default is absent. |
 
 ### Monitor keys
 
