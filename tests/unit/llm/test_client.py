@@ -36,11 +36,11 @@ def _provider() -> _FakeProvider:
 async def test_complete_uses_configured_provider() -> None:
     provider = _provider()
     client = LLMClient(
-        llm_config={"enabled": True, "provider": "fake", "model": "fake-pro"},
+        llm_config={"enabled": True, "provider": "fake"},
         providers={"fake": provider},
         logger=logging.getLogger("test"),
     )
-    response = await client.complete(prompt="hello")
+    response = await client.complete(prompt="hello", model="fake-pro")
     assert response.provider == "fake"
     assert response.model_used == "fake-pro"
     assert response.text == "echo:hello"

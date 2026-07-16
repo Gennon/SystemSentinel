@@ -887,7 +887,7 @@ async def test_handler_rule_override_severity_takes_precedence() -> None:
 async def test_handler_adds_ai_remediation_follow_up_for_critical_alerts() -> None:
     router, calls = _make_router()
     llm = _FakeRemediationLLMClient()
-    handler = AlertHandler(router, llm=llm, config={"llm_remediation": True})
+    handler = AlertHandler(router, llm=llm, config={"llm": {"remediation": True}})
     bus = InProcessEventBus()
     handler.register(bus)
 
@@ -909,7 +909,7 @@ async def test_handler_adds_ai_remediation_follow_up_for_critical_alerts() -> No
 async def test_handler_does_not_call_llm_when_remediation_disabled() -> None:
     router, calls = _make_router()
     llm = _FakeRemediationLLMClient()
-    handler = AlertHandler(router, llm=llm, config={"llm_remediation": False})
+    handler = AlertHandler(router, llm=llm, config={"llm": {"remediation": False}})
     bus = InProcessEventBus()
     handler.register(bus)
 
@@ -923,7 +923,7 @@ async def test_handler_does_not_call_llm_when_remediation_disabled() -> None:
 async def test_handler_does_not_call_llm_for_non_critical_alerts() -> None:
     router, calls = _make_router()
     llm = _FakeRemediationLLMClient()
-    handler = AlertHandler(router, llm=llm, config={"llm_remediation": True})
+    handler = AlertHandler(router, llm=llm, config={"llm": {"remediation": True}})
     bus = InProcessEventBus()
     handler.register(bus)
 
@@ -941,7 +941,7 @@ async def test_handler_sends_delayed_ai_follow_up_when_generation_exceeds_15_sec
     router, calls = _make_router()
     gate = asyncio.Event()
     llm = _DelayedRemediationLLMClient(gate)
-    handler = AlertHandler(router, llm=llm, config={"llm_remediation": True})
+    handler = AlertHandler(router, llm=llm, config={"llm": {"remediation": True}})
     bus = InProcessEventBus()
     handler.register(bus)
 

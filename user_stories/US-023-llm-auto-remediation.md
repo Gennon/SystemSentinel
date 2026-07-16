@@ -9,7 +9,7 @@ As a user I want the system to auto-suggest remediation steps when an anomaly is
 
 ## Acceptance Criteria
 - [x] When a critical alert fires, the daemon optionally queries the configured active LLM provider for a remediation suggestion
-- [x] This behaviour can be enabled or disabled in `config.yaml` (`llm_remediation: true`)
+- [x] This behaviour can be enabled or disabled in `config.yaml` (`llm.remediation: true`)
 - [x] The LLM is given the alert type, metric values, and recent system context to generate a relevant suggestion
 - [x] The suggestion is appended to the chat critical alert as a follow-up message, clearly labelled as an AI suggestion
 - [x] The suggested steps are advisory only; no automatic action is taken based on the LLM response

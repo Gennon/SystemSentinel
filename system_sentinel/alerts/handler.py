@@ -118,12 +118,16 @@ class AlertHandler:
         )
 
     def _load_config(self, config: dict[str, Any]) -> None:
-        self._llm_remediation_enabled = bool(config.get("llm_remediation", False))
         llm_cfg = config.get("llm", {})
         if isinstance(llm_cfg, dict):
+            self._llm_remediation_enabled = bool(
+                llm_cfg.get("remediation", config.get("llm_remediation", False))
+            )
             self._llm_timeout_seconds = _coerce_positive_float(
                 llm_cfg.get("timeout_seconds"), default=30.0
             )
+        else:
+            self._llm_remediation_enabled = bool(config.get("llm_remediation", False))
         self._load_alert_config(config)
 
     def _load_alert_config(self, config: dict[str, Any]) -> None:

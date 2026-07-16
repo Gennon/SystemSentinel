@@ -49,9 +49,8 @@ chat_adapters:
 llm:
   enabled: true
   provider: "ollama" # ollama | openai | anthropic | mistral
-  model: "llama3.2"
+  remediation: false
   timeout_seconds: 30
-llm_remediation: false
 
 llm_providers:
   ollama:
@@ -238,9 +237,8 @@ Use `llm` for active-provider selection and defaults, and `llm_providers.<provid
 llm:
   enabled: true
   provider: "anthropic"
-  model: "claude-3-5-sonnet-latest"
+  remediation: true
   timeout_seconds: 30
-llm_remediation: true
 
 llm_providers:
   ollama:
@@ -482,9 +480,8 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 |---|---|---|---|---|
 | `llm.enabled` | bool | `false` | `LLMClient` | Global LLM enable flag. |
 | `llm.provider` | string | first loaded provider | `LLMClient` | Active provider key (must match an enabled `llm_providers.<name>`). |
-| `llm.model` | string | unset | `LLMClient` | Default model override passed to providers when a request has no model. |
+| `llm.remediation` | bool | `false` | `AlertHandler` | When `true`, critical alert notifications trigger an advisory-only AI follow-up message. |
 | `llm.timeout_seconds` | int/float | `30` | callers (e.g. chat `!ask`, alert remediation) | Request timeout preference; call sites may override. |
-| `llm_remediation` | bool | `false` | `AlertHandler` | When `true`, critical alert notifications trigger an advisory-only AI follow-up message. |
 | `llm_providers.<provider>.enabled` | bool | `false` | `LLMRegistry` | Must be `true` to load provider plugin. |
 | `llm_providers.ollama.endpoint` | string | `http://localhost:11434` | `OllamaProvider` | Ollama base URL. |
 | `llm_providers.ollama.model` | string | unset | `OllamaProvider` | Fallback model when request/model default is absent. |

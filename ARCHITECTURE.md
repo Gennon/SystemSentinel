@@ -693,7 +693,7 @@ chat:
 llm:
   enabled: true
   provider: "ollama"         # ollama | openai | anthropic | mistral
-  model: "llama3.2"
+  remediation: false
   timeout_seconds: 30
 
 llm_providers:

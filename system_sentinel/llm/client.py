@@ -21,7 +21,6 @@ class LLMClient:
         self._config = llm_config
         self._providers = providers
         self._logger = logger
-        self._default_model = _as_non_empty_string(llm_config.get("model"))
         self._enabled = bool(llm_config.get("enabled", False))
         configured_provider = _as_non_empty_string(llm_config.get("provider"))
         self._active_provider_name: str | None
@@ -49,11 +48,10 @@ class LLMClient:
         timeout_seconds: float | None = None,
     ) -> LLMResponse:
         provider = self._resolve_provider()
-        selected_model = model or self._default_model
         request = LLMRequest(
             prompt=prompt,
             system_prompt=system_prompt,
-            model=selected_model,
+            model=model,
             timeout_seconds=timeout_seconds if timeout_seconds is not None else 30.0,
         )
         return await provider.complete(request)
