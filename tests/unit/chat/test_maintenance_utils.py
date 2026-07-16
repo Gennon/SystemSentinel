@@ -31,6 +31,9 @@ def test_build_storage_report_includes_threshold_flag_and_top_dirs(
     report = build_storage_report([str(root)], disk_alert_threshold_percent=85.0)
 
     assert "status=ALERT" in report
+    assert "used=900 B free=100 B total=1000 B" in report
     assert "Top 2 subdirectories by size:" in report
+    assert f"- {big}: 200 B" in report
+    assert f"- {small}: 10 B" in report
     assert str(big) in report
     assert str(small) in report

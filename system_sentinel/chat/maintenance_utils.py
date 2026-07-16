@@ -25,14 +25,28 @@ def build_storage_report(paths: list[str], disk_alert_threshold_percent: float =
             continue
         status = "ALERT" if usage.percent > disk_alert_threshold_percent else "OK"
         lines.append(
-            f"{path}: used={usage.used} free={usage.free} total={usage.total} "
+            f"{path}: used={_format_bytes(usage.used)} free={_format_bytes(usage.free)} "
+            f"total={_format_bytes(usage.total)} "
             f"({usage.percent:.1f}%) status={status} threshold>{disk_alert_threshold_percent:.1f}%"
         )
         top_dirs = _top_subdirs_by_size(path, limit=10)
         lines.append(f"Top {len(top_dirs)} subdirectories by size:")
         for name, size in top_dirs:
-            lines.append(f"- {name}: {size} bytes")
+            lines.append(f"- {name}: {_format_bytes(size)}")
     return "\n".join(lines) if lines else "No storage report data available."
+
+
+def _format_bytes(value: int) -> str:
+    size = float(value)
+    units = ("B", "KB", "MB", "GB", "TB", "PB")
+    unit_index = 0
+    while size >= 1024 and unit_index < len(units) - 1:
+        size /= 1024
+        unit_index += 1
+    if unit_index == 0:
+        return f"{int(size)} {units[unit_index]}"
+    display = f"{size:.1f}".rstrip("0").rstrip(".")
+    return f"{display} {units[unit_index]}"
 
 
 def run_cleanup_rules(raw_rules: list[Any]) -> tuple[int, int, int]:
