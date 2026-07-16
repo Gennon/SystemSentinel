@@ -48,6 +48,29 @@ def _truncate(value: str | None, max_len: int) -> str | None:
     return f"{value[: max_len - 1]}…"
 
 
+def _split_for_embed_descriptions(text: str, chunk_size: int) -> list[str]:
+    if len(text) <= chunk_size:
+        return [text]
+    chunks: list[str] = []
+    current = ""
+    for line in text.splitlines(keepends=True):
+        if len(line) > chunk_size:
+            if current:
+                chunks.append(current)
+                current = ""
+            for idx in range(0, len(line), chunk_size):
+                chunks.append(line[idx : idx + chunk_size])
+            continue
+        if len(current) + len(line) > chunk_size:
+            chunks.append(current)
+            current = line
+        else:
+            current += line
+    if current:
+        chunks.append(current)
+    return chunks
+
+
 class DiscordAdapter(BaseChatAdapter):
     """Chat adapter that sends and receives messages via a Discord bot."""
 
@@ -162,8 +185,8 @@ class DiscordAdapter(BaseChatAdapter):
             except Exception:
                 self.logger.error("Channel %s not found or not accessible", channel_id)
                 return
-        embed = self._build_embed(message)
-        await channel.send(embed=embed)
+        for embed in self._build_embeds(message):
+            await channel.send(embed=embed)
 
     async def send_to_default(self, message: OutboundMessage) -> None:
         """Send *message* to the configured default alert channel."""
@@ -191,3 +214,26 @@ class DiscordAdapter(BaseChatAdapter):
                 embed.add_field(name=safe_name, value=safe_value, inline=False)
                 current_total_chars += len(safe_name) + len(safe_value)
         return embed
+
+    def _build_embeds(self, message: OutboundMessage) -> list[_discord.Embed]:
+        chunks = _split_for_embed_descriptions(message.text, _EMBED_DESCRIPTION_MAX)
+        if len(chunks) == 1:
+            return [self._build_embed(message)]
+
+        embeds: list[_discord.Embed] = []
+        total = len(chunks)
+        for index, chunk in enumerate(chunks, start=1):
+            title = message.title
+            if title is not None:
+                title = f"{title} ({index}/{total})"
+            part_message = OutboundMessage(
+                text=chunk,
+                title=title
+                if index == 1 or message.title is not None
+                else f"Message ({index}/{total})",
+                severity=message.severity,
+                fields=message.fields if index == 1 else None,
+                reply_to=message.reply_to,
+            )
+            embeds.append(self._build_embed(part_message))
+        return embeds

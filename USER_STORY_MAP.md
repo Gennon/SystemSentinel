@@ -78,7 +78,7 @@ A Linux system management daemon that autonomously handles updates, security har
 
 ### File Management
 - [ ] As a user I want alerts when monitored directories change unexpectedly so I know about unauthorized file modifications.
-- [ ] As a user I want a storage usage report showing top consumers by directory so I know where space is going.
+- [x] As a user I want a storage usage report showing top consumers by directory so I know where space is going. **(US-019)**
 
 ### Communication & Alerts
 - [x] As a user I want to send chat commands to trigger actions remotely so I can manage the system from my phone. **(US-020)**

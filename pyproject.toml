@@ -55,6 +55,7 @@ security_update = "system_sentinel.tools.update.tool:SecurityUpdateTool"
 packages        = "system_sentinel.tools.packages.tool:RequiredPackagesTool"
 firewall        = "system_sentinel.tools.firewall.tool:FirewallTool"
 hardening       = "system_sentinel.tools.hardening.tool:HardeningTool"
+storage         = "system_sentinel.tools.storage.tool:StorageReportTool"
 
 [project.entry-points."sentinel.monitors"]
 cpu            = "system_sentinel.monitors.cpu:CpuMonitor"

@@ -213,6 +213,13 @@ _SAFE_DEFAULTS: dict[str, Any] = {
                 "minclass": 3,
             },
         },
+        "storage": {
+            "enabled": True,
+            "alert_threshold_percent": 85,
+            "paths": ["/"],
+            # Optional, uncomment to enable scheduled reports:
+            # "schedule": "7d 00:00:00",
+        },
     },
     "llm": {
         "enabled": False,

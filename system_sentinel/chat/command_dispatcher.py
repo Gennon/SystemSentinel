@@ -4,8 +4,6 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-import os
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 import uuid
 
@@ -36,6 +34,7 @@ from system_sentinel.chat.command_support import (
     record_reaction_command,
 )
 from system_sentinel.chat.maintenance_utils import (
+    build_storage_report,
     parse_older_than_seconds,
     run_cleanup_rules,
 )
@@ -360,51 +359,8 @@ class ChatCommandDispatcher:
             now_iso=datetime.now(UTC).isoformat(),
         )
 
-    def _build_storage_report_sync(self, paths: list[str]) -> str:
-        lines: list[str] = []
-        for raw_path in paths:
-            path = str(raw_path).strip()
-            if not path:
-                continue
-            if not os.path.exists(path):
-                lines.append(f"{path}: missing")
-                continue
-            try:
-                usage = psutil.disk_usage(path)
-            except OSError as exc:
-                lines.append(f"{path}: permission denied ({exc})")
-                continue
-            lines.append(
-                f"{path}: used={usage.used} free={usage.free} total={usage.total} ({usage.percent:.1f}%)"
-            )
-            top_dirs = self._top_subdirs_by_size(path, limit=10)
-            for name, size in top_dirs:
-                lines.append(f"- {name}: {size} bytes")
-        return "\n".join(lines) if lines else "No storage report data available."
-
-    def _top_subdirs_by_size(self, root: str, limit: int = 10) -> list[tuple[str, int]]:
-        root_path = Path(root)
-        if not root_path.exists() or not root_path.is_dir():
-            return []
-        sizes: list[tuple[str, int]] = []
-        try:
-            children = list(root_path.iterdir())
-        except OSError:
-            return []
-        for child in children:
-            if not child.is_dir():
-                continue
-            size = 0
-            for dirpath, _dirnames, filenames in os.walk(child, onerror=lambda _err: None):
-                for filename in filenames:
-                    file_path = Path(dirpath) / filename
-                    try:
-                        size += file_path.stat().st_size
-                    except OSError:
-                        continue
-            sizes.append((str(child), size))
-        sizes.sort(key=lambda item: item[1], reverse=True)
-        return sizes[:limit]
+    def _build_storage_report_sync(self, paths: list[str], disk_threshold_percent: float) -> str:
+        return build_storage_report(paths, disk_alert_threshold_percent=disk_threshold_percent)
 
     def _run_cleanup_rules_sync(self, raw_rules: list[Any]) -> tuple[int, int, int]:
         return run_cleanup_rules(raw_rules)

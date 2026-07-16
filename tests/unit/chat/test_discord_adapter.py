@@ -224,6 +224,21 @@ async def test_send_logs_error_when_channel_unreachable() -> None:
     await adapter.stop()
 
 
+@pytest.mark.asyncio
+async def test_send_splits_large_message_across_multiple_embeds() -> None:
+    adapter = _make_adapter({"channel_id": "334"})
+    await adapter.start()
+
+    long_text = "x" * 9000
+    msg = OutboundMessage(text=long_text, title="Storage Report")
+    await adapter.send("334", msg)
+
+    channel = adapter._client._channels.get(334)
+    assert channel is not None
+    assert channel.send.await_count == 3
+    await adapter.stop()
+
+
 # ---------------------------------------------------------------------------
 # _build_embed() — severity → colour mapping
 # ---------------------------------------------------------------------------

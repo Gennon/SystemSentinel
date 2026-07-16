@@ -42,6 +42,27 @@ def _format_system_daily_digest(payload: dict[str, Any]) -> OutboundMessage:
     )
 
 
+def _format_storage_report_generated(payload: dict[str, Any]) -> OutboundMessage:
+    report = str(payload.get("report", "No storage report data available."))
+    flagged_paths = int(payload.get("flagged_paths", 0))
+    severity = AlertSeverity.WARNING if flagged_paths > 0 else AlertSeverity.INFO
+    paths = payload.get("paths", [])
+    path_count = len(paths) if isinstance(paths, list) else 0
+    return OutboundMessage(
+        title="📦 Storage Usage Report",
+        text=report,
+        severity=severity,
+        fields={
+            "Event Type": str(payload.get("event_type", "storage_report_generated")),
+            "Generated At": str(payload.get("generated_at", "—")),
+            "Paths Scanned": str(path_count),
+            "Threshold (%)": str(payload.get("threshold_percent", "85")),
+            "Above Threshold": str(flagged_paths),
+            "Source": str(payload.get("source", "scheduler")),
+        },
+    )
+
+
 def _format_cpu_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessage:
     return OutboundMessage(
         title="⚠️ High CPU Usage",

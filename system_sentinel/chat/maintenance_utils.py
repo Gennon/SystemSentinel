@@ -9,7 +9,7 @@ from typing import Any
 import psutil
 
 
-def build_storage_report(paths: list[str]) -> str:
+def build_storage_report(paths: list[str], disk_alert_threshold_percent: float = 85.0) -> str:
     lines: list[str] = []
     for raw_path in paths:
         path = str(raw_path).strip()
@@ -23,10 +23,13 @@ def build_storage_report(paths: list[str]) -> str:
         except OSError as exc:
             lines.append(f"{path}: permission denied ({exc})")
             continue
+        status = "ALERT" if usage.percent > disk_alert_threshold_percent else "OK"
         lines.append(
-            f"{path}: used={usage.used} free={usage.free} total={usage.total} ({usage.percent:.1f}%)"
+            f"{path}: used={usage.used} free={usage.free} total={usage.total} "
+            f"({usage.percent:.1f}%) status={status} threshold>{disk_alert_threshold_percent:.1f}%"
         )
         top_dirs = _top_subdirs_by_size(path, limit=10)
+        lines.append(f"Top {len(top_dirs)} subdirectories by size:")
         for name, size in top_dirs:
             lines.append(f"- {name}: {size} bytes")
     return "\n".join(lines) if lines else "No storage report data available."

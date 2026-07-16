@@ -25,6 +25,7 @@ from system_sentinel.alerts.formatters_system import (
     _format_network_threshold_exceeded,
     _format_old_files_daily_digest,
     _format_ram_threshold_exceeded,
+    _format_storage_report_generated,
     _format_system_daily_digest,
 )
 
@@ -46,6 +47,7 @@ __all__ = [
     "_format_service_failure_detected",
     "_format_service_restart_exhausted",
     "_format_service_restart_result",
+    "_format_storage_report_generated",
     "_format_system_daily_digest",
     "_format_unknown_connection",
 ]

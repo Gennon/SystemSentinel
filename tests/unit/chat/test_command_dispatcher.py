@@ -418,7 +418,7 @@ async def test_storage_command_handles_permission_denied_path(
     )
 
     monkeypatch.setattr(
-        "system_sentinel.chat.command_dispatcher.os.path.exists",
+        "system_sentinel.chat.maintenance_utils.os.path.exists",
         lambda path: str(path) == protected_path,
     )
 
@@ -426,7 +426,7 @@ async def test_storage_command_handles_permission_denied_path(
         raise PermissionError("[Errno 13] Permission denied")
 
     monkeypatch.setattr(
-        "system_sentinel.chat.command_dispatcher.psutil.disk_usage",
+        "system_sentinel.chat.maintenance_utils.psutil.disk_usage",
         _raise_permission_denied,
     )
 

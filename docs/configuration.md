@@ -612,7 +612,8 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `tools.security_update.reboot_policy` | string | `notify` | `SecurityUpdateTool` | If not `never`, reboot-required events are emitted when needed. |
 | `tools.packages.required` | list[string] | `[]` | `RequiredPackagesTool` | Package list that must stay installed. |
 | `tools.cleanup.rules` | list[object] | none | `ChatCommandDispatcher` | Used by confirmed cleanup chat action (`!cleanup now`) when configured. |
-| `tools.storage.paths` | list[path] | none | `ChatCommandDispatcher` | Preferred path list for `!storage`; falls back to `monitors.old_files.watched_directories` then `/`. |
+| `tools.storage.paths` | list[path] | none | `ChatCommandDispatcher`, `StorageReportTool` | Preferred path list for `!storage` and scheduled storage reports; falls back to `monitors.old_files.watched_directories` then `/` for chat, and `/` for the scheduled tool. |
+| `tools.storage.alert_threshold_percent` | float | `85` | `ChatCommandDispatcher`, `StorageReportTool` | Paths above this used-percent are flagged as `ALERT` in storage reports. |
 | `tools.firewall.enabled` | bool | `true` | `FirewallTool` | Enables declarative firewall drift detection/reconciliation. |
 | `tools.firewall.reconcile_interval` | duration | none | `FirewallTool` | Preferred schedule; converted to cron (falls back to `tools.firewall.schedule` if missing/invalid). |
 | `tools.firewall.run_on_startup` | bool | `false` | daemon startup runner | Runs firewall reconciliation on daemon start. |

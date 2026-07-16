@@ -76,7 +76,10 @@ async def handle_storage_command(
     if not paths:
         paths = ["/"]
 
-    report = await asyncio.to_thread(build_storage_report_sync, paths)
+    disk_threshold = float(
+        config.get("monitors", {}).get("disk", {}).get("alert_threshold_percent", 85)
+    )
+    report = await asyncio.to_thread(build_storage_report_sync, paths, disk_threshold)
     return OutboundMessage(text=report, reply_to=message)
 
 

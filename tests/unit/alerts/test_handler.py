@@ -25,6 +25,7 @@ from system_sentinel.alerts.handler import (
     _format_service_failure_detected,
     _format_service_restart_exhausted,
     _format_service_restart_result,
+    _format_storage_report_generated,
     _format_system_daily_digest,
     _format_unknown_connection,
 )
@@ -129,6 +130,16 @@ _HARDENING_REMEDIATED_PAYLOAD = {
     "remediation": "Wrote /etc/sysctl.d/99-system-sentinel-hardening.conf and applied sysctl settings.",
 }
 
+_STORAGE_REPORT_PAYLOAD = {
+    "event_type": "storage_report_generated",
+    "generated_at": "2026-01-01T00:00:00+00:00",
+    "paths": ["/"],
+    "threshold_percent": 85,
+    "flagged_paths": 1,
+    "source": "scheduler",
+    "report": "/: used=900 free=100 total=1000 (90.0%) status=ALERT threshold>85.0%",
+}
+
 
 # ---------------------------------------------------------------------------
 # _format_unknown_connection unit tests
@@ -173,6 +184,12 @@ def test_format_hardening_auto_remediated_severity_is_info() -> None:
     msg = _format_hardening_auto_remediated(_HARDENING_REMEDIATED_PAYLOAD)
     assert msg.severity == AlertSeverity.INFO
     assert "auto-remediated" in msg.text
+
+
+def test_format_storage_report_uses_warning_when_paths_above_threshold() -> None:
+    msg = _format_storage_report_generated(_STORAGE_REPORT_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert "status=ALERT" in msg.text
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +246,19 @@ async def test_handler_broadcasts_on_hardening_auto_remediated_event() -> None:
 
     assert len(calls) == 1
     assert "sysctl_hardening" in calls[0].text
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_storage_report_generated_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.storage.report_generated", _STORAGE_REPORT_PAYLOAD)
+
+    assert len(calls) == 1
+    assert "status=ALERT" in calls[0].text
 
 
 _BRUTE_FORCE_PAYLOAD = {

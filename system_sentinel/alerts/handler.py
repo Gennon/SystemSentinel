@@ -22,6 +22,7 @@ from system_sentinel.alerts.formatters import (
     _format_service_failure_detected,
     _format_service_restart_exhausted,
     _format_service_restart_result,
+    _format_storage_report_generated,
     _format_system_daily_digest,
     _format_unknown_connection,
 )
@@ -52,6 +53,7 @@ _EVENT_SEVERITY_KEYS = {
     "alert.service.restart_exhausted": "service_restart_exhausted",
     "alert.firewall.drift_detected": "firewall_drift",
     "alert.hardening.auto_remediated": "hardening",
+    "alert.storage.report_generated": "storage_report",
 }
 
 _SEVERITY_RANK: dict[AlertSeverity, int] = {
@@ -163,6 +165,7 @@ class AlertHandler:
         event_bus.subscribe("alert.connection.daily_digest", self._on_connection_daily_digest)
         event_bus.subscribe("alert.files.daily_digest", self._on_old_files_daily_digest)
         event_bus.subscribe("alert.system.daily_digest", self._on_system_daily_digest)
+        event_bus.subscribe("alert.storage.report_generated", self._on_storage_report_generated)
         event_bus.subscribe("alert.cpu.threshold_exceeded", self._on_cpu_threshold_exceeded)
         event_bus.subscribe("alert.ram.threshold_exceeded", self._on_ram_threshold_exceeded)
         event_bus.subscribe("alert.disk.threshold_exceeded", self._on_disk_threshold_exceeded)
@@ -249,6 +252,11 @@ class AlertHandler:
         self._logger.info("Publishing system daily digest")
         msg = _format_system_daily_digest(payload)
         await self._router.broadcast(msg)
+
+    async def _on_storage_report_generated(self, event_type: str, payload: Any) -> None:
+        self._logger.info("Publishing scheduled storage report")
+        msg = self._apply_severity(event_type, payload, _format_storage_report_generated(payload))
+        await self._notify_and_record(event_type, payload, msg)
 
     async def _on_cpu_threshold_exceeded(self, event_type: str, payload: Any) -> None:
         self._logger.warning("CPU threshold exceeded: %s", payload.get("current_value"))
