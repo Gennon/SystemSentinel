@@ -343,6 +343,9 @@ class TestInstallOptionalFeaturesStep:
 
         assert results[0].outcome == StepOutcome.SUCCESS
         assert config_path.exists()
+        config = yaml.safe_load(config_path.read_text())
+        assert config["tools"]["hardening"]["enabled"] is True
+        assert config["tools"]["hardening"]["benchmarks"]["cis_level_1"] is True
 
     def test_snapshot_feature_writes_self_update_snapshot_backend(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"

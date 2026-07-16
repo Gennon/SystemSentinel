@@ -194,7 +194,25 @@ _SAFE_DEFAULTS: dict[str, Any] = {
                 "allowed_sources": ["any"],
                 "allowed_protocols": ["tcp"],
             },
-        }
+        },
+        "hardening": {
+            "enabled": True,
+            "run_on_startup": True,
+            "schedule": "7d 00:00:00",
+            "auto_remediate": False,
+            "benchmarks": {"cis_level_1": True},
+            "checks": {
+                "ssh_disable_root_login": True,
+                "ssh_disable_password_auth": True,
+                "sysctl_hardening": True,
+                "disable_unnecessary_services": True,
+                "strong_password_policy": True,
+            },
+            "password_policy": {
+                "minlen": 14,
+                "minclass": 3,
+            },
+        },
     },
     "llm": {
         "enabled": False,

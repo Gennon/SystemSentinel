@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 from apscheduler.triggers.date import DateTrigger  # type: ignore[import-untyped]
+from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
+
+from system_sentinel.core.time_config import parse_duration_hhmmss
 
 if TYPE_CHECKING:
     from system_sentinel.core.context import AppContext
@@ -102,8 +105,19 @@ class Scheduler:
             {"tool_name": tool_name, "source": "scheduler"},
         )
 
-    def _parse_trigger(self, schedule_expr: str) -> CronTrigger:
-        """Convert an HH:MM string or 5-field cron expression to a :class:`CronTrigger`."""
+    def _parse_trigger(self, schedule_expr: str) -> CronTrigger | IntervalTrigger:
+        """Convert schedule strings into APScheduler triggers.
+
+        Supports:
+        - ``HH:MM`` -> daily ``CronTrigger``
+        - ``HH:MM:SS`` or ``<days>d HH:MM:SS`` -> ``IntervalTrigger``
+        - 5-field cron expression -> ``CronTrigger``
+        """
+        parsed = parse_duration_hhmmss(schedule_expr)
+        if parsed is not None:
+            seconds, _is_non_canonical = parsed
+            if seconds > 0:
+                return IntervalTrigger(seconds=seconds)
         if _HHMM_RE.match(schedule_expr):
             hour_str, minute_str = schedule_expr.split(":")
             return CronTrigger(hour=int(hour_str), minute=int(minute_str))

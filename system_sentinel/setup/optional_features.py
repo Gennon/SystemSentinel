@@ -174,7 +174,7 @@ def select_features_step() -> WizardStep:
 _FEATURE_CONFIG: dict[str, dict[str, object]] = {
     "firewall": {"tools": {"firewall": {"enabled": True}}},
     "gpu": {"monitors": {"gpu": {"enabled": True}}},
-    "harden": {"tools": {"harden": {"enabled": True}}},
+    "harden": {"tools": {"hardening": {"enabled": True, "benchmarks": {"cis_level_1": True}}}},
     "snapshot": {"updates": {"self_update": {"snapshots": {"backend": "auto"}}}},
     "vulnscan": {"tools": {"vulnscan": {"enabled": True}}},
     "prometheus": {"metrics_export": {"prometheus": {"enabled": True}}},

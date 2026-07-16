@@ -58,6 +58,11 @@ class TestRegisterTool:
         scheduler.register_tool(tool)
         scheduler._scheduler.add_job.assert_called_once()
 
+    def test_duration_schedule_registers_job(self, scheduler: Scheduler) -> None:
+        tool = _enabled_tool("harden", "7d 00:00:00")
+        scheduler.register_tool(tool)
+        scheduler._scheduler.add_job.assert_called_once()
+
     def test_disabled_tool_skipped(self, scheduler: Scheduler) -> None:
         tool = _disabled_tool("update")
         scheduler.register_tool(tool)
@@ -97,6 +102,13 @@ class TestParseTriger:
         s = Scheduler(ctx)
         trigger = s._parse_trigger("0 3 * * 0")
         assert isinstance(trigger, CronTrigger)
+
+    def test_duration_expression(self, ctx: AppContext) -> None:
+        from apscheduler.triggers.interval import IntervalTrigger
+
+        s = Scheduler(ctx)
+        trigger = s._parse_trigger("30d 24:12:45")
+        assert isinstance(trigger, IntervalTrigger)
 
 
 class TestScheduleOnce:

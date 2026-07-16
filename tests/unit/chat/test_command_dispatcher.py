@@ -573,6 +573,72 @@ async def test_snapshots_common_typo_alias_is_supported(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_hardening_command_lists_pass_fail_per_check(tmp_path: Path) -> None:
+    db = DatabaseConnection(tmp_path / "sentinel.db")
+    await db.connect()
+    await db.connection.execute(
+        """
+        INSERT INTO audit_log
+            (timestamp, action_type, source, description, outcome, details_json)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            datetime.now(UTC).isoformat(),
+            "tool_run",
+            "scheduler",
+            "Hardening audit found 1 failing check(s); remediated 1.",
+            "failure",
+            json.dumps(
+                {
+                    "tool": "hardening",
+                    "checks": [
+                        {
+                            "id": "ssh_disable_root_login",
+                            "title": "SSH root login disabled",
+                            "status": "pass",
+                            "remediated": False,
+                        },
+                        {
+                            "id": "strong_password_policy",
+                            "title": "Strong password policy enforced",
+                            "status": "pass",
+                            "remediated": True,
+                        },
+                        {
+                            "id": "sysctl_hardening",
+                            "title": "Kernel sysctl hardening",
+                            "status": "fail",
+                            "remediated": False,
+                        },
+                    ],
+                }
+            ),
+        ),
+    )
+    await db.connection.commit()
+    ctx = AppContext(
+        audit=AsyncMock(),
+        event_bus=AsyncMock(),
+        logger=logging.getLogger("test"),
+    )
+    dispatcher = ChatCommandDispatcher(
+        config={"chat_adapters": {"discord": {"channel_id": "100"}}},
+        app_ctx=ctx,
+        scheduler=_FakeScheduler(),  # type: ignore[arg-type]
+        tools={},
+        monitor_registry=_FakeMonitorRegistry(),  # type: ignore[arg-type]
+        db=db,
+    )
+
+    response = await dispatcher.handle_message(_message("!hardening"), ["!hardening"])
+    assert response is not None
+    assert "Latest hardening audit" in response.text
+    assert "PASS | SSH root login disabled" in response.text
+    assert "FAIL | Kernel sysctl hardening" in response.text
+    assert "auto-remediated" in response.text
+
+
+@pytest.mark.asyncio
 async def test_anomalies_command_lists_recent_login_anomalies(tmp_path: Path) -> None:
     db = DatabaseConnection(tmp_path / "sentinel.db")
     await db.connect()

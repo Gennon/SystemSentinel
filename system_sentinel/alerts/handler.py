@@ -12,6 +12,7 @@ from system_sentinel.alerts.formatters import (
     _format_disk_threshold_exceeded,
     _format_firewall_drift,
     _format_gpu_threshold_exceeded,
+    _format_hardening_auto_remediated,
     _format_impossible_travel,
     _format_network_threshold_exceeded,
     _format_new_user_login,
@@ -50,6 +51,7 @@ _EVENT_SEVERITY_KEYS = {
     "alert.service.restart_result": "service_restart_result",
     "alert.service.restart_exhausted": "service_restart_exhausted",
     "alert.firewall.drift_detected": "firewall_drift",
+    "alert.hardening.auto_remediated": "hardening",
 }
 
 _SEVERITY_RANK: dict[AlertSeverity, int] = {
@@ -173,6 +175,7 @@ class AlertHandler:
         event_bus.subscribe("alert.service.restart_result", self._on_service_restart_result)
         event_bus.subscribe("alert.service.restart_exhausted", self._on_service_restart_exhausted)
         event_bus.subscribe("alert.firewall.drift_detected", self._on_firewall_drift)
+        event_bus.subscribe("alert.hardening.auto_remediated", self._on_hardening_auto_remediated)
 
     async def _on_unknown_connection(self, event_type: str, payload: Any) -> None:
         self._logger.warning(
@@ -318,6 +321,14 @@ class AlertHandler:
             else 0,
         )
         msg = self._apply_severity(event_type, payload, _format_firewall_drift(payload))
+        await self._notify_and_record(event_type, payload, msg)
+
+    async def _on_hardening_auto_remediated(self, event_type: str, payload: Any) -> None:
+        self._logger.info(
+            "Hardening check auto-remediated: %s",
+            payload.get("check_id"),
+        )
+        msg = self._apply_severity(event_type, payload, _format_hardening_auto_remediated(payload))
         await self._notify_and_record(event_type, payload, msg)
 
     async def _notify_and_record(self, event_type: str, payload: Any, msg: OutboundMessage) -> None:

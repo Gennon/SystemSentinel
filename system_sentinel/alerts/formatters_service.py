@@ -102,3 +102,25 @@ def _format_firewall_drift(payload: dict[str, Any]) -> OutboundMessage:
             "Enforce": "true" if enforce else "false",
         },
     )
+
+
+def _format_hardening_auto_remediated(payload: dict[str, Any]) -> OutboundMessage:
+    check_id = str(payload.get("check_id", "unknown"))
+    title = str(payload.get("title", check_id))
+    details = str(payload.get("details", "")).strip()
+    remediation = str(payload.get("remediation", "Applied configured hardening fix.")).strip()
+
+    body = f"Hardening check **{title}** (`{check_id}`) was auto-remediated."
+    if details:
+        body = f"{body}\nAudit detail: {details}"
+    body = f"{body}\nRemediation: {remediation}"
+
+    return OutboundMessage(
+        title="🛡️ Hardening Auto-Remediated",
+        text=body,
+        severity=AlertSeverity.INFO,
+        fields={
+            "Check": check_id,
+            "Remediation": remediation,
+        },
+    )

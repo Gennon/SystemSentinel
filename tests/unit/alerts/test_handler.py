@@ -15,6 +15,7 @@ from system_sentinel.alerts.handler import (
     _format_disk_threshold_exceeded,
     _format_firewall_drift,
     _format_gpu_threshold_exceeded,
+    _format_hardening_auto_remediated,
     _format_impossible_travel,
     _format_network_threshold_exceeded,
     _format_new_user_login,
@@ -121,6 +122,13 @@ _UNKNOWN_CONNECTION_PAYLOAD = {
     "timestamp": "2024-01-01T00:00:00+00:00",
 }
 
+_HARDENING_REMEDIATED_PAYLOAD = {
+    "check_id": "sysctl_hardening",
+    "title": "Kernel sysctl hardening",
+    "details": "Mismatched sysctl values detected",
+    "remediation": "Wrote /etc/sysctl.d/99-system-sentinel-hardening.conf and applied sysctl settings.",
+}
+
 
 # ---------------------------------------------------------------------------
 # _format_unknown_connection unit tests
@@ -159,6 +167,12 @@ def test_format_firewall_drift_severity_is_warning() -> None:
     msg = _format_firewall_drift(_FIREWALL_DRIFT_PAYLOAD)
     assert msg.severity == AlertSeverity.WARNING
     assert "out of sync" in msg.text
+
+
+def test_format_hardening_auto_remediated_severity_is_info() -> None:
+    msg = _format_hardening_auto_remediated(_HARDENING_REMEDIATED_PAYLOAD)
+    assert msg.severity == AlertSeverity.INFO
+    assert "auto-remediated" in msg.text
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +216,19 @@ async def test_handler_broadcasts_on_firewall_drift_event() -> None:
 
     assert len(calls) == 1
     assert "Firewall backend" in calls[0].text
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_hardening_auto_remediated_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.hardening.auto_remediated", _HARDENING_REMEDIATED_PAYLOAD)
+
+    assert len(calls) == 1
+    assert "sysctl_hardening" in calls[0].text
 
 
 _BRUTE_FORCE_PAYLOAD = {

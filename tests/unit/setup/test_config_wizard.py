@@ -183,6 +183,18 @@ class TestNoConfigInteractive:
         assert data["tools"]["firewall"]["enforce"] is False
         assert data["tools"]["firewall"]["desired_state"]["default_incoming_policy"] == "deny"
         assert data["tools"]["firewall"]["desired_state"]["allowed_ports"] == [22]
+        assert data["tools"]["hardening"]["enabled"] is True
+        assert data["tools"]["hardening"]["run_on_startup"] is True
+        assert data["tools"]["hardening"]["schedule"] == "7d 00:00:00"
+        assert data["tools"]["hardening"]["auto_remediate"] is False
+        assert data["tools"]["hardening"]["benchmarks"]["cis_level_1"] is True
+        assert data["tools"]["hardening"]["checks"]["ssh_disable_root_login"] is True
+        assert data["tools"]["hardening"]["checks"]["ssh_disable_password_auth"] is True
+        assert data["tools"]["hardening"]["checks"]["sysctl_hardening"] is True
+        assert data["tools"]["hardening"]["checks"]["disable_unnecessary_services"] is True
+        assert data["tools"]["hardening"]["checks"]["strong_password_policy"] is True
+        assert data["tools"]["hardening"]["password_policy"]["minlen"] == 14
+        assert data["tools"]["hardening"]["password_policy"]["minclass"] == 3
         assert data["llm"]["remediation"] is False
         assert data["updates"]["self_update"]["source_path"]
 

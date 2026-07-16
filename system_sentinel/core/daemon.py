@@ -236,7 +236,9 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
     monitor_registry.discover()
 
     scheduler = Scheduler(app_ctx)
-    tools = _discover_tools(config.get("tools", {}), app_ctx, scheduler)
+    tools_raw = config.get("tools", {})
+    tools_config = tools_raw if isinstance(tools_raw, dict) else {}
+    tools = _discover_tools(tools_config, app_ctx, scheduler)
     _register_tool_event_handlers(event_bus, tools)
 
     command_dispatcher = ChatCommandDispatcher(

@@ -207,20 +207,44 @@ async def handle_firewall_command(
 async def handle_hardening_command(*, db: Any, message: InboundMessage) -> OutboundMessage:
     cursor = await db.connection.execute(
         """
-        SELECT timestamp, description, outcome
+        SELECT timestamp, description, outcome, details_json
         FROM audit_log
         WHERE action_type = 'tool_run'
-          AND description LIKE '%harden%'
+          AND (
+            details_json LIKE '%"tool": "hardening"%'
+            OR description LIKE 'Hardening audit%'
+          )
         ORDER BY id DESC
-        LIMIT 10
+        LIMIT 1
         """
     )
-    rows = await cursor.fetchall()
-    if not rows:
+    row = await cursor.fetchone()
+    if row is None:
         return OutboundMessage(text="No hardening audit results recorded.", reply_to=message)
-    lines = ["Recent hardening audit results:"]
-    for row in rows:
-        lines.append(f"- {row[0]} | {row[2]} | {row[1]}")
+
+    timestamp = str(row[0])
+    outcome = str(row[2]).upper()
+    details_raw = row[3]
+    checks: list[dict[str, Any]] = []
+    if isinstance(details_raw, str):
+        try:
+            parsed = json.loads(details_raw)
+        except json.JSONDecodeError:
+            parsed = {}
+        if isinstance(parsed, dict) and isinstance(parsed.get("checks"), list):
+            checks = [item for item in parsed["checks"] if isinstance(item, dict)]
+
+    lines = [f"Latest hardening audit: {timestamp} | {outcome}"]
+    if checks:
+        for check in checks:
+            check_id = str(check.get("id", "unknown"))
+            title = str(check.get("title", check_id))
+            status = "PASS" if str(check.get("status", "")).lower() == "pass" else "FAIL"
+            remediated = bool(check.get("remediated", False))
+            suffix = " (auto-remediated)" if remediated else ""
+            lines.append(f"- {status} | {title} ({check_id}){suffix}")
+    else:
+        lines.append(f"- {row[1]}")
     return OutboundMessage(text="\n".join(lines), reply_to=message)
 
 

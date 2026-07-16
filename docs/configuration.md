@@ -413,6 +413,40 @@ tools:
 
 When `desired_state.rules` is provided, it takes precedence over `allowed_ports`/`allowed_sources`/`allowed_protocols`.
 
+#### `tools.hardening` example
+
+```yaml
+tools:
+  hardening:
+    enabled: true
+    run_on_startup: true
+    schedule: "7d 00:00:00" # weekly default if omitted
+    auto_remediate: false
+    benchmarks:
+      cis_level_1: true
+    checks:
+      ssh_disable_root_login: true
+      ssh_disable_password_auth: true
+      sysctl_hardening: true
+      disable_unnecessary_services: true
+      strong_password_policy: true
+    unnecessary_services:
+      - telnet.socket
+      - rsh.socket
+      - rlogin.socket
+      - rexec.socket
+    sysctl:
+      net.ipv4.conf.all.accept_redirects: "0"
+      net.ipv4.conf.default.accept_redirects: "0"
+      net.ipv4.conf.all.send_redirects: "0"
+      net.ipv4.conf.default.send_redirects: "0"
+      net.ipv4.tcp_syncookies: "1"
+      kernel.randomize_va_space: "2"
+    password_policy:
+      minlen: 14
+      minclass: 3
+```
+
 ### Self-update
 
 ```yaml
@@ -573,7 +607,7 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | Key | Type | Default | Used by | Notes |
 |---|---|---|---|---|
 | `tools.<tool>.enabled` | bool | `true` | `Tool` base | Per-tool enable/disable switch. |
-| `tools.<tool>.schedule` | `HH:MM` or cron | none | `Scheduler` | Optional recurring schedule. |
+| `tools.<tool>.schedule` | `HH:MM`, `HH:MM:SS`, `<days>d HH:MM:SS`, or cron | none | `Scheduler` | Optional recurring schedule (duration expressions use interval triggers). |
 | `tools.security_update.dry_run` | bool | `false` | `SecurityUpdateTool` | Simulate updates without changing packages. |
 | `tools.security_update.reboot_policy` | string | `notify` | `SecurityUpdateTool` | If not `never`, reboot-required events are emitted when needed. |
 | `tools.packages.required` | list[string] | `[]` | `RequiredPackagesTool` | Package list that must stay installed. |
@@ -589,6 +623,16 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `tools.firewall.desired_state.allowed_sources` | list[string] | `["any"]` | `FirewallTool` | Legacy shorthand sources list. |
 | `tools.firewall.desired_state.allowed_protocols` | list[string] | `["tcp"]` | `FirewallTool` | Legacy shorthand protocols list. |
 | `tools.firewall.desired_state.rules` | list[object] | `[]` | `FirewallTool` | Preferred explicit format (`{port, protocol?, sources?}`). |
+| `tools.hardening.enabled` | bool | `true` | `HardeningTool` | Enables CIS-style hardening audit/remediation tool. |
+| `tools.hardening.run_on_startup` | bool | `true` | daemon startup runner | Runs hardening audit once during daemon start. |
+| `tools.hardening.schedule` | duration (`HH:MM:SS` or `<days>d HH:MM:SS`) | `7d 00:00:00` | `HardeningTool` | Recurring hardening audit schedule (weekly default). |
+| `tools.hardening.auto_remediate` | bool | `false` | `HardeningTool` | When `true`, failing checks are auto-fixed and chat-notified per item. |
+| `tools.hardening.benchmarks.cis_level_1` | bool | `true` | `HardeningTool` | Enables the baseline Level 1 check bundle. |
+| `tools.hardening.checks.<check_id>` | bool | bundle default | `HardeningTool` | Per-check overrides (`ssh_disable_root_login`, `ssh_disable_password_auth`, `sysctl_hardening`, `disable_unnecessary_services`, `strong_password_policy`). |
+| `tools.hardening.unnecessary_services` | list[string] | distro-sensitive default list | `HardeningTool` | Services/socket units that must remain disabled. |
+| `tools.hardening.sysctl` | map[string,string] | built-in secure defaults | `HardeningTool` | Desired kernel parameter baseline for audit/remediation. |
+| `tools.hardening.password_policy.minlen` | int | `14` | `HardeningTool` | Minimum password length target. |
+| `tools.hardening.password_policy.minclass` | int | `3` | `HardeningTool` | Minimum required password character classes. |
 
 ### Update and runtime control keys
 
@@ -618,6 +662,5 @@ These keys are currently setup-only or merge-only (not consumed by runtime code 
 | `monitors.disk.interval` | duration | `00:05:00` (wizard default) | setup wizard default only | Currently not consumed by runtime code. |
 | `monitors.network.interval` | duration | `00:01:00` (wizard default) | setup wizard default only | Currently not consumed by runtime code. |
 | `metrics_export.prometheus.enabled` | bool | none | optional-feature setup merge | Added when enabling `prometheus`; currently no runtime consumer. |
-| `tools.harden.enabled` | bool | none | optional-feature setup merge | Added when enabling `harden`; currently no runtime consumer. |
 | `updates.self_update.snapshots.backend` | string | none | optional-feature setup merge | Added as `auto` when enabling `snapshot`. |
 | `tools.vulnscan.enabled` | bool | none | optional-feature setup merge | Added when enabling `vulnscan`; currently no runtime consumer. |
