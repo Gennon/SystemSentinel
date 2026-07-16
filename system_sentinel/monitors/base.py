@@ -22,5 +22,9 @@ class BaseMonitor(ABC):
         """Collect a single sample.  Must not raise — log errors and return."""
         ...
 
+    async def stop(self) -> None:
+        """Optional monitor-specific teardown hook."""
+        return None
+
     def is_enabled(self) -> bool:
         return bool(self.config.get("enabled", True))

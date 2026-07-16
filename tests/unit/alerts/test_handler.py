@@ -13,6 +13,7 @@ from system_sentinel.alerts.handler import (
     _format_connection_repeat_threshold,
     _format_cpu_threshold_exceeded,
     _format_disk_threshold_exceeded,
+    _format_file_change_detected,
     _format_firewall_drift,
     _format_gpu_threshold_exceeded,
     _format_hardening_auto_remediated,
@@ -140,6 +141,16 @@ _STORAGE_REPORT_PAYLOAD = {
     "report": "/: used=900 free=100 total=1000 (90.0%) status=ALERT threshold>85.0%",
 }
 
+_FILE_CHANGE_PAYLOAD = {
+    "event_type": "directory_change_detected",
+    "watched_directory": "/etc",
+    "change_type": "modified",
+    "file_path": "/etc/ssh/sshd_config",
+    "timestamp": "2026-07-16T10:00:00+00:00",
+    "process_owner": "root",
+    "destination_path": None,
+}
+
 
 # ---------------------------------------------------------------------------
 # _format_unknown_connection unit tests
@@ -190,6 +201,15 @@ def test_format_storage_report_uses_warning_when_paths_above_threshold() -> None
     msg = _format_storage_report_generated(_STORAGE_REPORT_PAYLOAD)
     assert msg.severity == AlertSeverity.WARNING
     assert "status=ALERT" in msg.text
+
+
+def test_format_file_change_detected_fields_present() -> None:
+    msg = _format_file_change_detected(_FILE_CHANGE_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert msg.fields is not None
+    assert msg.fields["Change Type"] == "modified"
+    assert msg.fields["File Path"] == "/etc/ssh/sshd_config"
+    assert msg.fields["Process Owner"] == "root"
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +279,19 @@ async def test_handler_broadcasts_on_storage_report_generated_event() -> None:
 
     assert len(calls) == 1
     assert "status=ALERT" in calls[0].text
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_file_change_detected_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.files.change_detected", _FILE_CHANGE_PAYLOAD)
+
+    assert len(calls) == 1
+    assert "sshd_config" in calls[0].text
 
 
 _BRUTE_FORCE_PAYLOAD = {

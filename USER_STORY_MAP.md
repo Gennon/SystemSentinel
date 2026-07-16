@@ -77,7 +77,7 @@ A Linux system management daemon that autonomously handles updates, security har
 - [x] As a user I want to set alert thresholds per metric (e.g. alert if RAM > 85%) so I only get paged for real problems. **(US-017)**
 
 ### File Management
-- [ ] As a user I want alerts when monitored directories change unexpectedly so I know about unauthorized file modifications.
+- [x] As a user I want alerts when monitored directories change unexpectedly so I know about unauthorized file modifications. **(US-018)**
 - [x] As a user I want a storage usage report showing top consumers by directory so I know where space is going. **(US-019)**
 
 ### Communication & Alerts

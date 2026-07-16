@@ -63,6 +63,32 @@ def _format_storage_report_generated(payload: dict[str, Any]) -> OutboundMessage
     )
 
 
+def _format_file_change_detected(payload: dict[str, Any]) -> OutboundMessage:
+    change_type = str(payload.get("change_type", "unknown"))
+    file_path = str(payload.get("file_path", "unknown"))
+    watched_directory = str(payload.get("watched_directory", "unknown"))
+    process_owner = str(payload.get("process_owner", "unknown"))
+    destination_path = payload.get("destination_path")
+
+    detail_line = f"File change detected: {change_type} — {file_path}"
+    if isinstance(destination_path, str) and destination_path.strip():
+        detail_line = f"{detail_line} -> {destination_path}"
+    return OutboundMessage(
+        title="🚨 Directory Change Detected",
+        text=detail_line,
+        severity=AlertSeverity.WARNING,
+        fields={
+            "Event Type": str(payload.get("event_type", "directory_change_detected")),
+            "Change Type": change_type,
+            "File Path": file_path,
+            "Destination Path": str(destination_path) if destination_path is not None else "—",
+            "Watched Directory": watched_directory,
+            "Process Owner": process_owner,
+            "Timestamp": str(payload.get("timestamp", "—")),
+        },
+    )
+
+
 def _format_cpu_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessage:
     return OutboundMessage(
         title="⚠️ High CPU Usage",

@@ -177,6 +177,9 @@ class TestNoConfigInteractive:
             "suspicious": 3,
             "likely_access_attempt": 8,
         }
+        assert data["monitors"]["directory_changes"]["enabled"] is True
+        assert data["monitors"]["directory_changes"]["watched_directories"] == []
+        assert data["monitors"]["directory_changes"]["alert_cooldown"] == "00:05:00"
         assert data["tools"]["firewall"]["enabled"] is True
         assert data["tools"]["firewall"]["reconcile_interval"] == "00:10:00"
         assert data["tools"]["firewall"]["run_on_startup"] is True

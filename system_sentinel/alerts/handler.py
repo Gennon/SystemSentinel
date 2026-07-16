@@ -10,6 +10,7 @@ from system_sentinel.alerts.formatters import (
     _format_connection_repeat_threshold,
     _format_cpu_threshold_exceeded,
     _format_disk_threshold_exceeded,
+    _format_file_change_detected,
     _format_firewall_drift,
     _format_gpu_threshold_exceeded,
     _format_hardening_auto_remediated,
@@ -48,6 +49,7 @@ _EVENT_SEVERITY_KEYS = {
     "alert.connection.repeated_attempts_detected": "network_repeat",
     "alert.connection.daily_digest": "network_digest",
     "alert.files.daily_digest": "files_digest",
+    "alert.files.change_detected": "files_change",
     "alert.service.failure_detected": "service_failure",
     "alert.service.restart_result": "service_restart_result",
     "alert.service.restart_exhausted": "service_restart_exhausted",
@@ -164,6 +166,7 @@ class AlertHandler:
         )
         event_bus.subscribe("alert.connection.daily_digest", self._on_connection_daily_digest)
         event_bus.subscribe("alert.files.daily_digest", self._on_old_files_daily_digest)
+        event_bus.subscribe("alert.files.change_detected", self._on_file_change_detected)
         event_bus.subscribe("alert.system.daily_digest", self._on_system_daily_digest)
         event_bus.subscribe("alert.storage.report_generated", self._on_storage_report_generated)
         event_bus.subscribe("alert.cpu.threshold_exceeded", self._on_cpu_threshold_exceeded)
@@ -246,6 +249,15 @@ class AlertHandler:
     async def _on_old_files_daily_digest(self, event_type: str, payload: Any) -> None:
         self._logger.info("Publishing daily old-files digest")
         msg = self._apply_severity(event_type, payload, _format_old_files_daily_digest(payload))
+        await self._notify_and_record(event_type, payload, msg)
+
+    async def _on_file_change_detected(self, event_type: str, payload: Any) -> None:
+        self._logger.warning(
+            "Directory change detected: type=%s path=%s",
+            payload.get("change_type"),
+            payload.get("file_path"),
+        )
+        msg = self._apply_severity(event_type, payload, _format_file_change_detected(payload))
         await self._notify_and_record(event_type, payload, msg)
 
     async def _on_system_daily_digest(self, event_type: str, payload: Any) -> None:

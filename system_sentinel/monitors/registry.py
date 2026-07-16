@@ -132,6 +132,11 @@ class MonitorRegistry:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
+        for monitor in self._monitors:
+            try:
+                await monitor.stop()
+            except Exception:
+                self._logger.exception("Unexpected error while stopping monitor %r", monitor.name)
         self._logger.info("Monitor collection loop stopped.")
 
     # ------------------------------------------------------------------

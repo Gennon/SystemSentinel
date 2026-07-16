@@ -21,6 +21,7 @@ from system_sentinel.alerts.formatters_service import (
 from system_sentinel.alerts.formatters_system import (
     _format_cpu_threshold_exceeded,
     _format_disk_threshold_exceeded,
+    _format_file_change_detected,
     _format_gpu_threshold_exceeded,
     _format_network_threshold_exceeded,
     _format_old_files_daily_digest,
@@ -35,6 +36,7 @@ __all__ = [
     "_format_connection_repeat_threshold",
     "_format_cpu_threshold_exceeded",
     "_format_disk_threshold_exceeded",
+    "_format_file_change_detected",
     "_format_firewall_drift",
     "_format_gpu_threshold_exceeded",
     "_format_hardening_auto_remediated",

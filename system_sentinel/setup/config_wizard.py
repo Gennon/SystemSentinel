@@ -181,6 +181,11 @@ _SAFE_DEFAULTS: dict[str, Any] = {
             "journal_lines": 20,
             "critical_services": [],
         },
+        "directory_changes": {
+            "enabled": True,
+            "watched_directories": [],
+            "alert_cooldown": "00:05:00",
+        },
     },
     "tools": {
         "firewall": {

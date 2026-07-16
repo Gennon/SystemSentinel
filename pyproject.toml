@@ -67,6 +67,7 @@ logins         = "system_sentinel.monitors.logins:LoginMonitor"
 connections    = "system_sentinel.monitors.connections:ConnectionMonitor"
 services       = "system_sentinel.monitors.services:ServiceMonitor"
 old_files      = "system_sentinel.monitors.old_files:OldFilesMonitor"
+directory_changes = "system_sentinel.monitors.directory_changes:DirectoryChangesMonitor"
 daily_digest   = "system_sentinel.monitors.daily_digest:DailyDigestMonitor"
 
 [project.entry-points."sentinel.chat_adapters"]
