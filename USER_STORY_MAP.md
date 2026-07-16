@@ -95,7 +95,7 @@ A Linux system management daemon that autonomously handles updates, security har
 ## Release 3 — Observability & Polish
 
 ### System Maintenance
-- [ ] As a user I want a TUI dashboard for system status so I have a single pane of glass view. *(Web dashboard is out of scope for Release 3; may be revisited in a future release.)*
+- [x] As a user I want a TUI dashboard for system status so I have a single pane of glass view. *(Web dashboard is out of scope for Release 3; may be revisited in a future release.)* **(US-024)**
 - [ ] As a user I want all automated actions logged to a local audit file with timestamps so I have a full change history.
 
 ### Security & Hardening

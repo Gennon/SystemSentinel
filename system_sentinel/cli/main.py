@@ -1,16 +1,25 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+from pathlib import Path
 import shutil
 import sys
+from typing import Any
 
 import click
+import yaml
 
 from system_sentinel.core.daemon import DaemonRestartRequested, run_daemon
 from system_sentinel.core.exceptions import ConfigError
+from system_sentinel.core.time_config import parse_duration_from_config, parse_duration_hhmmss
+from system_sentinel.dashboard import launch_dashboard
 from system_sentinel.setup import build_wizard
 from system_sentinel.setup.wizard import SetupWizard, WizardContext
+
+_DEFAULT_CONFIG_PATH = Path("/etc/sentinel/config.yaml")
+_DEFAULT_DB_PATH = Path("/var/lib/sentinel/sentinel.db")
 
 
 @click.group()
@@ -32,6 +41,30 @@ def _restart_exec_args() -> tuple[str, list[str]]:
 def _restart_current_process() -> None:
     executable, args = _restart_exec_args()
     os.execv(executable, args)
+
+
+def _load_optional_config(config_path: Path) -> dict[str, Any]:
+    if not config_path.exists():
+        return {}
+    try:
+        loaded = yaml.safe_load(config_path.read_text()) or {}
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"Failed to parse {config_path}: {exc}") from exc
+    if not isinstance(loaded, dict):
+        raise ConfigError(f"{config_path} must contain a YAML mapping, got {type(loaded).__name__}")
+    return loaded
+
+
+def _dashboard_refresh_interval(config: dict[str, Any]) -> float:
+    dashboard_cfg_raw = config.get("dashboard", {})
+    dashboard_cfg = dashboard_cfg_raw if isinstance(dashboard_cfg_raw, dict) else {}
+    logger = logging.getLogger("sentinel.cli.dashboard")
+    return parse_duration_from_config(
+        dashboard_cfg,
+        key="refresh_interval",
+        default_seconds=5.0,
+        logger=logger,
+    )
 
 
 @cli.command()
@@ -122,3 +155,50 @@ def setup(
         sys.exit(0)
     else:
         sys.exit(1)
+
+
+@cli.command()
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    default=_DEFAULT_DB_PATH,
+    show_default=True,
+    help="Path to the local SQLite database.",
+)
+@click.option(
+    "--config-path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    default=_DEFAULT_CONFIG_PATH,
+    show_default=True,
+    help="Path to config.yaml (used for dashboard settings and alert thresholds).",
+)
+@click.option(
+    "--refresh-interval",
+    type=str,
+    default=None,
+    help="Refresh interval in HH:MM:SS (overrides config).",
+)
+def dashboard(db_path: Path, config_path: Path, refresh_interval: str | None) -> None:
+    """Launch the terminal dashboard for local historical system status."""
+    try:
+        config = _load_optional_config(config_path)
+    except ConfigError as exc:
+        click.echo(f"Configuration error: {exc}", err=True)
+        sys.exit(1)
+
+    resolved_refresh = _dashboard_refresh_interval(config)
+    if refresh_interval is not None:
+        parsed = parse_duration_hhmmss(refresh_interval)
+        if parsed is None:
+            click.echo(
+                "Invalid --refresh-interval value. Expected HH:MM:SS or <days>d HH:MM:SS.",
+                err=True,
+            )
+            sys.exit(1)
+        resolved_refresh = parsed[0]
+
+    launch_dashboard(
+        db_path=db_path,
+        config=config,
+        refresh_interval_seconds=max(0.25, resolved_refresh),
+    )

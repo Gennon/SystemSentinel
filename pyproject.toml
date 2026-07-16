@@ -49,6 +49,7 @@ all = [
 
 [project.scripts]
 sentinel = "system_sentinel.cli.main:cli"
+sentinel-tui = "system_sentinel.dashboard.entrypoint:main"
 
 [project.entry-points."sentinel.tools"]
 security_update = "system_sentinel.tools.update.tool:SecurityUpdateTool"

@@ -32,6 +32,7 @@ source .venv/bin/activate
 pip install -e ".[discord]"
 sentinel setup                 # first-time wizard
 sentinel run                   # start the daemon
+sentinel dashboard             # terminal dashboard (historical + live-refresh from SQLite)
 ```
 
 ### Dry-run mode

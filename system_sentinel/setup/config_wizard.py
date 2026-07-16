@@ -80,6 +80,9 @@ REQUIRED_CHAT_FIELDS: dict[str, str] = {
 
 # Safe defaults written alongside the chat config on a fresh install.
 _SAFE_DEFAULTS: dict[str, Any] = {
+    "dashboard": {
+        "refresh_interval": "00:00:05",
+    },
     "updates": {
         "enabled": True,
         "schedule": "02:00",

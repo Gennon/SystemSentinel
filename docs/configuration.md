@@ -75,6 +75,9 @@ llm_providers:
     api_key: ""
     model: "mistral-large-latest"
 
+dashboard:
+  refresh_interval: "00:00:05"
+
 updates:
   self_update:
     enabled: true
@@ -642,6 +645,7 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 
 | Key | Type | Default | Used by | Notes |
 |---|---|---|---|---|
+| `dashboard.refresh_interval` | duration (`HH:MM:SS` or `<days>d HH:MM:SS`) | `00:00:05` | `sentinel dashboard` / `sentinel-tui` | Dashboard refresh interval (can be overridden by CLI option `--refresh-interval`). |
 | `updates.self_update.enabled` | bool | `false` at runtime (`true` when setup wizard creates config) | `SelfUpdateMonitor` | Enables daemon self-update loop. |
 | `updates.self_update.check_interval` | duration | `00:05:00` (min effective `00:00:30`) | `SelfUpdateMonitor` | Git update polling interval. |
 | `updates.self_update.source_path` | path | auto-discovered | `SelfUpdateMonitor` | Preferred key for local repo path. |

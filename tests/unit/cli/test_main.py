@@ -94,3 +94,91 @@ class TestRestartExecArgs:
 
         assert executable == "/usr/bin/python3"
         assert args == ["/usr/bin/python3", "sentinel", "run"]
+
+
+class TestDashboardCommand:
+    def test_dashboard_uses_default_refresh_without_config(self) -> None:
+        runner = CliRunner()
+        with patch("system_sentinel.cli.main.launch_dashboard") as mock_launch:
+            result = runner.invoke(
+                cli,
+                [
+                    "dashboard",
+                    "--config-path",
+                    "/tmp/non-existent-config.yaml",
+                    "--db-path",
+                    "/tmp/sentinel.db",
+                ],
+            )
+
+        assert result.exit_code == 0
+        mock_launch.assert_called_once()
+        kwargs = mock_launch.call_args.kwargs
+        assert kwargs["refresh_interval_seconds"] == 5.0
+        assert kwargs["config"] == {}
+
+    def test_dashboard_reads_refresh_interval_from_config(self, tmp_path) -> None:
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("dashboard:\n  refresh_interval: '00:00:07'\n")
+
+        runner = CliRunner()
+        with patch("system_sentinel.cli.main.launch_dashboard") as mock_launch:
+            result = runner.invoke(
+                cli,
+                [
+                    "dashboard",
+                    "--config-path",
+                    str(config_path),
+                    "--db-path",
+                    "/tmp/sentinel.db",
+                ],
+            )
+
+        assert result.exit_code == 0
+        mock_launch.assert_called_once()
+        kwargs = mock_launch.call_args.kwargs
+        assert kwargs["refresh_interval_seconds"] == 7.0
+
+    def test_dashboard_cli_option_overrides_config_refresh(self, tmp_path) -> None:
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("dashboard:\n  refresh_interval: '00:00:07'\n")
+
+        runner = CliRunner()
+        with patch("system_sentinel.cli.main.launch_dashboard") as mock_launch:
+            result = runner.invoke(
+                cli,
+                [
+                    "dashboard",
+                    "--config-path",
+                    str(config_path),
+                    "--db-path",
+                    "/tmp/sentinel.db",
+                    "--refresh-interval",
+                    "00:00:02",
+                ],
+            )
+
+        assert result.exit_code == 0
+        mock_launch.assert_called_once()
+        kwargs = mock_launch.call_args.kwargs
+        assert kwargs["refresh_interval_seconds"] == 2.0
+
+    def test_dashboard_rejects_invalid_cli_refresh_interval(self) -> None:
+        runner = CliRunner()
+        with patch("system_sentinel.cli.main.launch_dashboard") as mock_launch:
+            result = runner.invoke(
+                cli,
+                [
+                    "dashboard",
+                    "--config-path",
+                    "/tmp/non-existent-config.yaml",
+                    "--db-path",
+                    "/tmp/sentinel.db",
+                    "--refresh-interval",
+                    "5s",
+                ],
+            )
+
+        assert result.exit_code == 1
+        assert "Invalid --refresh-interval value." in result.output
+        mock_launch.assert_not_called()
