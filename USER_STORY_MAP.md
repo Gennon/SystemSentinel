@@ -111,7 +111,7 @@ A Linux system management daemon that autonomously handles updates, security har
 - [ ] As a user I want to optionally auto-delete files based on rules (age, size, pattern) so storage is managed automatically. **(US-008)**
 
 ### Communication & Alerts
-- [ ] As a user I want weekly trend summaries (storage growth, login patterns) sent via chat so I can spot slow-moving problems.
+- [x] As a user I want weekly trend summaries (storage growth, login patterns) sent via chat so I can spot slow-moving problems. **(US-031)**
 - [ ] As a user I want configurable quiet hours for non-urgent alerts so I am not woken up by low-priority notifications.
 
 ### AI / LLM Assistant

@@ -178,6 +178,11 @@ monitors:
     enabled: true
     send_time_local: "08:00"
     expected_collection_interval: "00:01:00"
+  weekly_digest:
+    enabled: true
+    send_day_local: "monday"
+    send_time_local: "08:00"
+    expected_collection_interval: "00:01:00"
 
 tools:
   security_update:
@@ -351,6 +356,11 @@ monitors:
   daily_digest:
     enabled: true
     send_time_local: "07:30"
+    expected_collection_interval: "00:01:00"
+  weekly_digest:
+    enabled: true
+    send_day_local: "monday"
+    send_time_local: "08:00"
     expected_collection_interval: "00:01:00"
 ```
 
@@ -611,6 +621,10 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `monitors.daily_digest.data_dir` | path | `/var/lib/sentinel` | `DailyDigestMonitor` | Used to locate `sentinel.db`. |
 | `monitors.daily_digest.send_time_local` | `HH:MM` | `08:00` | `DailyDigestMonitor` | Daily digest send time (local timezone). |
 | `monitors.daily_digest.expected_collection_interval` | duration | `00:01:00` | `DailyDigestMonitor` | Used for offline gap detection sensitivity. |
+| `monitors.weekly_digest.data_dir` | path | `/var/lib/sentinel` | `WeeklyDigestMonitor` | Used to locate `sentinel.db`. |
+| `monitors.weekly_digest.send_day_local` | weekday name | `monday` | `WeeklyDigestMonitor` | Weekly digest day (local timezone). Supported values: `monday`..`sunday`. |
+| `monitors.weekly_digest.send_time_local` | `HH:MM` | `08:00` | `WeeklyDigestMonitor` | Weekly digest send time (local timezone). |
+| `monitors.weekly_digest.expected_collection_interval` | duration | `00:01:00` | `WeeklyDigestMonitor` | Used for offline gap detection sensitivity in weekly aggregate summaries. |
 
 ### Tool keys
 

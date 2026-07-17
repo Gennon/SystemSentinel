@@ -486,6 +486,48 @@ async def test_update_requires_confirmation_and_runs_on_reaction(tmp_path: Path)
 
 
 @pytest.mark.asyncio
+async def test_cleanup_records_deleted_and_reclaimed_metrics_in_audit(tmp_path: Path) -> None:
+    cleanup_dir = tmp_path / "cleanup"
+    cleanup_dir.mkdir()
+    old_file = cleanup_dir / "old.log"
+    old_file.write_text("cleanup-me")
+
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {
+            "chat_adapters": {"discord": {"channel_id": "100"}},
+            "tools": {
+                "cleanup": {
+                    "rules": [
+                        {
+                            "path": str(cleanup_dir),
+                            "pattern": "*.log",
+                            "older_than": "00:00:00",
+                        }
+                    ]
+                }
+            },
+        },
+        {},
+    )
+
+    confirmation = await dispatcher.handle_message(_message("!cleanup"), ["!cleanup"])
+    assert confirmation is not None
+    assert "Confirm !cleanup" in confirmation.text
+
+    response = await dispatcher.handle_reaction(_reaction())
+    assert response is not None
+    assert "Cleanup completed." in response.text
+    assert not old_file.exists()
+
+    reaction_call = dispatcher._ctx.audit.append.await_args_list[-1].kwargs  # type: ignore[attr-defined]
+    assert reaction_call["action_type"] == "chat_command"
+    assert reaction_call["details"]["command"] == "!cleanup"
+    assert reaction_call["details"]["cleanup"]["deleted_files"] == 1
+    assert reaction_call["details"]["cleanup"]["reclaimed_bytes"] > 0
+
+
+@pytest.mark.asyncio
 async def test_custom_prefix_is_honored(tmp_path: Path) -> None:
     dispatcher = await _dispatcher(
         tmp_path,

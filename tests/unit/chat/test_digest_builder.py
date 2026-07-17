@@ -151,3 +151,22 @@ def test_build_daily_digest_builds_structured_message() -> None:
     assert result.fields["Timestamp"] == now.isoformat()
     assert result.fields["System Uptime"] == "2d 03h"
     assert result.fields["24h Resource Usage"] == "CPU avg 20.0%, RAM peak 68.0%"
+
+
+def test_build_weekly_digest_builds_structured_message() -> None:
+    builder = DigestBuilder()
+    now = datetime(2024, 1, 8, 8, 0, tzinfo=UTC)
+
+    result = builder.build_weekly_digest(
+        generated_at=now,
+        sections={
+            "Storage Usage Trend (7d)": "/: +4.2 GB, +12.0% vs last week",
+            "Login Summary (7d)": "successful=14, failed=6, unique_ips=5, anomalies=2",
+            "Resource Averages vs Previous Week": "CPU avg 32.0% (+6.7%)",
+        },
+    )
+
+    assert result.title == "📈 Weekly System Trend Summary"
+    assert result.fields is not None
+    assert result.fields["Timestamp"] == now.isoformat()
+    assert result.fields["Storage Usage Trend (7d)"] == "/: +4.2 GB, +12.0% vs last week"

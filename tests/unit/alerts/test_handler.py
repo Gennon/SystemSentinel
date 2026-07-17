@@ -28,6 +28,7 @@ from system_sentinel.alerts.handler import (
     _format_service_restart_result,
     _format_storage_report_generated,
     _format_system_daily_digest,
+    _format_system_weekly_digest,
     _format_unknown_connection,
 )
 from system_sentinel.chat.base import AlertSeverity, OutboundMessage
@@ -375,6 +376,14 @@ _SYSTEM_DAILY_DIGEST_PAYLOAD = {
         "System Uptime": "1d 02h",
         "Update Status": "Last run: 2024-01-01T02:00:00+00:00",
         "24h Resource Usage": "CPU avg 20%",
+    },
+}
+
+_SYSTEM_WEEKLY_DIGEST_PAYLOAD = {
+    "generated_at": "2024-01-08T08:00:00+00:00",
+    "sections": {
+        "Storage Usage Trend (7d)": "/: +4.2 GB, +12.0% vs last week",
+        "Login Summary (7d)": "successful=14, failed=6, unique_ips=5, anomalies=2",
     },
 }
 
@@ -727,6 +736,27 @@ async def test_handler_broadcasts_on_system_daily_digest_event() -> None:
 
     assert len(calls) == 1
     assert calls[0].title == "🧭 Daily System Digest"
+
+
+def test_format_system_weekly_digest_fields() -> None:
+    msg = _format_system_weekly_digest(_SYSTEM_WEEKLY_DIGEST_PAYLOAD)
+    assert msg.title == "📈 Weekly System Trend Summary"
+    assert msg.fields is not None
+    assert msg.fields["Timestamp"] == "2024-01-08T08:00:00+00:00"
+    assert "Storage Usage Trend (7d)" in msg.fields
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_system_weekly_digest_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.system.weekly_digest", _SYSTEM_WEEKLY_DIGEST_PAYLOAD)
+
+    assert len(calls) == 1
+    assert calls[0].title == "📈 Weekly System Trend Summary"
 
 
 @pytest.mark.asyncio

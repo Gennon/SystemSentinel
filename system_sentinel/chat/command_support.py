@@ -82,19 +82,23 @@ async def record_reaction_command(
     command: str,
     outcome: str,
     result: str,
+    extra_details: dict[str, Any] | None = None,
 ) -> None:
+    details: dict[str, Any] = {
+        "adapter": reaction.adapter,
+        "channel_id": reaction.channel_id,
+        "user_id": reaction.user_id,
+        "username": reaction.username,
+        "command": command,
+        "emoji": str(reaction.emoji),
+        "result": result,
+    }
+    if extra_details:
+        details.update(extra_details)
     await audit.append(
         action_type="chat_command",
         source=f"chat:{reaction.adapter}:{reaction.user_id}",
         description=f"Processed confirmed chat command {command}.",
         outcome=outcome,
-        details={
-            "adapter": reaction.adapter,
-            "channel_id": reaction.channel_id,
-            "user_id": reaction.user_id,
-            "username": reaction.username,
-            "command": command,
-            "emoji": str(reaction.emoji),
-            "result": result,
-        },
+        details=details,
     )

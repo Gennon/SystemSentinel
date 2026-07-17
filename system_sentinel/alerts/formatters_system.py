@@ -42,6 +42,17 @@ def _format_system_daily_digest(payload: dict[str, Any]) -> OutboundMessage:
     )
 
 
+def _format_system_weekly_digest(payload: dict[str, Any]) -> OutboundMessage:
+    generated_at = payload["generated_at"]
+    sections_payload = payload["sections"]
+    sections = {str(key): str(value) for key, value in sections_payload.items()}
+    builder = DigestBuilder()
+    return builder.build_weekly_digest(
+        generated_at=str(generated_at),
+        sections=sections,
+    )
+
+
 def _format_storage_report_generated(payload: dict[str, Any]) -> OutboundMessage:
     report = str(payload.get("report", "No storage report data available."))
     flagged_paths = int(payload.get("flagged_paths", 0))

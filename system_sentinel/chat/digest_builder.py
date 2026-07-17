@@ -27,6 +27,21 @@ class DigestBuilder:
             fields=fields,
         )
 
+    def build_weekly_digest(
+        self,
+        *,
+        generated_at: datetime | str,
+        sections: dict[str, str],
+    ) -> OutboundMessage:
+        timestamp = generated_at.isoformat() if isinstance(generated_at, datetime) else generated_at
+        fields: dict[str, str] = {"Timestamp": timestamp, **sections}
+        return OutboundMessage(
+            title="📈 Weekly System Trend Summary",
+            text="Weekly trend overview for the last 7 days.",
+            severity=AlertSeverity.INFO,
+            fields=fields,
+        )
+
     async def build_login_digest(
         self,
         login_repo: LoginRepository,

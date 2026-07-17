@@ -25,6 +25,7 @@ from system_sentinel.alerts.formatters import (
     _format_service_restart_result,
     _format_storage_report_generated,
     _format_system_daily_digest,
+    _format_system_weekly_digest,
     _format_unknown_connection,
 )
 from system_sentinel.alerts.remediation import AlertLLMRemediationService
@@ -168,6 +169,7 @@ class AlertHandler:
         event_bus.subscribe("alert.files.daily_digest", self._on_old_files_daily_digest)
         event_bus.subscribe("alert.files.change_detected", self._on_file_change_detected)
         event_bus.subscribe("alert.system.daily_digest", self._on_system_daily_digest)
+        event_bus.subscribe("alert.system.weekly_digest", self._on_system_weekly_digest)
         event_bus.subscribe("alert.storage.report_generated", self._on_storage_report_generated)
         event_bus.subscribe("alert.cpu.threshold_exceeded", self._on_cpu_threshold_exceeded)
         event_bus.subscribe("alert.ram.threshold_exceeded", self._on_ram_threshold_exceeded)
@@ -263,6 +265,11 @@ class AlertHandler:
     async def _on_system_daily_digest(self, event_type: str, payload: Any) -> None:
         self._logger.info("Publishing system daily digest")
         msg = _format_system_daily_digest(payload)
+        await self._router.broadcast(msg)
+
+    async def _on_system_weekly_digest(self, event_type: str, payload: Any) -> None:
+        self._logger.info("Publishing system weekly digest")
+        msg = _format_system_weekly_digest(payload)
         await self._router.broadcast(msg)
 
     async def _on_storage_report_generated(self, event_type: str, payload: Any) -> None:

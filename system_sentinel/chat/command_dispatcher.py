@@ -241,6 +241,13 @@ class ChatCommandDispatcher:
             command=command,
             outcome="success" if not failed else "failure",
             result="executed",
+            extra_details={
+                "cleanup": {
+                    "deleted_files": deleted,
+                    "reclaimed_bytes": reclaimed,
+                    "failed_deletions": failed,
+                }
+            },
         )
         return OutboundMessage(
             text=(
@@ -431,6 +438,7 @@ class ChatCommandDispatcher:
         command: str,
         outcome: str,
         result: str,
+        extra_details: dict[str, Any] | None = None,
     ) -> None:
         await record_reaction_command(
             audit=self._ctx.audit,
@@ -438,6 +446,7 @@ class ChatCommandDispatcher:
             command=command,
             outcome=outcome,
             result=result,
+            extra_details=extra_details,
         )
 
     async def _llm_context_summary(self) -> str:
