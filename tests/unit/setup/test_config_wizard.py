@@ -159,7 +159,8 @@ class TestNoConfigInteractive:
         assert data["updates"]["self_update"]["snapshots"]["backend"] == "auto"
         assert data["updates"]["self_update"]["snapshots"]["keep_last"] == 20
         assert data["monitors"]["collection_interval"] == "00:01:00"
-        assert data["monitors"]["retention"] == "30d 00:00:00"
+        assert data["monitors"]["retention"] == "90d 00:00:00"
+        assert data["charts"]["renderer"] == "text"
         assert data["monitors"]["services"]["enabled"] is True
         assert data["monitors"]["services"]["check_interval"] == "00:01:00"
         assert data["monitors"]["services"]["max_restart_attempts"] == 3

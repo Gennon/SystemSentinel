@@ -9,6 +9,7 @@ from system_sentinel.chat.base import (
     BaseChatAdapter,
     InboundMessage,
     InboundReaction,
+    OutboundAttachment,
     OutboundMessage,
 )
 
@@ -33,6 +34,7 @@ def test_outbound_message_defaults() -> None:
     assert msg.severity == AlertSeverity.INFO
     assert msg.title is None
     assert msg.fields is None
+    assert msg.attachments is None
     assert msg.reply_to is None
 
 
@@ -42,10 +44,19 @@ def test_outbound_message_with_all_fields() -> None:
         title="Disk Alert",
         severity=AlertSeverity.CRITICAL,
         fields={"volume": "/dev/sda1", "usage": "98%"},
+        attachments=[
+            OutboundAttachment(
+                filename="graph.png",
+                content_type="image/png",
+                data=b"png-bytes",
+            )
+        ],
     )
     assert msg.severity == AlertSeverity.CRITICAL
     assert msg.title == "Disk Alert"
     assert msg.fields == {"volume": "/dev/sda1", "usage": "98%"}
+    assert msg.attachments is not None
+    assert msg.attachments[0].filename == "graph.png"
 
 
 # ---------------------------------------------------------------------------

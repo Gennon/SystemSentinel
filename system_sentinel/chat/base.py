@@ -35,11 +35,19 @@ class OutboundMessage:
     title: str | None = None
     severity: AlertSeverity = AlertSeverity.INFO
     fields: dict[str, str] | None = None
+    attachments: list[OutboundAttachment] | None = None
     reply_to: InboundMessage | None = None
 
 
 CommandHandler = Callable[[InboundMessage, list[str]], Awaitable["OutboundMessage | None"]]
 ReactionHandler = Callable[["InboundReaction"], Awaitable["OutboundMessage | None"]]
+
+
+@dataclass
+class OutboundAttachment:
+    filename: str
+    content_type: str
+    data: bytes
 
 
 @dataclass

@@ -123,6 +123,7 @@ The bot should reply with current CPU, RAM, disk usage, uptime, and service heal
 | `!help` | readonly | Lists all available commands |
 | `!status` | readonly | Current CPU, RAM, disk, uptime, and service health |
 | `!alerts` | readonly | Currently active alert conditions |
+| `!graph <metric> <period>` | readonly | Historical chart for cpu/ram/disk/network/gpu over 24h/7d/30d/90d |
 | `!files` | readonly | Lists old files flagged for cleanup |
 | `!storage` | readonly | Triggers a storage report |
 | `!anomalies` | readonly | Recent login anomalies |

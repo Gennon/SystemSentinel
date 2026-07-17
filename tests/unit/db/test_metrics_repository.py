@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import json
 
 import pytest
 
@@ -101,3 +102,41 @@ async def test_query_range_returns_ordered_by_timestamp(repo: MetricsRepository)
     results = await repo.query_range("cpu", since=base - timedelta(seconds=1))
     percents = [r["overall_percent"] for r in results]
     assert percents == [0.0, 1.0, 2.0]
+
+
+@pytest.mark.asyncio
+async def test_query_graph_points_cpu(repo: MetricsRepository) -> None:
+    now = datetime.now(UTC)
+    await repo.insert("cpu", {"overall_percent": 61.5}, timestamp=now)
+
+    points = await repo.query_graph_points("cpu", since=now - timedelta(hours=1), until=now)
+    assert len(points) == 1
+    assert points[0][1] == 61.5
+
+
+@pytest.mark.asyncio
+async def test_query_graph_points_disk_uses_partition_average(db: DatabaseConnection) -> None:
+    repo = MetricsRepository(db)
+    now = datetime.now(UTC)
+    await db.connection.execute(
+        """
+        INSERT INTO system_metrics (timestamp, metric_type, data_json)
+        VALUES (?, 'disk', ?)
+        """,
+        (
+            now.isoformat(),
+            json.dumps(
+                {
+                    "partitions": [
+                        {"mountpoint": "/", "percent": 50},
+                        {"mountpoint": "/data", "percent": 70},
+                    ]
+                }
+            ),
+        ),
+    )
+    await db.connection.commit()
+
+    points = await repo.query_graph_points("disk", since=now - timedelta(hours=1), until=now)
+    assert len(points) == 1
+    assert points[0][1] == 60.0

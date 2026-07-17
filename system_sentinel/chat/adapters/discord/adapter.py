@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from datetime import UTC, datetime
+from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
 from system_sentinel.chat.base import (
@@ -10,6 +11,7 @@ from system_sentinel.chat.base import (
     BaseChatAdapter,
     InboundMessage,
     InboundReaction,
+    OutboundAttachment,
     OutboundMessage,
 )
 
@@ -185,8 +187,13 @@ class DiscordAdapter(BaseChatAdapter):
             except Exception:
                 self.logger.error("Channel %s not found or not accessible", channel_id)
                 return
-        for embed in self._build_embeds(message):
-            await channel.send(embed=embed)
+        embeds = self._build_embeds(message)
+        files = self._build_files(message.attachments or [])
+        for index, embed in enumerate(embeds):
+            kwargs: dict[str, Any] = {"embed": embed}
+            if index == 0 and files:
+                kwargs["files"] = files
+            await channel.send(**kwargs)
 
     async def send_to_default(self, message: OutboundMessage) -> None:
         """Send *message* to the configured default alert channel."""
@@ -237,3 +244,15 @@ class DiscordAdapter(BaseChatAdapter):
             )
             embeds.append(self._build_embed(part_message))
         return embeds
+
+    def _build_files(self, attachments: list[OutboundAttachment]) -> list[Any]:
+        files: list[Any] = []
+        for attachment in attachments:
+            if attachment.content_type != "image/png":
+                self.logger.warning(
+                    "Skipping unsupported attachment content type: %s",
+                    attachment.content_type,
+                )
+                continue
+            files.append(_discord.File(fp=BytesIO(attachment.data), filename=attachment.filename))
+        return files

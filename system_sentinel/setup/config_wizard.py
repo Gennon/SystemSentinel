@@ -105,7 +105,7 @@ _SAFE_DEFAULTS: dict[str, Any] = {
     },
     "monitors": {
         "collection_interval": "00:01:00",
-        "retention": "30d 00:00:00",
+        "retention": "90d 00:00:00",
         "geoip_database_path": "",
         "cpu": {
             "enabled": True,
@@ -193,6 +193,9 @@ _SAFE_DEFAULTS: dict[str, Any] = {
             "watched_directories": [],
             "alert_cooldown": "00:05:00",
         },
+    },
+    "charts": {
+        "renderer": "text",
     },
     "tools": {
         "firewall": {

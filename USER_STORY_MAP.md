@@ -104,7 +104,7 @@ A Linux system management daemon that autonomously handles updates, security har
 
 ### Monitoring & Metrics
 - [x] As a user I want a Prometheus-compatible metrics export so I can plug SystemSentinel into an existing Grafana setup. **(US-028)**
-- [ ] As a user I want configurable retention of historical metric data so I can investigate incidents after the fact.
+- [x] As a user I want configurable retention of historical metric data so I can investigate incidents after the fact. **(US-029)**
 
 ### File Management
 - [ ] As a user I want file integrity monitoring on critical system files so tampering is detected and alerted immediately.

@@ -620,7 +620,7 @@ tools:
 
 monitors:
   collection_interval: "00:01:00"
-  retention: "30d 00:00:00"
+  retention: "90d 00:00:00"
   cpu:
     enabled: true
     alert_threshold_percent: 90
@@ -646,6 +646,9 @@ monitors:
     watched_paths:
       - /etc/ssh
       - /etc/sudoers
+
+charts:
+  renderer: "text"             # text | image
 
 alerts:
   notify_min_severity: info  # info | warning | critical (chat suppression threshold)

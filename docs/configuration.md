@@ -92,7 +92,7 @@ updates:
 
 monitors:
   collection_interval: "00:01:00"
-  retention: "30d 00:00:00"
+  retention: "90d 00:00:00"
   geoip_database_path: ""
   cpu:
     enabled: true
@@ -265,6 +265,9 @@ llm_providers:
     endpoint: "https://api.mistral.ai"
     api_key: ""
     model: "mistral-large-latest"
+
+charts:
+  renderer: "text"  # "text" (default) or "image"
 ```
 
 ### Monitors
@@ -276,7 +279,7 @@ Monitors are grouped under `monitors.*` and run on the global collection loop (`
 ```yaml
 monitors:
   collection_interval: "00:01:00"
-  retention: "30d 00:00:00"
+  retention: "90d 00:00:00"
   cpu:
     enabled: true
     alert_threshold_percent: 92
@@ -539,7 +542,8 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | Key | Type | Default | Used by | Notes |
 |---|---|---|---|---|
 | `monitors.collection_interval` | duration | `00:01:00` | `MonitorRegistry` | Global monitor collection loop interval. |
-| `monitors.retention` | duration | `30d 00:00:00` | `MonitorRegistry` | Metric retention window (daily purge). |
+| `monitors.retention` | duration | `90d 00:00:00` | `MonitorRegistry` | Metric retention window (daily purge). |
+| `charts.renderer` | string | `text` | `ChatCommandDispatcher`/chart renderer registry | Renderer selected for `!graph` output (`text` or `image`). |
 | `monitors.geoip_database_path` | path | `""` | `LoginMonitor`, `ConnectionMonitor` | Canonical GeoIP DB path shared across monitors. |
 | `monitors.<monitor>.enabled` | bool | `true` | `MonitorRegistry`/`BaseMonitor` | Per-monitor enable/disable switch. |
 | `monitors.cpu.data_dir` | path | `/var/lib/sentinel` | `CpuMonitor` | Used to locate `sentinel.db`. |

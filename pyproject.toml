@@ -80,6 +80,10 @@ openai = "system_sentinel.llm.providers.openai.provider:OpenAIProvider"
 anthropic = "system_sentinel.llm.providers.anthropic.provider:AnthropicProvider"
 mistral = "system_sentinel.llm.providers.mistral.provider:MistralProvider"
 
+[project.entry-points."sentinel.chart_renderers"]
+text = "system_sentinel.charts.renderers.text:TextChartRenderer"
+image = "system_sentinel.charts.renderers.image:ImageChartRenderer"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

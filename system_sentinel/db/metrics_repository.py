@@ -99,6 +99,38 @@ def _extract_numeric_values(
     return values
 
 
+def _extract_graph_value(metric_type: str, payload: dict[str, Any]) -> float | None:
+    if metric_type == "cpu":
+        raw = payload.get("overall_percent")
+        return float(raw) if raw is not None else None
+    if metric_type == "ram":
+        raw = payload.get("percent")
+        return float(raw) if raw is not None else None
+    if metric_type == "disk":
+        partitions = payload.get("partitions")
+        if not isinstance(partitions, list):
+            return None
+        values: list[float] = []
+        for partition in partitions:
+            if not isinstance(partition, dict):
+                continue
+            raw = partition.get("percent")
+            if raw is None:
+                continue
+            values.append(float(raw))
+        if not values:
+            return None
+        return sum(values) / len(values)
+    if metric_type == "network":
+        sent = float(payload.get("bytes_sent", 0.0))
+        recv = float(payload.get("bytes_recv", 0.0))
+        return sent + recv
+    if metric_type == "gpu":
+        raw = payload.get("peak_utilization_percent", payload.get("utilization_percent"))
+        return float(raw) if raw is not None else None
+    return None
+
+
 class MetricsRepository:
     """Stores and retrieves system metrics (US-005)."""
 
@@ -153,6 +185,37 @@ class MetricsRepository:
             )
         await self._db.connection.commit()
         return cursor.rowcount
+
+    async def query_graph_points(
+        self,
+        metric_type: str,
+        since: datetime,
+        until: datetime | None = None,
+    ) -> list[tuple[datetime, float]]:
+        end = until or datetime.now(UTC)
+        cursor = await self._db.connection.execute(
+            "SELECT timestamp, data_json FROM system_metrics "
+            "WHERE metric_type = ? AND timestamp >= ? AND timestamp <= ? "
+            "ORDER BY timestamp ASC",
+            (metric_type, since.isoformat(), end.isoformat()),
+        )
+        rows = await cursor.fetchall()
+        points: list[tuple[datetime, float]] = []
+        for row in rows:
+            timestamp_raw = str(row[0])
+            payload_raw = str(row[1])
+            try:
+                payload = json.loads(payload_raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            value = _extract_graph_value(metric_type, payload)
+            if value is None:
+                continue
+            timestamp = datetime.fromisoformat(timestamp_raw)
+            points.append((timestamp, value))
+        return points
 
     async def get_daily_aggregates(
         self,

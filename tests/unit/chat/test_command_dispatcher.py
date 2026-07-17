@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from system_sentinel.charts.base import ChartRequest, ChartResult
 from system_sentinel.chat.base import InboundMessage, InboundReaction
 from system_sentinel.chat.command_dispatcher import ChatCommandDispatcher
 from system_sentinel.core.context import AppContext
@@ -128,6 +129,18 @@ class _FailingFirewallTool(BaseTool):
         raise UnsupportedFirewallBackendError("No supported firewall backend detected.")
 
 
+class _FakeImageRenderer:
+    name = "image"
+
+    async def render(self, request: ChartRequest) -> ChartResult:
+        _ = request
+        return ChartResult(
+            content_type="image/png",
+            payload=b"png-binary",
+            filename="cpu-24h.png",
+        )
+
+
 async def _dispatcher(
     tmp_path: Path,
     config: dict,
@@ -196,6 +209,87 @@ async def test_help_command_returns_supported_commands(tmp_path: Path) -> None:
     assert "!snapshots" in response.text
     assert "!audit [--count N]" in response.text
     assert "!ask <question>" in response.text
+    assert "!graph <metric> <period>" in response.text
+
+
+@pytest.mark.asyncio
+async def test_graph_command_requires_metric_and_period(tmp_path: Path) -> None:
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {"chat_adapters": {"discord": {"channel_id": "100"}}},
+        {},
+    )
+
+    response = await dispatcher.handle_message(_message("!graph cpu"), ["!graph", "cpu"])
+    assert response is not None
+    assert response.text.startswith("Usage: !graph <metric> <period>")
+
+
+@pytest.mark.asyncio
+async def test_graph_command_renders_text_chart(tmp_path: Path) -> None:
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {"chat_adapters": {"discord": {"channel_id": "100"}}, "charts": {"renderer": "text"}},
+        {},
+    )
+    await dispatcher._db.connection.execute(  # type: ignore[attr-defined]
+        """
+        INSERT INTO system_metrics (timestamp, metric_type, data_json)
+        VALUES (?, 'cpu', ?)
+        """,
+        (datetime.now(UTC).isoformat(), json.dumps({"overall_percent": 44.2})),
+    )
+    await dispatcher._db.connection.commit()  # type: ignore[attr-defined]
+
+    response = await dispatcher.handle_message(_message("!graph cpu 24h"), ["!graph", "cpu", "24h"])
+    assert response is not None
+    assert "CPU history (24h)" in response.text
+    assert "```text" in response.text
+
+
+@pytest.mark.asyncio
+async def test_graph_command_adds_insufficient_data_note(tmp_path: Path) -> None:
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {"chat_adapters": {"discord": {"channel_id": "100"}}, "charts": {"renderer": "text"}},
+        {},
+    )
+    await dispatcher._db.connection.execute(  # type: ignore[attr-defined]
+        """
+        INSERT INTO system_metrics (timestamp, metric_type, data_json)
+        VALUES (?, 'cpu', ?)
+        """,
+        (datetime.now(UTC).isoformat(), json.dumps({"overall_percent": 41.0})),
+    )
+    await dispatcher._db.connection.commit()  # type: ignore[attr-defined]
+
+    response = await dispatcher.handle_message(_message("!graph cpu 7d"), ["!graph", "cpu", "7d"])
+    assert response is not None
+    assert "Note: insufficient data for full 7d" in response.text
+
+
+@pytest.mark.asyncio
+async def test_graph_command_returns_png_attachment_for_image_renderer(tmp_path: Path) -> None:
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {"chat_adapters": {"discord": {"channel_id": "100"}}},
+        {},
+    )
+    await dispatcher._db.connection.execute(  # type: ignore[attr-defined]
+        """
+        INSERT INTO system_metrics (timestamp, metric_type, data_json)
+        VALUES (?, 'cpu', ?)
+        """,
+        (datetime.now(UTC).isoformat(), json.dumps({"overall_percent": 66.0})),
+    )
+    await dispatcher._db.connection.commit()  # type: ignore[attr-defined]
+    dispatcher._chart_renderer = _FakeImageRenderer()  # type: ignore[assignment,attr-defined]
+
+    response = await dispatcher.handle_message(_message("!graph cpu 24h"), ["!graph", "cpu", "24h"])
+    assert response is not None
+    assert response.attachments is not None
+    assert len(response.attachments) == 1
+    assert response.attachments[0].filename == "cpu-24h.png"
 
 
 @pytest.mark.asyncio

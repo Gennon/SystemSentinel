@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from system_sentinel.chat.base import AlertSeverity, OutboundMessage
+from system_sentinel.chat.base import AlertSeverity, OutboundAttachment, OutboundMessage
 from system_sentinel.core.context import AppContext
 
 # ---------------------------------------------------------------------------
@@ -80,9 +80,15 @@ def _build_discord_stub() -> types.ModuleType:
         async def close(self) -> None:
             pass
 
+    class File:
+        def __init__(self, *, fp: object, filename: str) -> None:
+            self.fp = fp
+            self.filename = filename
+
     mod.Intents = Intents  # type: ignore[attr-defined]
     mod.Embed = Embed  # type: ignore[attr-defined]
     mod.Client = Client  # type: ignore[attr-defined]
+    mod.File = File  # type: ignore[attr-defined]
     # Minimal stubs so type annotations in the adapter don't break at import
     mod.Message = MagicMock  # type: ignore[attr-defined]
     return mod
@@ -236,6 +242,32 @@ async def test_send_splits_large_message_across_multiple_embeds() -> None:
     channel = adapter._client._channels.get(334)
     assert channel is not None
     assert channel.send.await_count == 3
+    await adapter.stop()
+
+
+@pytest.mark.asyncio
+async def test_send_includes_png_attachment() -> None:
+    adapter = _make_adapter({"channel_id": "335"})
+    await adapter.start()
+
+    msg = OutboundMessage(
+        text="CPU chart",
+        attachments=[
+            OutboundAttachment(
+                filename="cpu-24h.png",
+                content_type="image/png",
+                data=b"png-bytes",
+            )
+        ],
+    )
+    await adapter.send("335", msg)
+
+    channel = adapter._client._channels.get(335)
+    assert channel is not None
+    channel.send.assert_awaited_once()
+    sent_files = channel.send.call_args.kwargs["files"]
+    assert len(sent_files) == 1
+    assert sent_files[0].filename == "cpu-24h.png"
     await adapter.stop()
 
 

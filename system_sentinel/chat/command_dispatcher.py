@@ -9,7 +9,10 @@ import uuid
 
 import psutil
 
+from system_sentinel.charts.registry import ChartRendererRegistry
+from system_sentinel.charts.renderers.text import TextChartRenderer
 from system_sentinel.chat.base import InboundMessage, InboundReaction, OutboundMessage
+from system_sentinel.chat.command_graph import handle_graph_command
 from system_sentinel.chat.command_handlers import (
     handle_anomalies_command,
     handle_audit_command,
@@ -42,9 +45,11 @@ from system_sentinel.chat.maintenance_utils import (
 from system_sentinel.core.exceptions import LLMUnavailableError
 from system_sentinel.db.connection_repository import ConnectionRepository
 from system_sentinel.db.login_repository import LoginRepository
+from system_sentinel.db.metrics_repository import MetricsRepository
 from system_sentinel.db.old_files_repository import OldFilesRepository
 
 if TYPE_CHECKING:
+    from system_sentinel.charts.base import BaseChartRenderer
     from system_sentinel.core.context import AppContext
     from system_sentinel.core.scheduler import Scheduler
     from system_sentinel.db.connection import DatabaseConnection
@@ -90,6 +95,8 @@ class ChatCommandDispatcher:
         self._old_files_repo = OldFilesRepository(db)
         self._connection_repo = ConnectionRepository(db)
         self._login_repo = LoginRepository(db)
+        self._metrics_repo = MetricsRepository(db)
+        self._chart_renderer = self._load_chart_renderer()
         self._pending_actions: dict[tuple[str, str, str], PendingAction] = {}
 
     async def handle_message(
@@ -112,6 +119,7 @@ class ChatCommandDispatcher:
             "!firewall": self._cmd_firewall,
             "!hardening": self._cmd_hardening,
             "!audit": self._cmd_audit,
+            "!graph": self._cmd_graph,
             "!connections": self._cmd_connections,
             "!help": self._cmd_help,
         }
@@ -348,6 +356,13 @@ class ChatCommandDispatcher:
     async def _cmd_audit(self, message: InboundMessage) -> OutboundMessage:
         return await handle_audit_command(db=self._db, message=message)
 
+    async def _cmd_graph(self, message: InboundMessage) -> OutboundMessage:
+        return await handle_graph_command(
+            message=message,
+            metrics_repo=self._metrics_repo,
+            chart_renderer=self._chart_renderer,
+        )
+
     async def _cmd_help(self, message: InboundMessage) -> OutboundMessage:
         return handle_help_command(message=message)
 
@@ -435,3 +450,24 @@ class ChatCommandDispatcher:
 
     def _extract_prompt_after_command(self, text: str) -> str | None:
         return extract_prompt_after_command(text)
+
+    def _load_chart_renderer(self) -> BaseChartRenderer:
+        charts_cfg = self._config.get("charts", {})
+        renderer_name_raw = charts_cfg.get("renderer") if isinstance(charts_cfg, dict) else None
+        renderer_name = (
+            str(renderer_name_raw).strip().lower()
+            if renderer_name_raw is not None and str(renderer_name_raw).strip()
+            else "text"
+        )
+
+        registry = ChartRendererRegistry(self._ctx.logger.getChild("charts.registry"))
+        registry.discover()
+        renderer = registry.get(renderer_name)
+        if renderer is not None:
+            return renderer
+
+        self._ctx.logger.warning(
+            "Unknown chart renderer %r configured. Falling back to 'text'.",
+            renderer_name,
+        )
+        return TextChartRenderer()

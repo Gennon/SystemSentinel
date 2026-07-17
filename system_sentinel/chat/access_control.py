@@ -15,6 +15,7 @@ _DEFAULT_READONLY_COMMANDS = {
     "!status",
     "!ask",
     "!alerts",
+    "!graph",
     "!audit",
     "!connections",
     "!files",

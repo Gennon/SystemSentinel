@@ -26,6 +26,7 @@ _HELP_TEXT = (
     "!firewall - show effective firewall rules and desired-state drift status\n"
     "!hardening - show hardening audit results\n"
     "!audit [--count N] - list recent audit log entries\n"
+    "!graph <metric> <period> - graph historical metrics (24h, 7d, 30d, 90d)\n"
     "!connections classify - list latest connection intent classifications\n"
     "!help - show this help"
 )

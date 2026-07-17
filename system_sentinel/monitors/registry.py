@@ -25,7 +25,7 @@ class MonitorRegistry:
     HH:MM:SS, default 00:01:00).
 
     The *purge loop* deletes metric records older than the configured retention
-    window (``monitors.retention``, HH:MM:SS or <days>d HH:MM:SS, default 30 days)
+    window (``monitors.retention``, HH:MM:SS or <days>d HH:MM:SS, default 90 days)
     once per day.
 
     Usage::
@@ -106,7 +106,7 @@ class MonitorRegistry:
         retention_seconds = parse_duration_from_config(
             self._config,
             key="retention",
-            default_seconds=30 * 24 * 60 * 60,
+            default_seconds=90 * 24 * 60 * 60,
             logger=self._logger,
         )
 
