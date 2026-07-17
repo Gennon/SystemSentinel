@@ -143,6 +143,21 @@ The bot should reply with current CPU, RAM, disk usage, uptime, and service heal
 | `ImportError: discord.py is required` | Optional dependency missing | Run `pip install "system-sentinel[discord]"` |
 | Commands ignored silently | User not in `allowed_users` | Add your Discord user ID to the list |
 | Bot times out on start | Firewall blocking outbound WebSocket | Allow outbound HTTPS/WSS on port 443 |
+| `!graph` shows only text bars | Default renderer — image renderer not enabled | Set `charts.renderer: image` and install `matplotlib` (see below) |
+| `Permission denied` when installing `matplotlib` | The `.venv` is owned by the `sentinel` service user | Run `sudo -u sentinel .venv/bin/pip install 'system-sentinel[graphs]'` |
+
+---
+
+## Image renderer for `!graph`
+
+By default `!graph` returns an ASCII bar chart that works in any chat client.
+For a PNG image chart, install the optional extra **as the sentinel service user** (the venv owner):
+
+```bash
+sudo -u sentinel .venv/bin/pip install 'system-sentinel[graphs]'
+```
+
+Then set `charts.renderer: image` in `config.yaml` and restart the daemon.
 
 ---
 
