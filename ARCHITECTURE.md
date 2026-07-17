@@ -122,7 +122,7 @@ system_sentinel/                         # Root Python package
 │   └── renderers/
 │       ├── text/
 │       │   ├── __init__.py
-│       │   └── renderer.py              # TextChartRenderer (plotext, default)
+│       │   └── renderer.py              # TextChartRenderer (ASCII, default)
 │       └── image/
 │           ├── __init__.py
 │           └── renderer.py              # ImageChartRenderer (matplotlib, optional)
@@ -386,7 +386,7 @@ Two built-in renderers:
 
 | Renderer | `name` | Output | Extra | Default |
 |----------|--------|--------|-------|---------|
-| `TextChartRenderer` | `text` | Unicode chart in a code block | none (`plotext` is a core dep) | yes |
+| `TextChartRenderer` | `text` | ASCII bar chart in a code block | none | yes |
 | `ImageChartRenderer` | `image` | PNG bytes attached to the message | `pip install system-sentinel[graphs]` (`matplotlib`) | no |
 
 Selected via `charts.renderer: text` (or `image`) in `config.yaml`. Switching renderers requires no code changes. `OutboundMessage` already supports file attachments via `fields`; the chat adapter is responsible for attaching PNG bytes as a file when `content_type` is `image/png`.
@@ -1020,7 +1020,6 @@ Core required dependencies:
 | `click` | CLI entry points |
 | `pyyaml` | Config file parsing |
 | `httpx` | Async HTTP client (Ollama and other HTTP-based providers) |
-| `plotext` | Lightweight unicode chart rendering (text chart renderer) |
 
 ### IP Geolocation (impossible travel detection)
 

@@ -16,7 +16,6 @@ dependencies = [
     "click",
     "pyyaml",
     "httpx",
-    "plotext",
 ]
 
 [project.optional-dependencies]
