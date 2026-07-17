@@ -22,6 +22,7 @@ SERVICE_INSTALL_PATH = Path("/etc/systemd/system/sentinel.service")
 
 DATA_DIR = Path("/var/lib/sentinel")
 CONFIG_DIR = Path("/etc/sentinel")
+LOG_DIR = Path("/var/log/sentinel")
 CONFIG_PATH = CONFIG_DIR / "config.yaml"
 SUDOERS_INSTALL_PATH = Path("/etc/sudoers.d/sentinel")
 
@@ -301,19 +302,22 @@ def fix_install_dir_permissions_step() -> WizardStep:
 
 
 def create_data_dir_step() -> WizardStep:
-    """Return a WizardStep that creates /var/lib/sentinel and /etc/sentinel,
-    owned by the sentinel user, so the daemon can write its database and read
-    its config without elevated privileges at runtime.
+    """Return a WizardStep that creates runtime directories owned by sentinel.
+
+    Creates /var/lib/sentinel, /etc/sentinel, and /var/log/sentinel so the
+    daemon can write database and audit logs, and read config without elevated
+    privileges at runtime.
     """
 
     def runner(ctx: WizardContext) -> WizardStepResult:
+        directories = (DATA_DIR, CONFIG_DIR, LOG_DIR)
         if ctx.check_only:
-            missing = [str(d) for d in (DATA_DIR, CONFIG_DIR) if not d.exists()]
+            missing = [str(d) for d in directories if not d.exists()]
             if not missing:
                 return WizardStepResult(
                     step_name="create_data_dir",
                     outcome=StepOutcome.SUCCESS,
-                    message=f"{DATA_DIR} and {CONFIG_DIR} exist.",
+                    message=f"{DATA_DIR}, {CONFIG_DIR}, and {LOG_DIR} exist.",
                 )
             return WizardStepResult(
                 step_name="create_data_dir",
@@ -322,7 +326,7 @@ def create_data_dir_step() -> WizardStep:
                 error="Run sentinel setup to create them.",
             )
 
-        for directory in (DATA_DIR, CONFIG_DIR):
+        for directory in directories:
             mkdir = run_command(["sudo", "/bin/mkdir", "-p", str(directory)])
             if mkdir.returncode != 0:
                 return WizardStepResult(
@@ -343,7 +347,7 @@ def create_data_dir_step() -> WizardStep:
         return WizardStepResult(
             step_name="create_data_dir",
             outcome=StepOutcome.SUCCESS,
-            message=f"Created {DATA_DIR} and {CONFIG_DIR}, owned by sentinel.",
+            message=f"Created {DATA_DIR}, {CONFIG_DIR}, and {LOG_DIR}, owned by sentinel.",
         )
 
     return WizardStep(

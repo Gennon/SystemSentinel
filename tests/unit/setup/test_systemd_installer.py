@@ -394,9 +394,14 @@ class TestCreateDataDirStep:
                 "system_sentinel.setup.systemd_installer.CONFIG_DIR",
                 tmp_path / "etc-sentinel",
             ),
+            patch(
+                "system_sentinel.setup.systemd_installer.LOG_DIR",
+                tmp_path / "log-sentinel",
+            ),
         ):
             (tmp_path / "sentinel").mkdir()
             (tmp_path / "etc-sentinel").mkdir()
+            (tmp_path / "log-sentinel").mkdir()
             results, _ = _run_step(create_data_dir_step, WizardContext(check_only=True))
 
         assert results[0].outcome == StepOutcome.SUCCESS
@@ -410,6 +415,10 @@ class TestCreateDataDirStep:
             patch(
                 "system_sentinel.setup.systemd_installer.CONFIG_DIR",
                 tmp_path / "etc-sentinel",
+            ),
+            patch(
+                "system_sentinel.setup.systemd_installer.LOG_DIR",
+                tmp_path / "log-sentinel",
             ),
         ):
             # Neither directory exists
@@ -434,6 +443,10 @@ class TestCreateDataDirStep:
                 "system_sentinel.setup.systemd_installer.CONFIG_DIR",
                 tmp_path / "etc-sentinel",
             ),
+            patch(
+                "system_sentinel.setup.systemd_installer.LOG_DIR",
+                tmp_path / "log-sentinel",
+            ),
             patch("system_sentinel.setup.systemd_installer.run_command", side_effect=mock_run),
         ):
             results, _ = _run_step(create_data_dir_step)
@@ -445,7 +458,9 @@ class TestCreateDataDirStep:
         chown_targets = [c[3] for c in chown_cmds]
         assert any("sentinel" in t for t in mkdir_targets)
         assert any("etc-sentinel" in t for t in mkdir_targets)
+        assert any("log-sentinel" in t for t in mkdir_targets)
         assert any("sentinel" in t for t in chown_targets)
+        assert any("log-sentinel" in t for t in chown_targets)
         chown_owners = [c[2] for c in chown_cmds]
         assert all(o == "sentinel:sentinel" for o in chown_owners)
 
@@ -463,6 +478,10 @@ class TestCreateDataDirStep:
             patch(
                 "system_sentinel.setup.systemd_installer.CONFIG_DIR",
                 tmp_path / "etc-sentinel",
+            ),
+            patch(
+                "system_sentinel.setup.systemd_installer.LOG_DIR",
+                tmp_path / "log-sentinel",
             ),
             patch("system_sentinel.setup.systemd_installer.run_command", side_effect=mock_run),
         ):
@@ -485,6 +504,10 @@ class TestCreateDataDirStep:
             patch(
                 "system_sentinel.setup.systemd_installer.CONFIG_DIR",
                 tmp_path / "etc-sentinel",
+            ),
+            patch(
+                "system_sentinel.setup.systemd_installer.LOG_DIR",
+                tmp_path / "log-sentinel",
             ),
             patch("system_sentinel.setup.systemd_installer.run_command", side_effect=mock_run),
         ):
