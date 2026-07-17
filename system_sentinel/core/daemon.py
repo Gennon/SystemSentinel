@@ -28,6 +28,7 @@ from system_sentinel.db.connection import DatabaseConnection
 from system_sentinel.db.metrics_repository import MetricsRepository
 from system_sentinel.llm.client import LLMClient
 from system_sentinel.llm.registry import LLMRegistry
+from system_sentinel.metrics_export.http_server import PrometheusExporterServer
 from system_sentinel.monitors.registry import MonitorRegistry
 
 _CONFIG_PATH = Path("/etc/sentinel/config.yaml")
@@ -253,6 +254,16 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
     monitors_config: dict[str, Any] = config.get("monitors", {})
     monitor_registry = MonitorRegistry(monitors_config, app_ctx, metrics_repo)
     monitor_registry.discover()
+    metrics_export_raw = config.get("metrics_export", {})
+    metrics_export = metrics_export_raw if isinstance(metrics_export_raw, dict) else {}
+    prometheus_raw = metrics_export.get("prometheus", {})
+    prometheus_config = prometheus_raw if isinstance(prometheus_raw, dict) else {}
+    prometheus_exporter = PrometheusExporterServer(
+        config=prometheus_config,
+        app_config=config,
+        db=db,
+        logger=logger.getChild("metrics_export.prometheus"),
+    )
 
     scheduler = Scheduler(app_ctx)
     tools_raw = config.get("tools", {})
@@ -360,6 +371,7 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
     )
 
     await monitor_registry.start()
+    await prometheus_exporter.start()
     scheduler.start()
     await _run_tools_on_startup(tools)
     self_update_task = (
@@ -388,6 +400,7 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
         with suppress(asyncio.CancelledError):
             await task
     scheduler.stop()
+    await prometheus_exporter.stop()
     await monitor_registry.stop()
     for adapter in chat_router.adapters:
         await adapter.stop()

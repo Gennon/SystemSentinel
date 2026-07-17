@@ -654,6 +654,9 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `updates.self_update.reinstall` | bool | `true` | `SelfUpdateMonitor` | Runs `.venv/bin/pip install -e <repo>` after pull when available. |
 | `updates.self_update.snapshots.backend` | string | `auto` | `SelfUpdateMonitor` + `SnapshotManager` | `auto` probes `snapper` then `timeshift`; `none` disables snapshots. |
 | `updates.self_update.snapshots.keep_last` | int | `20` | `SnapshotManager` | Max snapshots retained before pruning oldest. |
+| `metrics_export.prometheus.enabled` | bool | `false` | `PrometheusExporterServer` | Enables the `/metrics` HTTP endpoint independent of monitor collection. |
+| `metrics_export.prometheus.port` | int | `9100` | `PrometheusExporterServer` | TCP port used by the exporter endpoint. |
+| `metrics_export.prometheus.bearer_token` | string | empty | `PrometheusExporterServer` | Optional bearer token required in `Authorization: Bearer <token>` for `/metrics`. |
 | *(signal)* `SIGHUP` | n/a | n/a | `run_daemon` | Reloads chat access control from `config.yaml` without daemon restart. |
 
 ### Setup wizard defaults and optional-feature merge keys
@@ -669,6 +672,5 @@ These keys are currently setup-only or merge-only (not consumed by runtime code 
 | `monitors.ram.interval` | duration | `00:01:00` (wizard default) | setup wizard default only | Currently not consumed by runtime code. |
 | `monitors.disk.interval` | duration | `00:05:00` (wizard default) | setup wizard default only | Currently not consumed by runtime code. |
 | `monitors.network.interval` | duration | `00:01:00` (wizard default) | setup wizard default only | Currently not consumed by runtime code. |
-| `metrics_export.prometheus.enabled` | bool | none | optional-feature setup merge | Added when enabling `prometheus`; currently no runtime consumer. |
 | `updates.self_update.snapshots.backend` | string | none | optional-feature setup merge | Added as `auto` when enabling `snapshot`. |
 | `tools.vulnscan.enabled` | bool | none | optional-feature setup merge | Added when enabling `vulnscan`; currently no runtime consumer. |

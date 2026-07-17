@@ -103,7 +103,7 @@ A Linux system management daemon that autonomously handles updates, security har
 - [ ] As a user I want 2FA enforcement audit so the system flags accounts that do not have 2FA enabled.
 
 ### Monitoring & Metrics
-- [ ] As a user I want a Prometheus-compatible metrics export so I can plug SystemSentinel into an existing Grafana setup.
+- [x] As a user I want a Prometheus-compatible metrics export so I can plug SystemSentinel into an existing Grafana setup. **(US-028)**
 - [ ] As a user I want configurable retention of historical metric data so I can investigate incidents after the fact.
 
 ### File Management

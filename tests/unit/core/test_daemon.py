@@ -217,6 +217,70 @@ class TestRunDaemon:
             with pytest.raises(DaemonRestartRequested):
                 await run_daemon(config_path=config_path, db_path=db_path)
 
+    async def test_daemon_wires_prometheus_exporter_lifecycle(self, tmp_path: Path) -> None:
+        config = {
+            "chat_adapters": {"discord": {"enabled": True}},
+            "monitors": {},
+            "tools": {},
+            "metrics_export": {"prometheus": {"enabled": True, "port": 9100}},
+        }
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml.dump(config))
+        db_path = tmp_path / "sentinel.db"
+
+        with (
+            patch("system_sentinel.core.daemon.DatabaseConnection") as mock_db_cls,
+            patch("system_sentinel.core.daemon.MonitorRegistry") as mock_monitor_cls,
+            patch("system_sentinel.core.daemon.ChatRegistry") as mock_chat_cls,
+            patch("system_sentinel.core.daemon.Scheduler") as mock_sched_cls,
+            patch("system_sentinel.core.daemon._discover_tools"),
+            patch("system_sentinel.core.daemon.AlertHandler"),
+            patch("system_sentinel.core.daemon.PrometheusExporterServer") as mock_exporter_cls,
+        ):
+            mock_db = AsyncMock()
+            mock_db_cls.return_value = mock_db
+
+            mock_monitor = MagicMock()
+            mock_monitor.start = AsyncMock()
+            mock_monitor.stop = AsyncMock()
+            mock_monitor_cls.return_value = mock_monitor
+
+            mock_adapter = MagicMock()
+            mock_adapter.start = AsyncMock()
+            mock_adapter.stop = AsyncMock()
+            mock_adapter.send_to_default = AsyncMock()
+            mock_adapter.on_message = MagicMock()
+            mock_adapter.on_reaction = MagicMock()
+            mock_chat = MagicMock()
+            mock_chat.adapters = {"discord": mock_adapter}
+            mock_chat_cls.return_value = mock_chat
+
+            mock_sched = MagicMock()
+            mock_sched_cls.return_value = mock_sched
+
+            mock_exporter = MagicMock()
+            mock_exporter.start = AsyncMock()
+            mock_exporter.stop = AsyncMock()
+            mock_exporter_cls.return_value = mock_exporter
+
+            original_event_class = asyncio.Event
+            event_index = 0
+
+            def patched_event() -> asyncio.Event:
+                nonlocal event_index
+                ev = original_event_class()
+                if event_index == 0:
+                    ev.set()
+                event_index += 1
+                return ev
+
+            with patch("system_sentinel.core.daemon.asyncio.Event", side_effect=patched_event):
+                await run_daemon(config_path=config_path, db_path=db_path)
+
+        mock_exporter_cls.assert_called_once()
+        mock_exporter.start.assert_awaited_once()
+        mock_exporter.stop.assert_awaited_once()
+
 
 @pytest.mark.asyncio
 async def test_register_tool_event_handlers_runs_tool_on_scheduled_event() -> None:
