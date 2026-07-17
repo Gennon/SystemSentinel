@@ -1004,6 +1004,66 @@ async def test_handler_rule_override_severity_takes_precedence() -> None:
 
 
 @pytest.mark.asyncio
+async def test_handler_queues_non_critical_alerts_during_quiet_hours_and_flushes_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router, config={"alerts": {"quiet_hours": "00:00-00:00"}})
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    monkeypatch.setattr("system_sentinel.alerts.handler.quiet_hours_end", lambda now, window: now)
+    original_sleep = asyncio.sleep
+
+    async def _no_wait(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("system_sentinel.alerts.handler.asyncio.sleep", _no_wait)
+
+    await bus.publish("alert.cpu.threshold_exceeded", _CPU_THRESHOLD_PAYLOAD)
+    await original_sleep(0)
+
+    assert len(calls) == 1
+    assert calls[0].title == "🌙 Quiet hours ended"
+    assert "Queued alerts during quiet hours: 1" in calls[0].text
+
+
+@pytest.mark.asyncio
+async def test_handler_critical_alert_bypasses_quiet_hours() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router, config={"alerts": {"quiet_hours": "00:00-00:00"}})
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.disk.threshold_exceeded", _DISK_THRESHOLD_PAYLOAD)
+
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.CRITICAL
+
+
+@pytest.mark.asyncio
+async def test_handler_mute_suppresses_non_critical_until_unmuted() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("chat.alerts.mute", {"duration_seconds": 3600})
+    await bus.publish("alert.cpu.threshold_exceeded", _CPU_THRESHOLD_PAYLOAD)
+    assert calls == []
+
+    await bus.publish("alert.disk.threshold_exceeded", _DISK_THRESHOLD_PAYLOAD)
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.CRITICAL
+
+    await bus.publish("chat.alerts.unmute", {})
+    await bus.publish("alert.cpu.threshold_exceeded", _CPU_THRESHOLD_PAYLOAD)
+
+    assert len(calls) == 2
+    assert calls[1].severity == AlertSeverity.WARNING
+
+
+@pytest.mark.asyncio
 async def test_handler_adds_ai_remediation_follow_up_for_critical_alerts() -> None:
     router, calls = _make_router()
     llm = _FakeRemediationLLMClient()

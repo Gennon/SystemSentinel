@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+import re
 from typing import TYPE_CHECKING, Any
 import uuid
 
@@ -43,6 +44,7 @@ from system_sentinel.chat.maintenance_utils import (
     run_cleanup_rules,
 )
 from system_sentinel.core.exceptions import LLMUnavailableError
+from system_sentinel.core.time_config import parse_duration_hhmmss
 from system_sentinel.db.connection_repository import ConnectionRepository
 from system_sentinel.db.login_repository import LoginRepository
 from system_sentinel.db.metrics_repository import MetricsRepository
@@ -59,6 +61,7 @@ if TYPE_CHECKING:
 _CONFIRMATION_EMOJI = "✅"
 _DEFAULT_PREFIX = "!"
 _CONFIRMATION_TTL_SECONDS = 300
+_MUTE_SHORT_DURATION_RE = re.compile(r"^(?P<value>\d+)\s*(?P<unit>[smhdSMHD])$")
 _COMMAND_ALIASES = {
     "!snaphsots": "!snapshots",
 }
@@ -121,6 +124,8 @@ class ChatCommandDispatcher:
             "!audit": self._cmd_audit,
             "!graph": self._cmd_graph,
             "!connections": self._cmd_connections,
+            "!mute": self._cmd_mute,
+            "!unmute": self._cmd_unmute,
             "!help": self._cmd_help,
         }
         action_commands = {"!update", "!cleanup"}
@@ -379,6 +384,40 @@ class ChatCommandDispatcher:
             message=message,
         )
 
+    async def _cmd_mute(self, message: InboundMessage) -> OutboundMessage:
+        duration_seconds = self._extract_mute_duration_seconds(message.text)
+        if duration_seconds is None:
+            return OutboundMessage(
+                text="Usage: !mute <duration> (examples: !mute 2h, !mute 30m, !mute 01:30:00)",
+                reply_to=message,
+            )
+        mute_until = datetime.now(UTC) + timedelta(seconds=duration_seconds)
+        await self._ctx.event_bus.publish(
+            "chat.alerts.mute",
+            {
+                "mute_until": mute_until.isoformat(),
+                "duration_seconds": duration_seconds,
+                "adapter": message.adapter,
+                "channel_id": message.channel_id,
+                "user_id": message.user_id,
+            },
+        )
+        return OutboundMessage(
+            text=(f"Muted non-critical alerts until {mute_until.strftime('%Y-%m-%d %H:%M:%SZ')}."),
+            reply_to=message,
+        )
+
+    async def _cmd_unmute(self, message: InboundMessage) -> OutboundMessage:
+        await self._ctx.event_bus.publish(
+            "chat.alerts.unmute",
+            {
+                "adapter": message.adapter,
+                "channel_id": message.channel_id,
+                "user_id": message.user_id,
+            },
+        )
+        return OutboundMessage(text="Non-critical alerts unmuted.", reply_to=message)
+
     async def _active_alert_conditions(self) -> list[str]:
         return await get_active_alert_conditions(
             config=self._config,
@@ -459,6 +498,30 @@ class ChatCommandDispatcher:
 
     def _extract_prompt_after_command(self, text: str) -> str | None:
         return extract_prompt_after_command(text)
+
+    def _extract_mute_duration_seconds(self, text: str) -> float | None:
+        parts = text.strip().split(maxsplit=1)
+        if len(parts) < 2:
+            return None
+        raw_duration = parts[1].strip()
+        if not raw_duration:
+            return None
+        parsed_hhmmss = parse_duration_hhmmss(raw_duration)
+        if parsed_hhmmss is not None:
+            seconds, _is_non_canonical = parsed_hhmmss
+            return seconds if seconds > 0 else None
+        short = _MUTE_SHORT_DURATION_RE.fullmatch(raw_duration)
+        if short is None:
+            return None
+        value = int(short.group("value"))
+        if value <= 0:
+            return None
+        unit = short.group("unit").lower()
+        multipliers = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+        multiplier = multipliers.get(unit)
+        if multiplier is None:
+            return None
+        return float(value * multiplier)
 
     def _load_chart_renderer(self) -> BaseChartRenderer:
         charts_cfg = self._config.get("charts", {})

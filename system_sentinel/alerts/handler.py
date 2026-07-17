@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -27,6 +28,11 @@ from system_sentinel.alerts.formatters import (
     _format_system_daily_digest,
     _format_system_weekly_digest,
     _format_unknown_connection,
+)
+from system_sentinel.alerts.quiet_hours import (
+    QuietHoursWindow,
+    parse_quiet_hours_window,
+    quiet_hours_end,
 )
 from system_sentinel.alerts.remediation import AlertLLMRemediationService
 from system_sentinel.chat.base import AlertSeverity, OutboundMessage
@@ -112,6 +118,10 @@ class AlertHandler:
         self._logger = logging.getLogger("sentinel.alerts.handler")
         self._severity_levels: dict[str, AlertSeverity] = {}
         self._notify_min_severity = AlertSeverity.INFO
+        self._quiet_hours: QuietHoursWindow | None = None
+        self._quiet_alert_queue: list[OutboundMessage] = []
+        self._quiet_alert_flush_task: asyncio.Task[None] | None = None
+        self._mute_until: datetime | None = None
         self._llm_remediation_enabled = False
         self._llm_timeout_seconds = 30.0
         self._load_config(config or {})
@@ -139,20 +149,27 @@ class AlertHandler:
 
     def _load_alert_config(self, config: dict[str, Any]) -> None:
         alerts_cfg = config.get("alerts", {})
-        if not isinstance(alerts_cfg, dict):
-            return
-        raw_levels = alerts_cfg.get("severity_levels", {})
-        if isinstance(raw_levels, dict):
-            for key, raw_value in raw_levels.items():
-                if not isinstance(key, str):
-                    continue
-                severity = _coerce_severity(raw_value)
-                if severity is None:
-                    continue
-                self._severity_levels[key.strip()] = severity
-        min_severity = _coerce_severity(alerts_cfg.get("notify_min_severity"))
-        if min_severity is not None:
-            self._notify_min_severity = min_severity
+        if isinstance(alerts_cfg, dict):
+            raw_levels = alerts_cfg.get("severity_levels", {})
+            if isinstance(raw_levels, dict):
+                for key, raw_value in raw_levels.items():
+                    if not isinstance(key, str):
+                        continue
+                    severity = _coerce_severity(raw_value)
+                    if severity is None:
+                        continue
+                    self._severity_levels[key.strip()] = severity
+            min_severity = _coerce_severity(alerts_cfg.get("notify_min_severity"))
+            if min_severity is not None:
+                self._notify_min_severity = min_severity
+            quiet_hours = parse_quiet_hours_window(alerts_cfg.get("quiet_hours"))
+        else:
+            quiet_hours = None
+        if quiet_hours is None:
+            top_level_quiet_hours = parse_quiet_hours_window(config.get("quiet_hours"))
+            if top_level_quiet_hours is not None:
+                quiet_hours = top_level_quiet_hours
+        self._quiet_hours = quiet_hours
 
     def register(self, event_bus: InProcessEventBus) -> None:
         """Wire this handler into *event_bus* by subscribing to known alert events."""
@@ -184,6 +201,8 @@ class AlertHandler:
         event_bus.subscribe("alert.service.restart_exhausted", self._on_service_restart_exhausted)
         event_bus.subscribe("alert.firewall.drift_detected", self._on_firewall_drift)
         event_bus.subscribe("alert.hardening.auto_remediated", self._on_hardening_auto_remediated)
+        event_bus.subscribe("chat.alerts.mute", self._on_mute_non_critical)
+        event_bus.subscribe("chat.alerts.unmute", self._on_unmute_non_critical)
 
     async def _on_unknown_connection(self, event_type: str, payload: Any) -> None:
         self._logger.warning(
@@ -358,8 +377,44 @@ class AlertHandler:
         msg = self._apply_severity(event_type, payload, _format_hardening_auto_remediated(payload))
         await self._notify_and_record(event_type, payload, msg)
 
+    async def _on_mute_non_critical(self, _event_type: str, payload: Any) -> None:
+        mute_until = None
+        if isinstance(payload, dict):
+            raw_mute_until = payload.get("mute_until")
+            if isinstance(raw_mute_until, str) and raw_mute_until.strip():
+                try:
+                    parsed = datetime.fromisoformat(raw_mute_until)
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=UTC)
+                    mute_until = parsed.astimezone(UTC)
+                except ValueError:
+                    mute_until = None
+            if mute_until is None:
+                duration_raw = payload.get("duration_seconds")
+                if isinstance(duration_raw, (int, float)) and float(duration_raw) > 0:
+                    mute_until = datetime.now(UTC) + timedelta(seconds=float(duration_raw))
+        self._mute_until = mute_until
+
+    async def _on_unmute_non_critical(self, _event_type: str, _payload: Any) -> None:
+        self._mute_until = None
+
     async def _notify_and_record(self, event_type: str, payload: Any, msg: OutboundMessage) -> None:
         suppressed = _SEVERITY_RANK[msg.severity] < _SEVERITY_RANK[self._notify_min_severity]
+        if (
+            not suppressed
+            and msg.severity != AlertSeverity.CRITICAL
+            and self._is_non_critical_muted()
+        ):
+            suppressed = True
+        if (
+            not suppressed
+            and msg.severity != AlertSeverity.CRITICAL
+            and self._is_quiet_hours_active()
+            and self._quiet_hours is not None
+        ):
+            suppressed = True
+            self._quiet_alert_queue.append(msg)
+            self._ensure_quiet_alert_flush_scheduled()
         if not suppressed:
             await self._router.broadcast(msg)
         await self._record_alert(event_type, msg, suppressed=suppressed)
@@ -373,6 +428,66 @@ class AlertHandler:
             alert=msg,
             wait_for_fn=asyncio.wait_for,
         )
+
+    def _is_non_critical_muted(self) -> bool:
+        if self._mute_until is None:
+            return False
+        if datetime.now(UTC) < self._mute_until:
+            return True
+        self._mute_until = None
+        return False
+
+    def _is_quiet_hours_active(self) -> bool:
+        if self._quiet_hours is None:
+            return False
+        return self._quiet_hours.is_active(datetime.now(UTC))
+
+    def _ensure_quiet_alert_flush_scheduled(self) -> None:
+        if self._quiet_hours is None:
+            return
+        task = self._quiet_alert_flush_task
+        if task is not None and not task.done():
+            return
+        now = datetime.now(UTC)
+        quiet_ends = quiet_hours_end(now, self._quiet_hours)
+        delay_seconds = max(0.0, (quiet_ends - now).total_seconds())
+        self._quiet_alert_flush_task = asyncio.create_task(
+            self._flush_quiet_alerts_after_delay(delay_seconds)
+        )
+
+    async def _flush_quiet_alerts_after_delay(self, delay_seconds: float) -> None:
+        try:
+            await asyncio.sleep(delay_seconds)
+            await self._flush_quiet_alert_queue()
+        finally:
+            self._quiet_alert_flush_task = None
+
+    async def _flush_quiet_alert_queue(self) -> None:
+        if not self._quiet_alert_queue:
+            return
+        queued = list(self._quiet_alert_queue)
+        self._quiet_alert_queue.clear()
+        warning_count = sum(1 for msg in queued if msg.severity == AlertSeverity.WARNING)
+        info_count = sum(1 for msg in queued if msg.severity == AlertSeverity.INFO)
+        lines = [
+            f"Queued alerts during quiet hours: {len(queued)}",
+            f"warning={warning_count}, info={info_count}",
+            "",
+        ]
+        for index, queued_msg in enumerate(queued, start=1):
+            label = queued_msg.severity.value.upper()
+            first_line = (
+                queued_msg.text.strip().splitlines()[0] if queued_msg.text.strip() else "No details"
+            )
+            lines.append(f"{index}. [{label}] {first_line}")
+        digest_severity = AlertSeverity.WARNING if warning_count > 0 else AlertSeverity.INFO
+        digest = OutboundMessage(
+            title="🌙 Quiet hours ended",
+            text="\n".join(lines),
+            severity=digest_severity,
+        )
+        await self._router.broadcast(digest)
+        await self._record_alert("alert.quiet_hours.digest", digest, suppressed=False)
 
     def _apply_severity(
         self, event_type: str, payload: Any, msg: OutboundMessage

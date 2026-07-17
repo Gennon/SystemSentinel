@@ -210,6 +210,8 @@ async def test_help_command_returns_supported_commands(tmp_path: Path) -> None:
     assert "!audit [--count N]" in response.text
     assert "!ask <question>" in response.text
     assert "!graph <metric> <period>" in response.text
+    assert "!mute <duration>" in response.text
+    assert "!unmute" in response.text
 
 
 @pytest.mark.asyncio
@@ -455,6 +457,97 @@ async def test_message_ignored_outside_command_channel(tmp_path: Path) -> None:
 
     response = await dispatcher.handle_message(_message("!status", channel_id="200"), ["!status"])
     assert response is None
+
+
+@pytest.mark.asyncio
+async def test_status_command_includes_quiet_hours_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {
+            "chat_adapters": {"discord": {"channel_id": "100"}},
+            "alerts": {"quiet_hours": "22:00-07:00"},
+        },
+        {},
+    )
+    monkeypatch.setattr(
+        "system_sentinel.chat.command_dispatcher.psutil.cpu_percent", lambda interval=None: 10.0
+    )
+    monkeypatch.setattr(
+        "system_sentinel.chat.command_dispatcher.psutil.virtual_memory",
+        lambda: type("vmem", (), {"percent": 20.0})(),
+    )
+    monkeypatch.setattr(
+        "system_sentinel.chat.command_dispatcher.psutil.disk_usage",
+        lambda _path: type("dsk", (), {"percent": 30.0})(),
+    )
+    monkeypatch.setattr(
+        "system_sentinel.chat.command_insights.datetime_now_utc",
+        lambda _p: datetime(2026, 7, 17, 23, 0, tzinfo=UTC),
+    )
+    monkeypatch.setattr(
+        "system_sentinel.chat.command_insights.from_timestamp_utc",
+        lambda _value, _p: datetime(2026, 7, 17, 20, 0, tzinfo=UTC),
+    )
+    monkeypatch.setattr("system_sentinel.chat.command_dispatcher.psutil.boot_time", lambda: 0.0)
+
+    response = await dispatcher.handle_message(_message("!status"), ["!status"])
+    assert response is not None
+    assert "Quiet hours: 22:00-07:00 (active now)" in response.text
+
+
+@pytest.mark.asyncio
+async def test_mute_command_publishes_mute_event_with_until_timestamp(tmp_path: Path) -> None:
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {"chat_adapters": {"discord": {"channel_id": "100"}}},
+        {},
+    )
+
+    response = await dispatcher.handle_message(_message("!mute 2h"), ["!mute", "2h"])
+    assert response is not None
+    assert "Muted non-critical alerts until " in response.text
+    dispatcher._ctx.event_bus.publish.assert_awaited_once()  # type: ignore[attr-defined]
+    call = dispatcher._ctx.event_bus.publish.await_args  # type: ignore[attr-defined]
+    assert call.args[0] == "chat.alerts.mute"
+    payload = call.args[1]
+    assert payload["duration_seconds"] == 7200.0
+    assert isinstance(payload["mute_until"], str)
+
+
+@pytest.mark.asyncio
+async def test_unmute_command_publishes_unmute_event(tmp_path: Path) -> None:
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {"chat_adapters": {"discord": {"channel_id": "100"}}},
+        {},
+    )
+
+    response = await dispatcher.handle_message(_message("!unmute"), ["!unmute"])
+    assert response is not None
+    assert response.text == "Non-critical alerts unmuted."
+    dispatcher._ctx.event_bus.publish.assert_awaited_once_with(  # type: ignore[attr-defined]
+        "chat.alerts.unmute",
+        {
+            "adapter": "discord",
+            "channel_id": "100",
+            "user_id": "123",
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_mute_command_rejects_invalid_duration(tmp_path: Path) -> None:
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {"chat_adapters": {"discord": {"channel_id": "100"}}},
+        {},
+    )
+
+    response = await dispatcher.handle_message(_message("!mute nope"), ["!mute", "nope"])
+    assert response is not None
+    assert response.text.startswith("Usage: !mute <duration>")
 
 
 @pytest.mark.asyncio

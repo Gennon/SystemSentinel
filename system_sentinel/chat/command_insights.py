@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from system_sentinel.alerts.quiet_hours import parse_quiet_hours_window
+
 
 def build_status_text(
     *,
@@ -28,6 +30,24 @@ def build_status_text(
         f"Service health: daemon=running, adapters={adapters_count}, "
         f"monitors={monitor_count}, tools={tool_count}"
     )
+    alerts_cfg = config.get("alerts", {})
+    quiet_hours = (
+        parse_quiet_hours_window(alerts_cfg.get("quiet_hours"))
+        if isinstance(alerts_cfg, dict)
+        else None
+    )
+    if quiet_hours is None:
+        quiet_hours = parse_quiet_hours_window(config.get("quiet_hours"))
+    if quiet_hours is None:
+        quiet_status = "disabled"
+    else:
+        state = (
+            "active now"
+            if quiet_hours.is_active(datetime_now_utc(psutil_module))
+            else "inactive now"
+        )
+        quiet_status = f"{quiet_hours.label} ({state})"
+    text = f"{text}\nQuiet hours: {quiet_status}"
     if llm_client is not None and llm_client.is_enabled:
         provider = llm_client.active_provider_name or "unknown"
         return f"{text}\nLLM: enabled ({provider})"

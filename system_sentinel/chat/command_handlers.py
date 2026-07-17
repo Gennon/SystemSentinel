@@ -28,6 +28,8 @@ _HELP_TEXT = (
     "!audit [--count N] - list recent audit log entries\n"
     "!graph <metric> <period> - graph historical metrics (24h, 7d, 30d, 90d)\n"
     "!connections classify - list latest connection intent classifications\n"
+    "!mute <duration> - temporarily suppress non-critical alerts (e.g. 2h)\n"
+    "!unmute - cancel an active mute window\n"
     "!help - show this help"
 )
 

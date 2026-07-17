@@ -52,6 +52,14 @@ llm:
   remediation: false
   timeout_seconds: 30
 
+alerts:
+  quiet_hours: "22:00-07:00"
+  notify_min_severity: "info"
+  severity_levels:
+    cpu: "warning"
+    ram: "warning"
+    disk: "critical"
+
 llm_providers:
   ollama:
     enabled: true
@@ -274,6 +282,22 @@ llm_providers:
 charts:
   renderer: "text"  # "text" (default) or "image"
 ```
+
+### Alerts
+
+Use `alerts.*` to tune alert severity and quiet-hours delivery behavior.
+
+```yaml
+alerts:
+  quiet_hours: "22:00-07:00"      # optional; if omitted quiet-hours routing is disabled
+  notify_min_severity: "info"      # info | warning | critical
+  severity_levels:
+    cpu: "warning"
+    disk: "critical"
+```
+
+When quiet hours are active, `warning`/`info` alerts are queued and sent as one digest at quiet-hours end.
+`critical` alerts always bypass quiet hours and are sent immediately.
 
 ### Monitors
 
@@ -625,6 +649,14 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `monitors.weekly_digest.send_day_local` | weekday name | `monday` | `WeeklyDigestMonitor` | Weekly digest day (local timezone). Supported values: `monday`..`sunday`. |
 | `monitors.weekly_digest.send_time_local` | `HH:MM` | `08:00` | `WeeklyDigestMonitor` | Weekly digest send time (local timezone). |
 | `monitors.weekly_digest.expected_collection_interval` | duration | `00:01:00` | `WeeklyDigestMonitor` | Used for offline gap detection sensitivity in weekly aggregate summaries. |
+
+### Alert routing keys
+
+| Key | Type | Default | Used by | Notes |
+|---|---|---|---|---|
+| `alerts.quiet_hours` | `HH:MM-HH:MM` | unset | `AlertHandler`, `!status` | Quiet-hours window for non-critical alert queueing. Supports overnight ranges (for example, `22:00-07:00`). |
+| `alerts.notify_min_severity` | string | `info` | `AlertHandler` | Minimum severity sent to chat (`info`, `warning`, `critical`). Lower severities are still audited. |
+| `alerts.severity_levels.<event_or_alias>` | string | formatter default | `AlertHandler` | Per-alert-type severity override (for example `cpu`, `disk`, or full event type). |
 
 ### Tool keys
 

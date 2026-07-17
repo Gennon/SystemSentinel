@@ -112,7 +112,7 @@ A Linux system management daemon that autonomously handles updates, security har
 
 ### Communication & Alerts
 - [x] As a user I want weekly trend summaries (storage growth, login patterns) sent via chat so I can spot slow-moving problems. **(US-031)**
-- [ ] As a user I want configurable quiet hours for non-urgent alerts so I am not woken up by low-priority notifications.
+- [x] As a user I want configurable quiet hours for non-urgent alerts so I am not woken up by low-priority notifications. **(US-032)**
 
 ### AI / LLM Assistant
 - [ ] As a user I want policy-based model routing (by command type/severity) so I can tune cost, latency, and quality automatically.
