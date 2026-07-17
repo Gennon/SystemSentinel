@@ -15,6 +15,8 @@ _DEFAULT_READONLY_COMMANDS = {
     "!status",
     "!ask",
     "!alerts",
+    "!audit",
+    "!connections",
     "!files",
     "!storage",
     "!snapshots",

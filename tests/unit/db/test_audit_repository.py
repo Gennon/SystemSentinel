@@ -146,20 +146,22 @@ async def test_append_mirrors_entry_to_text_log(tmp_path: Path, db: DatabaseConn
 
 
 @pytest.mark.asyncio
-async def test_append_with_text_log_failure_rolls_back_db_row(
+async def test_append_text_log_failure_is_tolerated_and_db_entry_persists(
     tmp_path: Path, db: DatabaseConnection
 ) -> None:
+    """Text file mirroring is best-effort; a write failure must not roll back the SQLite entry."""
     text_log_dir = tmp_path / "audit.log"
-    text_log_dir.mkdir()
+    text_log_dir.mkdir()  # make path a directory so open("a") raises IsADirectoryError
     audit_repo = SqliteAuditRepository(db, text_log_path=text_log_dir)
 
-    with pytest.raises(IsADirectoryError):
-        await audit_repo.append(
-            action_type="tool_run",
-            source="scheduler",
-            description="This should not persist.",
-            outcome="failure",
-        )
+    # Should NOT raise — text file failure is logged and swallowed
+    await audit_repo.append(
+        action_type="tool_run",
+        source="scheduler",
+        description="Should persist in SQLite even though text log failed.",
+        outcome="success",
+    )
 
     rows = await audit_repo.recent(limit=1)
-    assert rows == []
+    assert len(rows) == 1
+    assert rows[0]["description"] == "Should persist in SQLite even though text log failed."

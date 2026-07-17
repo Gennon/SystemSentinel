@@ -3,11 +3,14 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 import json
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from system_sentinel.db.connection import DatabaseConnection
+
+_logger = logging.getLogger("sentinel.audit")
 
 
 class SqliteAuditRepository:
@@ -47,8 +50,9 @@ class SqliteAuditRepository:
             """,
             (timestamp, action_type, source, description, outcome, details_json),
         )
-        try:
-            if self._text_log_path is not None:
+        await self._db.connection.commit()
+        if self._text_log_path is not None:
+            try:
                 await asyncio.to_thread(
                     self._append_text_log_line,
                     timestamp=timestamp,
@@ -58,10 +62,12 @@ class SqliteAuditRepository:
                     outcome=outcome,
                     details_json=details_json,
                 )
-        except Exception:
-            await self._db.connection.rollback()
-            raise
-        await self._db.connection.commit()
+            except Exception as exc:
+                _logger.warning(
+                    "Failed to mirror audit entry to text log %s: %s",
+                    self._text_log_path,
+                    exc,
+                )
 
     async def recent(self, limit: int = 20) -> list[dict[str, Any]]:
         """Return the most recent *limit* audit entries, newest first."""
