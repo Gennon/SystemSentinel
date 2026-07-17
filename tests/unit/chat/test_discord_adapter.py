@@ -246,6 +246,30 @@ async def test_send_splits_large_message_across_multiple_embeds() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_preserves_markdown_code_fence_when_split() -> None:
+    adapter = _make_adapter({"channel_id": "336"})
+    await adapter.start()
+
+    chart_lines = "\n".join(f"{idx:03d} | {'#' * 80}" for idx in range(240))
+    graph_payload = f"CPU history (7d)\n```text\n{chart_lines}\n```"
+    msg = OutboundMessage(text=graph_payload)
+    await adapter.send("336", msg)
+
+    channel = adapter._client._channels.get(336)
+    assert channel is not None
+    assert channel.send.await_count >= 2
+
+    descriptions = [call.kwargs["embed"].description for call in channel.send.await_args_list]
+    assert descriptions[0] is not None
+    assert descriptions[0].startswith("CPU history (7d)")
+    for description in descriptions:
+        assert description is not None
+        assert description.count("```") % 2 == 0
+
+    await adapter.stop()
+
+
+@pytest.mark.asyncio
 async def test_send_includes_png_attachment() -> None:
     adapter = _make_adapter({"channel_id": "335"})
     await adapter.start()

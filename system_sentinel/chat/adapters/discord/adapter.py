@@ -40,6 +40,7 @@ _EMBED_FIELD_VALUE_MAX = 1024
 _EMBED_FIELDS_MAX = 25
 _EMBED_TOTAL_CHARS_MAX = 6000
 _COMMAND_RESPONSE_TIMEOUT_SECONDS = 30.0
+_CODE_FENCE_CHUNK_OVERHEAD = 16
 
 
 def _truncate(value: str | None, max_len: int) -> str | None:
@@ -53,24 +54,49 @@ def _truncate(value: str | None, max_len: int) -> str | None:
 def _split_for_embed_descriptions(text: str, chunk_size: int) -> list[str]:
     if len(text) <= chunk_size:
         return [text]
+    safe_chunk_size = max(1, chunk_size - _CODE_FENCE_CHUNK_OVERHEAD)
     chunks: list[str] = []
     current = ""
     for line in text.splitlines(keepends=True):
-        if len(line) > chunk_size:
+        if len(line) > safe_chunk_size:
             if current:
                 chunks.append(current)
                 current = ""
-            for idx in range(0, len(line), chunk_size):
-                chunks.append(line[idx : idx + chunk_size])
+            for idx in range(0, len(line), safe_chunk_size):
+                chunks.append(line[idx : idx + safe_chunk_size])
             continue
-        if len(current) + len(line) > chunk_size:
+        if len(current) + len(line) > safe_chunk_size:
             chunks.append(current)
             current = line
         else:
             current += line
     if current:
         chunks.append(current)
-    return chunks
+
+    # Keep markdown code fences balanced for each embed description.
+    balanced_chunks: list[str] = []
+    carry_fence_marker: str | None = None
+    for chunk in chunks:
+        fence_marker = carry_fence_marker
+        balanced = f"{fence_marker}\n{chunk}" if fence_marker is not None else chunk
+
+        for line in chunk.splitlines():
+            marker = line.strip()
+            if marker.startswith("```"):
+                if fence_marker is None:
+                    fence_marker = marker if len(marker) > 3 else "```"
+                else:
+                    fence_marker = None
+
+        if fence_marker is not None:
+            balanced = f"{balanced}\n```"
+            carry_fence_marker = fence_marker
+        else:
+            carry_fence_marker = None
+
+        balanced_chunks.append(balanced)
+
+    return balanced_chunks
 
 
 class DiscordAdapter(BaseChatAdapter):
