@@ -25,6 +25,7 @@ _HELP_TEXT = (
     "!anomalies - list recent login anomalies\n"
     "!firewall - show effective firewall rules and desired-state drift status\n"
     "!hardening - show hardening audit results\n"
+    "!audit [--count N] - list recent audit log entries\n"
     "!connections classify - list latest connection intent classifications\n"
     "!help - show this help"
 )
@@ -248,6 +249,38 @@ async def handle_hardening_command(*, db: Any, message: InboundMessage) -> Outbo
             lines.append(f"- {status} | {title} ({check_id}){suffix}")
     else:
         lines.append(f"- {row[1]}")
+    return OutboundMessage(text="\n".join(lines), reply_to=message)
+
+
+async def handle_audit_command(*, db: Any, message: InboundMessage) -> OutboundMessage:
+    parts = message.text.strip().split()
+    count = 20
+    if len(parts) == 3 and parts[1] == "--count":
+        try:
+            count = int(parts[2])
+        except ValueError:
+            return OutboundMessage(text="Usage: !audit [--count N]", reply_to=message)
+        if count <= 0:
+            return OutboundMessage(text="Usage: !audit [--count N]", reply_to=message)
+    elif len(parts) > 1:
+        return OutboundMessage(text="Usage: !audit [--count N]", reply_to=message)
+
+    cursor = await db.connection.execute(
+        """
+        SELECT timestamp, action_type, outcome, source, description
+        FROM audit_log
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (count,),
+    )
+    rows = await cursor.fetchall()
+    if not rows:
+        return OutboundMessage(text="No audit entries recorded yet.", reply_to=message)
+
+    lines = [f"Recent audit entries (last {len(rows)}):"]
+    for row in rows:
+        lines.append(f"- {row[0]} | {row[1]} | {row[2]} | {row[3]} | {row[4]}")
     return OutboundMessage(text="\n".join(lines), reply_to=message)
 
 

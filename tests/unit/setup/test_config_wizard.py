@@ -150,6 +150,8 @@ class TestNoConfigInteractive:
         _run_step(ctx, config_path, inputs=self._inputs())
 
         data = yaml.safe_load(config_path.read_text())
+        assert data["audit"]["text_file_path"] == "/var/log/sentinel/audit.log"
+        assert data["audit"]["text_file_retention"] == "90d 00:00:00"
         assert "updates" in data
         assert "monitors" in data
         assert data["updates"]["self_update"]["enabled"] is True

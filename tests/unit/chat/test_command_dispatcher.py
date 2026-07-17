@@ -194,6 +194,7 @@ async def test_help_command_returns_supported_commands(tmp_path: Path) -> None:
     assert "!status" in response.text
     assert "!cleanup" in response.text
     assert "!snapshots" in response.text
+    assert "!audit [--count N]" in response.text
     assert "!ask <question>" in response.text
 
 
@@ -669,3 +670,99 @@ async def test_anomalies_command_lists_recent_login_anomalies(tmp_path: Path) ->
     assert "Recent login anomalies:" in response.text
     assert "new user" in response.text
     assert "alice" in response.text
+
+
+@pytest.mark.asyncio
+async def test_audit_command_lists_recent_entries(tmp_path: Path) -> None:
+    db = DatabaseConnection(tmp_path / "sentinel.db")
+    await db.connect()
+    await db.connection.execute(
+        """
+        INSERT INTO audit_log
+            (timestamp, action_type, source, description, outcome, details_json)
+        VALUES (?, 'tool_run', 'scheduler', 'Security update completed', 'success', NULL)
+        """,
+        (datetime.now(UTC).isoformat(),),
+    )
+    await db.connection.execute(
+        """
+        INSERT INTO audit_log
+            (timestamp, action_type, source, description, outcome, details_json)
+        VALUES (?, 'chat_command', 'chat:discord:123', 'Processed chat command !status.', 'success', NULL)
+        """,
+        (datetime.now(UTC).isoformat(),),
+    )
+    await db.connection.commit()
+
+    ctx = AppContext(
+        audit=AsyncMock(),
+        event_bus=AsyncMock(),
+        logger=logging.getLogger("test"),
+    )
+    dispatcher = ChatCommandDispatcher(
+        config={"chat_adapters": {"discord": {"channel_id": "100"}}},
+        app_ctx=ctx,
+        scheduler=_FakeScheduler(),  # type: ignore[arg-type]
+        tools={},
+        monitor_registry=_FakeMonitorRegistry(),  # type: ignore[arg-type]
+        db=db,
+    )
+
+    response = await dispatcher.handle_message(_message("!audit"), ["!audit"])
+    assert response is not None
+    assert "Recent audit entries" in response.text
+    assert "chat_command" in response.text
+    assert "tool_run" in response.text
+
+
+@pytest.mark.asyncio
+async def test_audit_command_supports_count_option(tmp_path: Path) -> None:
+    db = DatabaseConnection(tmp_path / "sentinel.db")
+    await db.connect()
+    for i in range(3):
+        await db.connection.execute(
+            """
+            INSERT INTO audit_log
+                (timestamp, action_type, source, description, outcome, details_json)
+            VALUES (?, 'tool_run', 'scheduler', ?, 'success', NULL)
+            """,
+            (datetime.now(UTC).isoformat(), f"Entry {i}"),
+        )
+    await db.connection.commit()
+    ctx = AppContext(
+        audit=AsyncMock(),
+        event_bus=AsyncMock(),
+        logger=logging.getLogger("test"),
+    )
+    dispatcher = ChatCommandDispatcher(
+        config={"chat_adapters": {"discord": {"channel_id": "100"}}},
+        app_ctx=ctx,
+        scheduler=_FakeScheduler(),  # type: ignore[arg-type]
+        tools={},
+        monitor_registry=_FakeMonitorRegistry(),  # type: ignore[arg-type]
+        db=db,
+    )
+
+    response = await dispatcher.handle_message(
+        _message("!audit --count 2"), ["!audit", "--count", "2"]
+    )
+    assert response is not None
+    assert "Recent audit entries (last 2):" in response.text
+    assert "Entry 2" in response.text
+    assert "Entry 1" in response.text
+    assert "Entry 0" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_audit_command_rejects_invalid_count(tmp_path: Path) -> None:
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {"chat_adapters": {"discord": {"channel_id": "100"}}},
+        {},
+    )
+
+    response = await dispatcher.handle_message(
+        _message("!audit --count nope"), ["!audit", "--count", "nope"]
+    )
+    assert response is not None
+    assert response.text == "Usage: !audit [--count N]"

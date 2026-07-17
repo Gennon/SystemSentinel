@@ -80,6 +80,10 @@ REQUIRED_CHAT_FIELDS: dict[str, str] = {
 
 # Safe defaults written alongside the chat config on a fresh install.
 _SAFE_DEFAULTS: dict[str, Any] = {
+    "audit": {
+        "text_file_path": "/var/log/sentinel/audit.log",
+        "text_file_retention": "90d 00:00:00",
+    },
     "dashboard": {
         "refresh_interval": "00:00:05",
     },

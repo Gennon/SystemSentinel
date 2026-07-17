@@ -12,6 +12,7 @@ import psutil
 from system_sentinel.chat.base import InboundMessage, InboundReaction, OutboundMessage
 from system_sentinel.chat.command_handlers import (
     handle_anomalies_command,
+    handle_audit_command,
     handle_connections_command,
     handle_files_command,
     handle_firewall_command,
@@ -110,6 +111,7 @@ class ChatCommandDispatcher:
             "!anomalies": self._cmd_anomalies,
             "!firewall": self._cmd_firewall,
             "!hardening": self._cmd_hardening,
+            "!audit": self._cmd_audit,
             "!connections": self._cmd_connections,
             "!help": self._cmd_help,
         }
@@ -342,6 +344,9 @@ class ChatCommandDispatcher:
 
     async def _cmd_hardening(self, message: InboundMessage) -> OutboundMessage:
         return await handle_hardening_command(db=self._db, message=message)
+
+    async def _cmd_audit(self, message: InboundMessage) -> OutboundMessage:
+        return await handle_audit_command(db=self._db, message=message)
 
     async def _cmd_help(self, message: InboundMessage) -> OutboundMessage:
         return handle_help_command(message=message)

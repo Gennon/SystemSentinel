@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
 import pytest
 
 from system_sentinel.db.audit_repository import SqliteAuditRepository
 from system_sentinel.db.connection import DatabaseConnection
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -120,3 +124,42 @@ async def test_timestamp_is_iso8601_utc(repo: SqliteAuditRepository) -> None:
     timestamp = rows[0]["timestamp"]
     assert "T" in timestamp
     assert timestamp.endswith("+00:00") or timestamp.endswith("Z")
+
+
+@pytest.mark.asyncio
+async def test_append_mirrors_entry_to_text_log(tmp_path: Path, db: DatabaseConnection) -> None:
+    text_log_path = tmp_path / "audit.log"
+    audit_repo = SqliteAuditRepository(db, text_log_path=text_log_path)
+
+    await audit_repo.append(
+        action_type="tool_run",
+        source="scheduler",
+        description="Security update completed.",
+        outcome="success",
+    )
+
+    content = text_log_path.read_text(encoding="utf-8")
+    assert "tool_run" in content
+    assert "success" in content
+    assert "scheduler" in content
+    assert "Security update completed." in content
+
+
+@pytest.mark.asyncio
+async def test_append_with_text_log_failure_rolls_back_db_row(
+    tmp_path: Path, db: DatabaseConnection
+) -> None:
+    text_log_dir = tmp_path / "audit.log"
+    text_log_dir.mkdir()
+    audit_repo = SqliteAuditRepository(db, text_log_path=text_log_dir)
+
+    with pytest.raises(IsADirectoryError):
+        await audit_repo.append(
+            action_type="tool_run",
+            source="scheduler",
+            description="This should not persist.",
+            outcome="failure",
+        )
+
+    rows = await audit_repo.recent(limit=1)
+    assert rows == []

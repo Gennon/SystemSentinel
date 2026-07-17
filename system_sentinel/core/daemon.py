@@ -32,6 +32,7 @@ from system_sentinel.monitors.registry import MonitorRegistry
 
 _CONFIG_PATH = Path("/etc/sentinel/config.yaml")
 _DB_PATH = Path("/var/lib/sentinel/sentinel.db")
+_AUDIT_TEXT_LOG_PATH = Path("/var/log/sentinel/audit.log")
 
 _TOOL_ENTRY_POINT_GROUP = "sentinel.tools"
 _ENV_REF_PREFIX = "env:"
@@ -164,7 +165,25 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
     await db.connect()
 
     event_bus = InProcessEventBus()
-    audit = SqliteAuditRepository(db)
+    audit_cfg_raw = config.get("audit", {})
+    audit_cfg = audit_cfg_raw if isinstance(audit_cfg_raw, dict) else {}
+    audit_text_log_path_raw = audit_cfg.get("text_file_path")
+    audit_text_log_path = (
+        Path(audit_text_log_path_raw).expanduser()
+        if isinstance(audit_text_log_path_raw, str) and audit_text_log_path_raw.strip()
+        else _AUDIT_TEXT_LOG_PATH
+    )
+    text_file_retention_raw = audit_cfg.get("text_file_retention")
+    text_file_retention = (
+        str(text_file_retention_raw).strip()
+        if isinstance(text_file_retention_raw, str) and text_file_retention_raw.strip()
+        else None
+    )
+    audit = SqliteAuditRepository(
+        db,
+        text_log_path=audit_text_log_path,
+        text_log_retention=text_file_retention,
+    )
     app_ctx = AppContext(audit=audit, event_bus=event_bus, logger=logger)
 
     llm_providers_cfg_raw = config.get("llm_providers", {})
