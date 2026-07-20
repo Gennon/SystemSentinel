@@ -235,6 +235,13 @@ _SAFE_DEFAULTS: dict[str, Any] = {
             # Optional, uncomment to enable scheduled reports:
             # "schedule": "7d 00:00:00",
         },
+        "vulnscan": {
+            "enabled": False,
+            "run_on_startup": False,
+            "schedule": "7d 00:00:00",
+            "score_drop_alert_threshold": 10,
+            "report_path": "/var/log/lynis-report.dat",
+        },
     },
     "llm": {
         "enabled": False,

@@ -24,6 +24,7 @@ _DEFAULT_READONLY_COMMANDS = {
     "!anomalies",
     "!firewall",
     "!hardening",
+    "!vulnscan",
 }
 _COMMAND_ALIASES = {
     "!snaphsots": "!snapshots",

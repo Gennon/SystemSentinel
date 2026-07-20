@@ -334,6 +334,26 @@ class WeeklyDigestMonitor(BaseMonitor):
     async def _latest_vulnscan_count(self, since: datetime, until: datetime | None) -> int | None:
         db = await self._get_db()
         query = """
+            SELECT warning_count
+            FROM vulnerability_scans
+            WHERE scanned_at >= ?
+        """
+        params: list[str] = [since.isoformat()]
+        if until is not None:
+            query += " AND scanned_at < ?"
+            params.append(until.isoformat())
+        query += " ORDER BY scanned_at DESC, id DESC LIMIT 1"
+        cursor = await db.connection.execute(query, tuple(params))
+        row = await cursor.fetchone()
+        if row is not None:
+            return int(row[0])
+        return await self._latest_vulnscan_count_from_audit(since=since, until=until)
+
+    async def _latest_vulnscan_count_from_audit(
+        self, *, since: datetime, until: datetime | None
+    ) -> int | None:
+        db = await self._get_db()
+        query = """
             SELECT details_json
             FROM audit_log
             WHERE action_type = 'tool_run'

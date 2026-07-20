@@ -74,6 +74,58 @@ def _format_storage_report_generated(payload: dict[str, Any]) -> OutboundMessage
     )
 
 
+def _format_vulnscan_summary(payload: dict[str, Any]) -> OutboundMessage:
+    score_raw = payload.get("score")
+    score = str(score_raw) if score_raw is not None else "n/a"
+    warning_count = int(payload.get("warning_count", 0))
+    suggestion_count = int(payload.get("suggestion_count", 0))
+    findings_raw = payload.get("top_findings", [])
+    findings = findings_raw if isinstance(findings_raw, list) else []
+    findings_lines = [f"- {item!s}" for item in findings[:5] if str(item).strip()]
+    if not findings_lines:
+        findings_lines = ["- No findings captured."]
+    severity = AlertSeverity.WARNING if warning_count > 0 else AlertSeverity.INFO
+    return OutboundMessage(
+        title="🛡️ Vulnerability Scan Summary",
+        text=(
+            f"Lynis score={score}, warnings={warning_count}, suggestions={suggestion_count}\n"
+            "Top findings:\n" + "\n".join(findings_lines)
+        ),
+        severity=severity,
+        fields={
+            "Event Type": str(payload.get("event_type", "vulnscan_summary")),
+            "Generated At": str(payload.get("generated_at", "—")),
+            "Score": score,
+            "Warnings": str(warning_count),
+            "Suggestions": str(suggestion_count),
+        },
+    )
+
+
+def _format_vulnscan_score_drop(payload: dict[str, Any]) -> OutboundMessage:
+    previous_score = str(payload.get("previous_score", "n/a"))
+    current_score = str(payload.get("current_score", "n/a"))
+    drop_amount = str(payload.get("drop_amount", "n/a"))
+    threshold = str(payload.get("threshold", "n/a"))
+    return OutboundMessage(
+        title="⚠️ Vulnerability score dropped",
+        text=(
+            "Latest vulnerability scan score dropped beyond the configured threshold.\n"
+            f"previous={previous_score}, current={current_score}, drop={drop_amount}, "
+            f"threshold={threshold}"
+        ),
+        severity=AlertSeverity.WARNING,
+        fields={
+            "Event Type": str(payload.get("event_type", "vulnscan_score_drop")),
+            "Generated At": str(payload.get("generated_at", "—")),
+            "Previous Score": previous_score,
+            "Current Score": current_score,
+            "Drop Amount": drop_amount,
+            "Threshold": threshold,
+        },
+    )
+
+
 def _format_file_change_detected(payload: dict[str, Any]) -> OutboundMessage:
     change_type = str(payload.get("change_type", "unknown"))
     file_path = str(payload.get("file_path", "unknown"))

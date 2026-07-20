@@ -185,7 +185,7 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
         text_log_path=audit_text_log_path,
         text_log_retention=text_file_retention,
     )
-    app_ctx = AppContext(audit=audit, event_bus=event_bus, logger=logger)
+    app_ctx = AppContext(audit=audit, event_bus=event_bus, logger=logger, db=db)
 
     llm_providers_cfg_raw = config.get("llm_providers", {})
     llm_providers_cfg = llm_providers_cfg_raw if isinstance(llm_providers_cfg_raw, dict) else {}

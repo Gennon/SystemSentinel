@@ -30,6 +30,8 @@ from system_sentinel.alerts.handler import (
     _format_system_daily_digest,
     _format_system_weekly_digest,
     _format_unknown_connection,
+    _format_vulnscan_score_drop,
+    _format_vulnscan_summary,
 )
 from system_sentinel.chat.base import AlertSeverity, OutboundMessage
 from system_sentinel.chat.router import ChatRouter
@@ -152,6 +154,27 @@ _FILE_CHANGE_PAYLOAD = {
     "destination_path": None,
 }
 
+_VULNSCAN_SUMMARY_PAYLOAD = {
+    "event_type": "vulnscan_summary",
+    "generated_at": "2026-07-20T05:00:00+00:00",
+    "score": 72,
+    "warning_count": 4,
+    "suggestion_count": 6,
+    "top_findings": [
+        "SSH password authentication enabled",
+        "Kernel sysctl mismatch",
+    ],
+}
+
+_VULNSCAN_SCORE_DROP_PAYLOAD = {
+    "event_type": "vulnscan_score_drop",
+    "generated_at": "2026-07-20T05:00:00+00:00",
+    "previous_score": 84,
+    "current_score": 72,
+    "drop_amount": 12,
+    "threshold": 10,
+}
+
 
 # ---------------------------------------------------------------------------
 # _format_unknown_connection unit tests
@@ -211,6 +234,21 @@ def test_format_file_change_detected_fields_present() -> None:
     assert msg.fields["Change Type"] == "modified"
     assert msg.fields["File Path"] == "/etc/ssh/sshd_config"
     assert msg.fields["Process Owner"] == "root"
+
+
+def test_format_vulnscan_summary_includes_score_and_counts() -> None:
+    msg = _format_vulnscan_summary(_VULNSCAN_SUMMARY_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert "score=72" in msg.text
+    assert "warnings=4" in msg.text
+    assert msg.fields is not None
+    assert msg.fields["Suggestions"] == "6"
+
+
+def test_format_vulnscan_score_drop_is_warning() -> None:
+    msg = _format_vulnscan_score_drop(_VULNSCAN_SCORE_DROP_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert "drop=12" in msg.text
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +331,32 @@ async def test_handler_broadcasts_on_file_change_detected_event() -> None:
 
     assert len(calls) == 1
     assert "sshd_config" in calls[0].text
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_vulnscan_summary_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.vulnscan.summary", _VULNSCAN_SUMMARY_PAYLOAD)
+
+    assert len(calls) == 1
+    assert "score=72" in calls[0].text
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_vulnscan_score_drop_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.vulnscan.score_drop", _VULNSCAN_SCORE_DROP_PAYLOAD)
+
+    assert len(calls) == 1
+    assert "drop=12" in calls[0].text
 
 
 _BRUTE_FORCE_PAYLOAD = {

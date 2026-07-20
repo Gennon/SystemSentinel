@@ -28,6 +28,8 @@ from system_sentinel.alerts.formatters import (
     _format_system_daily_digest,
     _format_system_weekly_digest,
     _format_unknown_connection,
+    _format_vulnscan_score_drop,
+    _format_vulnscan_summary,
 )
 from system_sentinel.alerts.quiet_hours import (
     QuietHoursWindow,
@@ -63,6 +65,8 @@ _EVENT_SEVERITY_KEYS = {
     "alert.firewall.drift_detected": "firewall_drift",
     "alert.hardening.auto_remediated": "hardening",
     "alert.storage.report_generated": "storage_report",
+    "alert.vulnscan.summary": "vulnscan_summary",
+    "alert.vulnscan.score_drop": "vulnscan_score_drop",
 }
 
 _SEVERITY_RANK: dict[AlertSeverity, int] = {
@@ -201,6 +205,8 @@ class AlertHandler:
         event_bus.subscribe("alert.service.restart_exhausted", self._on_service_restart_exhausted)
         event_bus.subscribe("alert.firewall.drift_detected", self._on_firewall_drift)
         event_bus.subscribe("alert.hardening.auto_remediated", self._on_hardening_auto_remediated)
+        event_bus.subscribe("alert.vulnscan.summary", self._on_vulnscan_summary)
+        event_bus.subscribe("alert.vulnscan.score_drop", self._on_vulnscan_score_drop)
         event_bus.subscribe("chat.alerts.mute", self._on_mute_non_critical)
         event_bus.subscribe("chat.alerts.unmute", self._on_unmute_non_critical)
 
@@ -375,6 +381,26 @@ class AlertHandler:
             payload.get("check_id"),
         )
         msg = self._apply_severity(event_type, payload, _format_hardening_auto_remediated(payload))
+        await self._notify_and_record(event_type, payload, msg)
+
+    async def _on_vulnscan_summary(self, event_type: str, payload: Any) -> None:
+        self._logger.info(
+            "Vulnerability scan summary received: score=%s warnings=%s suggestions=%s",
+            payload.get("score"),
+            payload.get("warning_count"),
+            payload.get("suggestion_count"),
+        )
+        msg = self._apply_severity(event_type, payload, _format_vulnscan_summary(payload))
+        await self._notify_and_record(event_type, payload, msg)
+
+    async def _on_vulnscan_score_drop(self, event_type: str, payload: Any) -> None:
+        self._logger.warning(
+            "Vulnerability scan score dropped: previous=%s current=%s threshold=%s",
+            payload.get("previous_score"),
+            payload.get("current_score"),
+            payload.get("threshold"),
+        )
+        msg = self._apply_severity(event_type, payload, _format_vulnscan_score_drop(payload))
         await self._notify_and_record(event_type, payload, msg)
 
     async def _on_mute_non_critical(self, _event_type: str, payload: Any) -> None:

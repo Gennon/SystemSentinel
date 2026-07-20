@@ -207,6 +207,7 @@ async def test_help_command_returns_supported_commands(tmp_path: Path) -> None:
     assert "!status" in response.text
     assert "!cleanup" in response.text
     assert "!snapshots" in response.text
+    assert "!vulnscan" in response.text
     assert "!audit [--count N]" in response.text
     assert "!ask <question>" in response.text
     assert "!graph <metric> <period>" in response.text
@@ -866,6 +867,50 @@ async def test_hardening_command_lists_pass_fail_per_check(tmp_path: Path) -> No
     assert "PASS | SSH root login disabled" in response.text
     assert "FAIL | Kernel sysctl hardening" in response.text
     assert "auto-remediated" in response.text
+
+
+@pytest.mark.asyncio
+async def test_vulnscan_command_returns_latest_report(tmp_path: Path) -> None:
+    db = DatabaseConnection(tmp_path / "sentinel.db")
+    await db.connect()
+    await db.connection.execute(
+        """
+        INSERT INTO vulnerability_scans (
+            scanned_at, score, warning_count, suggestion_count, top_findings_json, report_text, report_path
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            datetime.now(UTC).isoformat(),
+            74,
+            3,
+            5,
+            json.dumps(["SSH password authentication enabled", "Kernel sysctl mismatch"]),
+            "hardening_index=74\nwarning[]=SSH password authentication enabled\n",
+            "/var/log/lynis-report.dat",
+        ),
+    )
+    await db.connection.commit()
+    ctx = AppContext(
+        audit=AsyncMock(),
+        event_bus=AsyncMock(),
+        logger=logging.getLogger("test"),
+    )
+    dispatcher = ChatCommandDispatcher(
+        config={"chat_adapters": {"discord": {"channel_id": "100"}}},
+        app_ctx=ctx,
+        scheduler=_FakeScheduler(),  # type: ignore[arg-type]
+        tools={},
+        monitor_registry=_FakeMonitorRegistry(),  # type: ignore[arg-type]
+        db=db,
+    )
+
+    response = await dispatcher.handle_message(_message("!vulnscan"), ["!vulnscan"])
+    assert response is not None
+    assert "Latest vulnerability scan" in response.text
+    assert "score=74" in response.text
+    assert "Full Lynis report:" in response.text
+    assert "hardening_index=74" in response.text
 
 
 @pytest.mark.asyncio

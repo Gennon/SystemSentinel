@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import logging
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from system_sentinel.db.connection import DatabaseConnection
 
 
 @runtime_checkable
@@ -50,3 +53,4 @@ class AppContext:
     event_bus: EventBus
     logger: logging.Logger = field(default_factory=lambda: logging.getLogger("sentinel"))
     llm: LLMClient | None = None
+    db: DatabaseConnection | None = None

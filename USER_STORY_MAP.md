@@ -99,7 +99,7 @@ A Linux system management daemon that autonomously handles updates, security har
 - [x] As a user I want all automated actions logged to a local audit file with timestamps so I have a full change history. **(US-025)**
 
 ### Security & Hardening
-- [ ] As a user I want periodic vulnerability scanning so I get a security posture report.
+- [x] As a user I want periodic vulnerability scanning so I get a security posture report. **(US-026)**
 - [ ] As a user I want 2FA enforcement audit so the system flags accounts that do not have 2FA enabled.
 
 ### Monitoring & Metrics

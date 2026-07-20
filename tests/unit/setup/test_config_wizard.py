@@ -201,6 +201,11 @@ class TestNoConfigInteractive:
         assert data["tools"]["hardening"]["checks"]["strong_password_policy"] is True
         assert data["tools"]["hardening"]["password_policy"]["minlen"] == 14
         assert data["tools"]["hardening"]["password_policy"]["minclass"] == 3
+        assert data["tools"]["vulnscan"]["enabled"] is False
+        assert data["tools"]["vulnscan"]["run_on_startup"] is False
+        assert data["tools"]["vulnscan"]["schedule"] == "7d 00:00:00"
+        assert data["tools"]["vulnscan"]["score_drop_alert_threshold"] == 10
+        assert data["tools"]["vulnscan"]["report_path"] == "/var/log/lynis-report.dat"
         assert data["llm"]["remediation"] is False
         assert data["updates"]["self_update"]["source_path"]
 

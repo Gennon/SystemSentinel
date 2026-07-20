@@ -73,6 +73,15 @@ def test_readonly_user_can_run_audit_command() -> None:
     assert decision.role is UserRole.READONLY
 
 
+def test_readonly_user_can_run_vulnscan_command() -> None:
+    access = _access(
+        {"chat_adapters": {"discord": {"allowed_users": [{"id": "2002", "role": "readonly"}]}}},
+    )
+    decision = access.authorize(_msg("2002", "!vulnscan"), ["!vulnscan"])
+    assert decision.authorized is True
+    assert decision.role is UserRole.READONLY
+
+
 def test_readonly_user_can_run_connections_command() -> None:
     access = _access(
         {"chat_adapters": {"discord": {"allowed_users": [{"id": "2002", "role": "readonly"}]}}},

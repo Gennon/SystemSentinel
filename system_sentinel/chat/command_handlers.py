@@ -25,6 +25,7 @@ _HELP_TEXT = (
     "!anomalies - list recent login anomalies\n"
     "!firewall - show effective firewall rules and desired-state drift status\n"
     "!hardening - show hardening audit results\n"
+    "!vulnscan - show latest vulnerability scan summary and full report\n"
     "!audit [--count N] - list recent audit log entries\n"
     "!graph <metric> <period> - graph historical metrics (24h, 7d, 30d, 90d)\n"
     "!connections classify - list latest connection intent classifications\n"
@@ -252,6 +253,53 @@ async def handle_hardening_command(*, db: Any, message: InboundMessage) -> Outbo
             lines.append(f"- {status} | {title} ({check_id}){suffix}")
     else:
         lines.append(f"- {row[1]}")
+    return OutboundMessage(text="\n".join(lines), reply_to=message)
+
+
+async def handle_vulnscan_command(*, db: Any, message: InboundMessage) -> OutboundMessage:
+    cursor = await db.connection.execute(
+        """
+        SELECT scanned_at, score, warning_count, suggestion_count, top_findings_json, report_text
+        FROM vulnerability_scans
+        ORDER BY scanned_at DESC, id DESC
+        LIMIT 1
+        """
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        return OutboundMessage(text="No vulnerability scan results recorded.", reply_to=message)
+
+    scanned_at = str(row[0])
+    score_raw = row[1]
+    score = str(score_raw) if score_raw is not None else "n/a"
+    warning_count = int(row[2])
+    suggestion_count = int(row[3])
+
+    top_findings: list[str] = []
+    findings_raw = row[4]
+    if isinstance(findings_raw, str):
+        try:
+            parsed = json.loads(findings_raw)
+        except json.JSONDecodeError:
+            parsed = []
+        if isinstance(parsed, list):
+            top_findings = [str(item) for item in parsed if str(item).strip()]
+
+    report_text_raw = row[5]
+    report_text = str(report_text_raw).strip() if report_text_raw is not None else ""
+    if not report_text:
+        report_text = "No report body captured."
+
+    lines = [
+        (
+            "Latest vulnerability scan: "
+            f"{scanned_at} | score={score} | warnings={warning_count} | suggestions={suggestion_count}"
+        )
+    ]
+    if top_findings:
+        lines.append("Top findings:")
+        lines.extend(f"- {finding}" for finding in top_findings[:5])
+    lines.extend(["", "Full Lynis report:", f"```text\n{report_text}\n```"])
     return OutboundMessage(text="\n".join(lines), reply_to=message)
 
 
