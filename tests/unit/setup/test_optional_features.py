@@ -384,3 +384,63 @@ class TestInstallOptionalFeaturesStep:
         assert results[0].outcome == StepOutcome.SKIPPED
         mock_run.assert_not_called()
         assert not config_path.exists()
+
+    def test_vulnscan_installs_lynis_when_missing(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        ctx = WizardContext(enabled_features=["vulnscan"])
+
+        def _which(command: str) -> str | None:
+            if command == "lynis":
+                return None
+            if command == "apt-get":
+                return "/usr/bin/apt-get"
+            return None
+
+        with (
+            patch(
+                "system_sentinel.setup.optional_features.CONFIG_PATH",
+                config_path,
+            ),
+            patch(
+                "system_sentinel.setup.optional_features.shutil.which",
+                side_effect=_which,
+            ),
+            patch(
+                "system_sentinel.setup.optional_features.subprocess.run",
+                side_effect=_make_sudo_run(),
+            ) as mock_run,
+        ):
+            results, _ = _run_install_step(ctx)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        calls = [str(c) for c in mock_run.call_args_list]
+        assert any("apt-get" in c and "lynis" in c for c in calls)
+
+    def test_vulnscan_fails_when_package_manager_is_unknown(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        ctx = WizardContext(enabled_features=["vulnscan"])
+
+        def _which(command: str) -> str | None:
+            if command == "lynis":
+                return None
+            return None
+
+        with (
+            patch(
+                "system_sentinel.setup.optional_features.CONFIG_PATH",
+                config_path,
+            ),
+            patch(
+                "system_sentinel.setup.optional_features.shutil.which",
+                side_effect=_which,
+            ),
+            patch(
+                "system_sentinel.setup.optional_features.subprocess.run",
+                side_effect=_make_sudo_run(),
+            ),
+        ):
+            results, _ = _run_install_step(ctx)
+
+        assert results[0].outcome == StepOutcome.FAILURE
+        assert results[0].error is not None
+        assert "Could not detect package manager" in results[0].error

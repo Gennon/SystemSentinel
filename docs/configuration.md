@@ -487,6 +487,25 @@ tools:
       minclass: 3
 ```
 
+#### `tools.vulnscan` example
+
+```yaml
+tools:
+  vulnscan:
+    enabled: true
+    run_on_startup: false
+    schedule: "7d 00:00:00" # weekly default if omitted
+    score_drop_alert_threshold: 10
+    report_path: "/var/log/lynis-report.dat"
+    lynis_args:
+      - "audit"
+      - "system"
+      - "--quick"
+      - "--no-colors"
+```
+
+When enabled, the tool runs Lynis, stores full report + summary in SQLite, emits chat summary/score-drop alerts, and the latest full report is available via the `!vulnscan` chat command. If you enable `vulnscan` via `sentinel setup` optional features, setup installs `lynis` automatically; manual config edits still require `lynis` to be present on the host.
+
 ### Self-update
 
 ```yaml
@@ -690,6 +709,12 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `tools.hardening.sysctl` | map[string,string] | built-in secure defaults | `HardeningTool` | Desired kernel parameter baseline for audit/remediation. |
 | `tools.hardening.password_policy.minlen` | int | `14` | `HardeningTool` | Minimum password length target. |
 | `tools.hardening.password_policy.minclass` | int | `3` | `HardeningTool` | Minimum required password character classes. |
+| `tools.vulnscan.enabled` | bool | `true` | `VulnScanTool` | Enables Lynis-based vulnerability scanning. `sentinel setup` installs Lynis when the `vulnscan` optional feature is selected; otherwise missing Lynis causes scan runs to be skipped with warning. |
+| `tools.vulnscan.run_on_startup` | bool | `false` | daemon startup runner | Runs one vulnerability scan during daemon startup. |
+| `tools.vulnscan.schedule` | duration (`HH:MM:SS` or `<days>d HH:MM:SS`) | `7d 00:00:00` | `VulnScanTool` | Recurring vulnerability scan schedule (weekly default). |
+| `tools.vulnscan.score_drop_alert_threshold` | int | `10` | `VulnScanTool` | Sends a score-drop chat alert when score decline is greater than this threshold vs previous scan. |
+| `tools.vulnscan.report_path` | path | `/var/log/lynis-report.dat` | `VulnScanTool` | Lynis report file path read after each run (full report stored in SQLite). |
+| `tools.vulnscan.lynis_args` | list[string] | `["audit","system","--quick","--no-colors"]` | `VulnScanTool` | Arguments passed to the Lynis binary (binary path auto-detected with `which lynis`). |
 
 ### Update and runtime control keys
 
@@ -723,4 +748,3 @@ These keys are currently setup-only or merge-only (not consumed by runtime code 
 | `monitors.disk.interval` | duration | `00:05:00` (wizard default) | setup wizard default only | Currently not consumed by runtime code. |
 | `monitors.network.interval` | duration | `00:01:00` (wizard default) | setup wizard default only | Currently not consumed by runtime code. |
 | `updates.self_update.snapshots.backend` | string | none | optional-feature setup merge | Added as `auto` when enabling `snapshot`. |
-| `tools.vulnscan.enabled` | bool | none | optional-feature setup merge | Added when enabling `vulnscan`; currently no runtime consumer. |

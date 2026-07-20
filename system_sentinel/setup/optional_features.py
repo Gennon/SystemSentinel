@@ -63,6 +63,7 @@ class Feature:
     description: str
     pip_extra: str | None
     check_command: str | None
+    system_packages: dict[str, str] | None = None
 
     def tool_present(self) -> bool:
         if self.check_command is None:
@@ -105,6 +106,7 @@ OPTIONAL_FEATURES: list[Feature] = [
         description="Periodic security audits via lynis",
         pip_extra=None,
         check_command="lynis",
+        system_packages={"apt": "lynis", "dnf": "lynis", "pacman": "lynis"},
     ),
     Feature(
         key="prometheus",
@@ -116,6 +118,39 @@ OPTIONAL_FEATURES: list[Feature] = [
 ]
 
 _FEATURE_BY_KEY: dict[str, Feature] = {f.key: f for f in OPTIONAL_FEATURES}
+
+
+def _detect_package_manager() -> str | None:
+    if shutil.which("apt-get") is not None:
+        return "apt"
+    if shutil.which("dnf") is not None:
+        return "dnf"
+    if shutil.which("pacman") is not None:
+        return "pacman"
+    return None
+
+
+def _install_system_package(
+    package_manager: str, package_name: str
+) -> subprocess.CompletedProcess[str]:
+    if package_manager == "apt":
+        return subprocess.run(
+            ["sudo", "apt-get", "install", "-y", package_name], capture_output=True, text=True
+        )
+    if package_manager == "dnf":
+        return subprocess.run(
+            ["sudo", "dnf", "install", "-y", package_name], capture_output=True, text=True
+        )
+    if package_manager == "pacman":
+        return subprocess.run(
+            ["sudo", "pacman", "-S", "--noconfirm", package_name], capture_output=True, text=True
+        )
+    return subprocess.CompletedProcess(
+        args=[package_manager, package_name],
+        returncode=1,
+        stdout="",
+        stderr=f"Unsupported package manager: {package_manager}",
+    )
 
 
 def select_features_step() -> WizardStep:
@@ -212,6 +247,42 @@ def install_optional_features_step() -> WizardStep:
                 outcome=StepOutcome.SUCCESS,
                 message="No optional features selected; config.yaml unchanged.",
             )
+
+        package_manager: str | None = None
+        for key in ctx.enabled_features:
+            feature = _FEATURE_BY_KEY.get(key)
+            if feature is None or feature.check_command is None or feature.tool_present():
+                continue
+            if not feature.system_packages:
+                continue
+            if package_manager is None:
+                package_manager = _detect_package_manager()
+            if package_manager is None:
+                return WizardStepResult(
+                    step_name="install_optional_features",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Failed to install required system package for feature '{key}'.",
+                    error="Could not detect package manager (supported: apt-get, dnf, pacman).",
+                )
+            package_name = feature.system_packages.get(package_manager)
+            if package_name is None:
+                return WizardStepResult(
+                    step_name="install_optional_features",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Failed to install required system package for feature '{key}'.",
+                    error=(
+                        f"No package mapping for package manager '{package_manager}'. "
+                        f"Please install {feature.check_command} manually."
+                    ),
+                )
+            package_result = _install_system_package(package_manager, package_name)
+            if package_result.returncode != 0:
+                return WizardStepResult(
+                    step_name="install_optional_features",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Failed to install required system package '{package_name}'.",
+                    error=package_result.stderr.strip() or package_result.stdout.strip(),
+                )
 
         # Install pip extras for features that require them
         extras: list[str] = [
