@@ -5,6 +5,8 @@ import shutil
 import subprocess
 import time
 
+import yaml
+
 from system_sentinel.setup.dependency_installer import run_command
 from system_sentinel.setup.sudoers_steps import (
     install_sudoers_rules_runner,
@@ -213,6 +215,30 @@ def fix_install_dir_permissions_step() -> WizardStep:
             p = p.parent
         return p
 
+    def _configured_update_source_path(config_path: Path) -> Path | None:
+        if not config_path.exists():
+            return None
+        try:
+            raw = yaml.safe_load(config_path.read_text()) or {}
+        except (OSError, yaml.YAMLError):
+            return None
+        if not isinstance(raw, dict):
+            return None
+        updates = raw.get("updates")
+        if not isinstance(updates, dict):
+            return None
+        self_update = updates.get("self_update")
+        if not isinstance(self_update, dict):
+            return None
+        source_path = self_update.get("source_path")
+        if not isinstance(source_path, str) or not source_path.strip():
+            return None
+        return Path(source_path).expanduser()
+
+    def _append_unique_path(paths: list[Path], candidate: Path) -> None:
+        if candidate not in paths:
+            paths.append(candidate)
+
     def runner(ctx: WizardContext) -> WizardStepResult:
         exec_path = shutil.which("sentinel")
         if exec_path is None:
@@ -224,20 +250,26 @@ def fix_install_dir_permissions_step() -> WizardStep:
             )
 
         install_dir = _install_dir_from_exec(exec_path)
+        target_dirs: list[Path] = [install_dir]
+        configured_source = _configured_update_source_path(CONFIG_PATH)
+        if configured_source is not None:
+            _append_unique_path(target_dirs, configured_source)
 
         # Collect ancestor directories inside /home that need o+x for traversal.
         home = Path("/home")
         ancestors_to_fix: list[Path] = []
-        current = install_dir.parent
-        while True:
-            try:
-                current.relative_to(home)
-                ancestors_to_fix.append(current)
-            except ValueError:
-                break
-            if current == home or current == current.parent:
-                break
-            current = current.parent
+        for target_dir in target_dirs:
+            current = target_dir.parent
+            while True:
+                try:
+                    current.relative_to(home)
+                    if current not in ancestors_to_fix:
+                        ancestors_to_fix.append(current)
+                except ValueError:
+                    break
+                if current == home or current == current.parent:
+                    break
+                current = current.parent
 
         if ctx.check_only:
             # In check-only mode just verify the binary is executable by world (o+x).
@@ -267,30 +299,38 @@ def fix_install_dir_permissions_step() -> WizardStep:
                     error=result.stderr.strip() or result.stdout.strip(),
                 )
 
-        # Grant o+rX recursively on the install dir so sentinel can read/execute.
-        result = run_command(["sudo", "/bin/chmod", "-R", "o+rX", str(install_dir)])
-        if result.returncode != 0:
-            return WizardStepResult(
-                step_name="fix_install_dir_permissions",
-                outcome=StepOutcome.FAILURE,
-                message=f"Failed to set permissions on {install_dir}.",
-                error=result.stderr.strip() or result.stdout.strip(),
-            )
+        configured_target = configured_source.resolve() if configured_source is not None else None
+        for target_dir in target_dirs:
+            # Grant o+rX recursively so sentinel can read/execute source files.
+            result = run_command(["sudo", "/bin/chmod", "-R", "o+rX", str(target_dir)])
+            if result.returncode != 0:
+                return WizardStepResult(
+                    step_name="fix_install_dir_permissions",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Failed to set permissions on {target_dir}.",
+                    error=result.stderr.strip() or result.stdout.strip(),
+                )
 
-        # Make sentinel owner so it can self-update the checked-out code.
-        result = run_command(["sudo", "/bin/chown", "-R", "sentinel:sentinel", str(install_dir)])
-        if result.returncode != 0:
-            return WizardStepResult(
-                step_name="fix_install_dir_permissions",
-                outcome=StepOutcome.FAILURE,
-                message=f"Failed to set ownership on {install_dir}.",
-                error=result.stderr.strip() or result.stdout.strip(),
-            )
+            # Make sentinel owner so it can self-update the checked-out code.
+            result = run_command(["sudo", "/bin/chown", "-R", "sentinel:sentinel", str(target_dir)])
+            if result.returncode != 0:
+                return WizardStepResult(
+                    step_name="fix_install_dir_permissions",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Failed to set ownership on {target_dir}.",
+                    error=result.stderr.strip() or result.stdout.strip(),
+                )
 
+        source_label = ""
+        if configured_target is not None and configured_target != install_dir.resolve():
+            source_label = f" and configured update source {configured_target}"
         return WizardStepResult(
             step_name="fix_install_dir_permissions",
             outcome=StepOutcome.SUCCESS,
-            message=f"Permissions and ownership set on {install_dir} and its path ancestors.",
+            message=(
+                f"Permissions and ownership set on install path {install_dir}{source_label} "
+                "and relevant path ancestors."
+            ),
         )
 
     return WizardStep(

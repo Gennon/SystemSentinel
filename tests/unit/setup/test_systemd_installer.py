@@ -217,7 +217,7 @@ class TestFixInstallDirPermissionsStep:
         assert results[0].outcome == StepOutcome.FAILURE
         assert results[0].error is not None
 
-    def test_sets_traverse_on_ancestors_and_readable_on_install_dir(self) -> None:
+    def test_sets_traverse_on_ancestors_and_readable_on_install_dir(self, tmp_path: Path) -> None:
         """chmod path access, set install-dir readability, and chown to sentinel."""
         exec_path = "/home/gennon/.local/system-sentinel/.venv/bin/sentinel"
 
@@ -236,6 +236,10 @@ class TestFixInstallDirPermissionsStep:
                 "system_sentinel.setup.systemd_installer.run_command",
                 side_effect=mock_run,
             ),
+            patch(
+                "system_sentinel.setup.systemd_installer.CONFIG_PATH",
+                tmp_path / "missing-config.yaml",
+            ),
         ):
             results, _ = _run_step(fix_install_dir_permissions_step)
 
@@ -251,7 +255,7 @@ class TestFixInstallDirPermissionsStep:
         assert any("/home/gennon/.local/system-sentinel" in c for c in recursive_targets)
         assert any("/bin/chown" in c and "sentinel:sentinel" in c for c in chmod_calls)
 
-    def test_chmod_ancestor_failure_returns_failure(self) -> None:
+    def test_chmod_ancestor_failure_returns_failure(self, tmp_path: Path) -> None:
         exec_path = "/home/gennon/.local/system-sentinel/.venv/bin/sentinel"
 
         def mock_run(cmd, timeout=300):
@@ -266,13 +270,17 @@ class TestFixInstallDirPermissionsStep:
                 "system_sentinel.setup.systemd_installer.run_command",
                 side_effect=mock_run,
             ),
+            patch(
+                "system_sentinel.setup.systemd_installer.CONFIG_PATH",
+                tmp_path / "missing-config.yaml",
+            ),
         ):
             results, _ = _run_step(fix_install_dir_permissions_step)
 
         assert results[0].outcome == StepOutcome.FAILURE
         assert results[0].error is not None
 
-    def test_chmod_install_dir_failure_returns_failure(self) -> None:
+    def test_chmod_install_dir_failure_returns_failure(self, tmp_path: Path) -> None:
         exec_path = "/home/gennon/.local/system-sentinel/.venv/bin/sentinel"
         call_count = 0
 
@@ -292,6 +300,10 @@ class TestFixInstallDirPermissionsStep:
             patch(
                 "system_sentinel.setup.systemd_installer.run_command",
                 side_effect=mock_run,
+            ),
+            patch(
+                "system_sentinel.setup.systemd_installer.CONFIG_PATH",
+                tmp_path / "missing-config.yaml",
             ),
         ):
             results, _ = _run_step(fix_install_dir_permissions_step)
@@ -324,7 +336,7 @@ class TestFixInstallDirPermissionsStep:
 
         assert results[0].outcome == StepOutcome.FAILURE
 
-    def test_install_dir_not_under_home_skips_ancestors(self) -> None:
+    def test_install_dir_not_under_home_skips_ancestors(self, tmp_path: Path) -> None:
         """When installed in /opt, no ancestor chmod calls are needed."""
         exec_path = "/opt/system-sentinel/.venv/bin/sentinel"
 
@@ -343,6 +355,10 @@ class TestFixInstallDirPermissionsStep:
                 "system_sentinel.setup.systemd_installer.run_command",
                 side_effect=mock_run,
             ),
+            patch(
+                "system_sentinel.setup.systemd_installer.CONFIG_PATH",
+                tmp_path / "missing-config.yaml",
+            ),
         ):
             results, _ = _run_step(fix_install_dir_permissions_step)
 
@@ -351,7 +367,7 @@ class TestFixInstallDirPermissionsStep:
         traverse_calls = [c for c in chmod_calls if "o+x" in c and "-R" not in c]
         assert len(traverse_calls) == 0
 
-    def test_chown_install_dir_failure_returns_failure(self) -> None:
+    def test_chown_install_dir_failure_returns_failure(self, tmp_path: Path) -> None:
         exec_path = "/home/gennon/.local/system-sentinel/.venv/bin/sentinel"
 
         def mock_run(cmd, timeout=300):
@@ -368,11 +384,49 @@ class TestFixInstallDirPermissionsStep:
                 "system_sentinel.setup.systemd_installer.run_command",
                 side_effect=mock_run,
             ),
+            patch(
+                "system_sentinel.setup.systemd_installer.CONFIG_PATH",
+                tmp_path / "missing-config.yaml",
+            ),
         ):
             results, _ = _run_step(fix_install_dir_permissions_step)
 
         assert results[0].outcome == StepOutcome.FAILURE
         assert results[0].error is not None
+
+    def test_also_fixes_configured_self_update_source_path(self, tmp_path: Path) -> None:
+        exec_path = "/home/gennon/.local/system-sentinel/.venv/bin/sentinel"
+        configured_source = tmp_path / "custom-source"
+        configured_source.mkdir(parents=True)
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            f"updates:\n  self_update:\n    source_path: {configured_source.as_posix()}\n"
+        )
+
+        calls: list[list[str]] = []
+
+        def mock_run(cmd, timeout=300):
+            calls.append(list(cmd))
+            return CommandResult(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("system_sentinel.setup.systemd_installer.shutil.which", return_value=exec_path),
+            patch("system_sentinel.setup.systemd_installer.run_command", side_effect=mock_run),
+            patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_path),
+        ):
+            results, _ = _run_step(fix_install_dir_permissions_step)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        chmod_recursive_targets = [
+            c[-1] for c in calls if c[:4] == ["sudo", "/bin/chmod", "-R", "o+rX"]
+        ]
+        chown_recursive_targets = [
+            c[-1] for c in calls if c[:4] == ["sudo", "/bin/chown", "-R", "sentinel:sentinel"]
+        ]
+        assert "/home/gennon/.local/system-sentinel" in chmod_recursive_targets
+        assert str(configured_source) in chmod_recursive_targets
+        assert "/home/gennon/.local/system-sentinel" in chown_recursive_targets
+        assert str(configured_source) in chown_recursive_targets
 
 
 # ---------------------------------------------------------------------------

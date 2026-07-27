@@ -286,7 +286,8 @@ async def _reinstall_editable(repo_path: Path, *, logger: logging.Logger | None 
             if logger is not None:
                 logger.warning(
                     "Skipping editable reinstall after pull because source path is not writable "
-                    "for the service user: %s",
+                    "for the service user. Re-run `sentinel setup` to fix ownership/permissions. "
+                    "Error: %s",
                     error_message,
                 )
             return
