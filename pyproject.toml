@@ -120,3 +120,4 @@ force-sort-within-sections = true
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+exclude = ["*.md"]
