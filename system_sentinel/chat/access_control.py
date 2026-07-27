@@ -26,6 +26,7 @@ _DEFAULT_READONLY_COMMANDS = {
     "!hardening",
     "!2fa",
     "!vulnscan",
+    "!integrity",
 }
 _COMMAND_ALIASES = {
     "!snaphsots": "!snapshots",

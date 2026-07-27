@@ -114,7 +114,31 @@ class FileIntegrityMonitor(BaseMonitor):
             )
             return
 
-        actual_hash = _sha256_file(path_obj)
+        try:
+            actual_hash = _sha256_file(path_obj)
+        except PermissionError as exc:
+            self.logger.warning("Permission denied reading %s: %s", target.path, exc)
+            await repo.record_verification(
+                path=target.path,
+                checked_at=checked_at,
+                expected_sha256=str(baseline.get("expected_sha256", "")) if baseline else None,
+                actual_sha256=None,
+                status="permission_denied",
+                error=str(exc),
+            )
+            return
+        except OSError as exc:
+            self.logger.warning("Error reading %s: %s", target.path, exc)
+            await repo.record_verification(
+                path=target.path,
+                checked_at=checked_at,
+                expected_sha256=str(baseline.get("expected_sha256", "")) if baseline else None,
+                actual_sha256=None,
+                status="error",
+                error=str(exc),
+            )
+            return
+
         if baseline is None:
             await repo.upsert_baseline(
                 path=target.path,

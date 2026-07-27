@@ -149,3 +149,27 @@ async def test_collect_respects_verify_interval(tmp_path: Path) -> None:
     await monitor.collect()
 
     assert len(repo.verifications) == 1
+
+
+@pytest.mark.asyncio
+async def test_collect_handles_permission_denied_gracefully(tmp_path: Path) -> None:
+    target = tmp_path / "protected.conf"
+    target.write_text("secret\n")
+    target.chmod(0o000)
+    repo = _FakeFileIntegrityRepository()
+    monitor = FileIntegrityMonitor(
+        config={
+            "enabled": True,
+            "verify_interval": "00:00:00",
+            "monitored_paths": [str(target)],
+        },
+        app_ctx=_make_ctx(),
+        file_integrity_repo=repo,
+    )
+
+    await monitor.collect()
+
+    assert len(repo.verifications) == 1
+    assert repo.verifications[0].status == "permission_denied"
+    monitor.ctx.event_bus.publish.assert_not_awaited()
+    target.chmod(0o644)
