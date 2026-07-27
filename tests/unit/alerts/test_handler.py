@@ -9,6 +9,7 @@ import pytest
 from system_sentinel.alerts.handler import (
     AlertHandler,
     _format_brute_force,
+    _format_cleanup_delete_failed,
     _format_connection_daily_digest,
     _format_connection_repeat_threshold,
     _format_cpu_threshold_exceeded,
@@ -161,6 +162,15 @@ _FILE_INTEGRITY_MISMATCH_PAYLOAD = {
     "file_path": "/etc/ssh/sshd_config",
     "expected_hash": "abc123",
     "actual_hash": "def456",
+    "timestamp": "2026-07-16T10:00:00+00:00",
+}
+
+_CLEANUP_DELETE_FAILED_PAYLOAD = {
+    "event_type": "cleanup_delete_failed",
+    "file_path": "/tmp/old.log",
+    "size_bytes": 128,
+    "rule": {"path": "/tmp", "pattern": "*.log"},
+    "error": "permission denied",
     "timestamp": "2026-07-16T10:00:00+00:00",
 }
 
@@ -377,6 +387,20 @@ async def test_handler_broadcasts_on_file_integrity_mismatch_event() -> None:
     assert len(calls) == 1
     assert calls[0].severity == AlertSeverity.CRITICAL
     assert "Checksum mismatch detected" in calls[0].text
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_cleanup_delete_failed_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.files.cleanup_delete_failed", _CLEANUP_DELETE_FAILED_PAYLOAD)
+
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.WARNING
+    assert "Could not delete /tmp/old.log" in calls[0].text
 
 
 @pytest.mark.asyncio
@@ -1004,6 +1028,13 @@ def test_format_service_failure_detected_includes_logs() -> None:
     assert msg.severity == AlertSeverity.WARNING
     assert "nginx.service" in msg.text
     assert "example error line" in msg.text
+
+
+def test_format_cleanup_delete_failed_is_warning() -> None:
+    msg = _format_cleanup_delete_failed(_CLEANUP_DELETE_FAILED_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert "/tmp/old.log" in msg.text
+    assert msg.fields["Matched Rule"] != "unknown"
 
 
 def test_format_service_restart_result_success_is_info() -> None:

@@ -592,12 +592,18 @@ tools:
     enabled: true
     schedule: "0 4 * * *"
     rules:
-      - path: /tmp
-        older_than: "7d 00:00:00"
+      - enabled: true
+        path: /tmp
+        min_age_days: 7
+        min_size_mb: 0
         pattern: "*"
-      - path: /var/log
-        older_than: "30d 00:00:00"
+        dry_run: false
+      - enabled: true
+        path: /var/log
+        min_age_days: 30
+        min_size_mb: 1
         pattern: "*.gz"
+        dry_run: false
 
   packages:
     enabled: true

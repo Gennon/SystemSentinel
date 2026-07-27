@@ -721,7 +721,7 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `tools.security_update.dry_run` | bool | `false` | `SecurityUpdateTool` | Simulate updates without changing packages. |
 | `tools.security_update.reboot_policy` | string | `notify` | `SecurityUpdateTool` | If not `never`, reboot-required events are emitted when needed. |
 | `tools.packages.required` | list[string] | `[]` | `RequiredPackagesTool` | Package list that must stay installed. |
-| `tools.cleanup.rules` | list[object] | none | `ChatCommandDispatcher` | Used by confirmed cleanup chat action (`!cleanup now`) when configured. |
+| `tools.cleanup.rules` | list[object] | none | `ChatCommandDispatcher` | Used by confirmed cleanup chat action (`!cleanup now`) when configured. Each rule is opt-in and supports: `enabled` (bool, required true to activate), `path` (directory), `min_age_days` (number), `min_size_mb` (number), `pattern` (glob), and `dry_run` (bool preview mode). |
 | `tools.storage.paths` | list[path] | none | `ChatCommandDispatcher`, `StorageReportTool` | Preferred path list for `!storage` and scheduled storage reports; falls back to `monitors.old_files.watched_directories` then `/` for chat, and `/` for the scheduled tool. |
 | `tools.storage.alert_threshold_percent` | float | `85` | `ChatCommandDispatcher`, `StorageReportTool` | Paths above this used-percent are flagged as `ALERT` in storage reports. |
 | `tools.firewall.enabled` | bool | `true` | `FirewallTool` | Enables declarative firewall drift detection/reconciliation. |

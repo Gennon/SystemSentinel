@@ -596,9 +596,12 @@ async def test_cleanup_records_deleted_and_reclaimed_metrics_in_audit(tmp_path: 
                 "cleanup": {
                     "rules": [
                         {
+                            "enabled": True,
                             "path": str(cleanup_dir),
                             "pattern": "*.log",
-                            "older_than": "00:00:00",
+                            "min_age_days": 0,
+                            "min_size_mb": 0,
+                            "dry_run": False,
                         }
                     ]
                 }
@@ -614,13 +617,69 @@ async def test_cleanup_records_deleted_and_reclaimed_metrics_in_audit(tmp_path: 
     response = await dispatcher.handle_reaction(_reaction())
     assert response is not None
     assert "Cleanup completed." in response.text
+    assert "Deleted files:" in response.text
+    assert str(old_file) in response.text
     assert not old_file.exists()
+
+    delete_attempt_call = dispatcher._ctx.audit.append.await_args_list[-2].kwargs  # type: ignore[attr-defined]
+    assert delete_attempt_call["action_type"] == "file_cleanup"
+    assert delete_attempt_call["details"]["file_path"] == str(old_file)
+    assert delete_attempt_call["details"]["size_bytes"] > 0
+    assert delete_attempt_call["details"]["matched_rule"]["pattern"] == "*.log"
 
     reaction_call = dispatcher._ctx.audit.append.await_args_list[-1].kwargs  # type: ignore[attr-defined]
     assert reaction_call["action_type"] == "chat_command"
     assert reaction_call["details"]["command"] == "!cleanup"
     assert reaction_call["details"]["cleanup"]["deleted_files"] == 1
     assert reaction_call["details"]["cleanup"]["reclaimed_bytes"] > 0
+
+
+@pytest.mark.asyncio
+async def test_cleanup_delete_failure_publishes_warning_alert_and_skips_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cleanup_dir = tmp_path / "cleanup"
+    cleanup_dir.mkdir()
+    old_file = cleanup_dir / "old.log"
+    old_file.write_text("cleanup-me")
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {
+            "chat_adapters": {"discord": {"channel_id": "100"}},
+            "tools": {
+                "cleanup": {
+                    "rules": [
+                        {
+                            "enabled": True,
+                            "path": str(cleanup_dir),
+                            "pattern": "*.log",
+                            "min_age_days": 0,
+                            "min_size_mb": 0,
+                            "dry_run": False,
+                        }
+                    ]
+                }
+            },
+        },
+        {},
+    )
+
+    def _raise_permission_denied(_self: Path) -> None:
+        raise PermissionError("permission denied")
+
+    monkeypatch.setattr(
+        "system_sentinel.chat.command_dispatcher.Path.unlink",
+        _raise_permission_denied,
+    )
+
+    confirmation = await dispatcher.handle_message(_message("!cleanup"), ["!cleanup"])
+    assert confirmation is not None
+    response = await dispatcher.handle_reaction(_reaction())
+    assert response is not None
+    assert "failed deletions: 1" in response.text
+    assert old_file.exists()
+    event_calls = dispatcher._ctx.event_bus.publish.await_args_list  # type: ignore[attr-defined]
+    assert any(call.args[0] == "alert.files.cleanup_delete_failed" for call in event_calls)
 
 
 @pytest.mark.asyncio

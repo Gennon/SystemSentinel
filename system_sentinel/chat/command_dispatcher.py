@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Any
 import uuid
@@ -42,8 +43,8 @@ from system_sentinel.chat.command_support import (
     record_reaction_command,
 )
 from system_sentinel.chat.maintenance_utils import (
+    CleanupCandidate,
     build_storage_report,
-    parse_older_than_seconds,
     run_cleanup_rules,
 )
 from system_sentinel.core.exceptions import LLMUnavailableError
@@ -248,7 +249,51 @@ class ChatCommandDispatcher:
             )
             return OutboundMessage(text="No cleanup rules configured.")
 
-        deleted, reclaimed, failed = await asyncio.to_thread(self._run_cleanup_rules_sync, rules)
+        candidates = await asyncio.to_thread(self._run_cleanup_rules_sync, rules)
+        deleted_paths: list[str] = []
+        dry_run_paths: list[str] = []
+        deleted = 0
+        reclaimed = 0
+        failed = 0
+        for candidate in candidates:
+            if candidate.dry_run:
+                dry_run_paths.append(candidate.path)
+                continue
+
+            await self._ctx.audit.append(
+                action_type="file_cleanup",
+                source=f"chat:{reaction.adapter}:{reaction.user_id}",
+                description=f"Auto-delete matched file {candidate.path}.",
+                outcome="attempt",
+                details={
+                    "command": command,
+                    "file_path": candidate.path,
+                    "size_bytes": candidate.size_bytes,
+                    "matched_rule": candidate.rule,
+                },
+            )
+
+            try:
+                await asyncio.to_thread(self._delete_cleanup_file_sync, candidate.path)
+            except OSError as exc:
+                failed += 1
+                await self._ctx.event_bus.publish(
+                    "alert.files.cleanup_delete_failed",
+                    {
+                        "event_type": "cleanup_delete_failed",
+                        "file_path": candidate.path,
+                        "size_bytes": candidate.size_bytes,
+                        "rule": candidate.rule,
+                        "error": str(exc),
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    },
+                )
+                continue
+
+            deleted += 1
+            reclaimed += int(candidate.size_bytes)
+            deleted_paths.append(candidate.path)
+
         await self._record_reaction_command(
             reaction=reaction,
             command=command,
@@ -259,13 +304,23 @@ class ChatCommandDispatcher:
                     "deleted_files": deleted,
                     "reclaimed_bytes": reclaimed,
                     "failed_deletions": failed,
+                    "deleted_paths": deleted_paths,
+                    "dry_run_paths": dry_run_paths,
                 }
             },
+        )
+        deleted_lines = (
+            "\n".join(f"- {path}" for path in deleted_paths) if deleted_paths else "- none"
+        )
+        dry_run_lines = (
+            "\n".join(f"- {path}" for path in dry_run_paths) if dry_run_paths else "- none"
         )
         return OutboundMessage(
             text=(
                 f"Cleanup completed. Deleted {deleted} file(s), reclaimed {reclaimed} bytes, "
-                f"failed deletions: {failed}."
+                f"failed deletions: {failed}.\n"
+                f"Deleted files:\n{deleted_lines}\n"
+                f"Dry-run matches (not deleted):\n{dry_run_lines}"
             )
         )
 
@@ -450,11 +505,11 @@ class ChatCommandDispatcher:
     def _build_storage_report_sync(self, paths: list[str], disk_threshold_percent: float) -> str:
         return build_storage_report(paths, disk_alert_threshold_percent=disk_threshold_percent)
 
-    def _run_cleanup_rules_sync(self, raw_rules: list[Any]) -> tuple[int, int, int]:
+    def _run_cleanup_rules_sync(self, raw_rules: list[Any]) -> list[CleanupCandidate]:
         return run_cleanup_rules(raw_rules)
 
-    def _parse_older_than_seconds(self, raw: object) -> float | None:
-        return parse_older_than_seconds(raw)
+    def _delete_cleanup_file_sync(self, path: str) -> None:
+        Path(path).unlink()
 
     def _extract_command(self, adapter_name: str, text: str, args: list[str]) -> str | None:
         return extract_command(

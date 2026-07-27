@@ -202,6 +202,26 @@ def _format_file_integrity_mismatch(payload: dict[str, Any]) -> OutboundMessage:
     )
 
 
+def _format_cleanup_delete_failed(payload: dict[str, Any]) -> OutboundMessage:
+    file_path = str(payload.get("file_path", "unknown"))
+    error = str(payload.get("error", "unknown error"))
+    size_bytes = int(payload.get("size_bytes", 0))
+    rule = payload.get("rule")
+    rule_label = str(rule) if isinstance(rule, dict) else "unknown"
+    return OutboundMessage(
+        title="⚠️ Cleanup Delete Failed",
+        text=f"Could not delete {file_path}: {error}",
+        severity=AlertSeverity.WARNING,
+        fields={
+            "Event Type": str(payload.get("event_type", "cleanup_delete_failed")),
+            "File Path": file_path,
+            "File Size (bytes)": str(size_bytes),
+            "Matched Rule": rule_label,
+            "Timestamp": str(payload.get("timestamp", "—")),
+        },
+    )
+
+
 def _format_cpu_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessage:
     return OutboundMessage(
         title="⚠️ High CPU Usage",

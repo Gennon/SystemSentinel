@@ -108,7 +108,7 @@ A Linux system management daemon that autonomously handles updates, security har
 
 ### File Management
 - [x] As a user I want file integrity monitoring on critical system files so tampering is detected and alerted immediately. **(US-030)**
-- [ ] As a user I want to optionally auto-delete files based on rules (age, size, pattern) so storage is managed automatically. **(US-008)**
+- [x] As a user I want to optionally auto-delete files based on rules (age, size, pattern) so storage is managed automatically. **(US-008)**
 
 ### Communication & Alerts
 - [x] As a user I want weekly trend summaries (storage growth, login patterns) sent via chat so I can spot slow-moving problems. **(US-031)**

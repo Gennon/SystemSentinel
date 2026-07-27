@@ -19,6 +19,7 @@ from system_sentinel.alerts.formatters_service import (
     _format_service_restart_result,
 )
 from system_sentinel.alerts.formatters_system import (
+    _format_cleanup_delete_failed,
     _format_cpu_threshold_exceeded,
     _format_disk_threshold_exceeded,
     _format_file_change_detected,
@@ -37,6 +38,7 @@ from system_sentinel.alerts.formatters_system import (
 
 __all__ = [
     "_format_brute_force",
+    "_format_cleanup_delete_failed",
     "_format_connection_daily_digest",
     "_format_connection_repeat_threshold",
     "_format_cpu_threshold_exceeded",
