@@ -156,7 +156,7 @@ class SelfUpdateMonitor:
             )
 
         if self.config.reinstall:
-            await _reinstall_editable(repo_path)
+            await _reinstall_editable(repo_path, logger=self._logger)
 
         if self._snapshot_manager is not None and self._snapshot_manager.enabled:
             post_label = (
@@ -262,16 +262,35 @@ async def _git_rev_parse(repo_path: Path, ref: str) -> str:
     return cmd.stdout.decode(errors="replace").strip()
 
 
-async def _reinstall_editable(repo_path: Path) -> None:
+def _has_unwritable_source_error(result: _CommandResult) -> bool:
+    message = (
+        f"{result.stderr.decode(errors='replace')} {result.stdout.decode(errors='replace')}".lower()
+    )
+    return (
+        "is not owned or is not writable by the current user" in message
+        or "its parent directory is not owned or is not writable by the current user" in message
+    )
+
+
+async def _reinstall_editable(repo_path: Path, *, logger: logging.Logger | None = None) -> None:
     pip_bin = repo_path / ".venv" / "bin" / "pip"
     if not pip_bin.exists():
         return
     result = await _run_command(str(pip_bin), "install", "-e", str(repo_path))
     if result.returncode != 0:
-        raise SelfUpdateError(
-            "pip install -e failed after pull: "
-            f"{result.stderr.decode(errors='replace').strip() or result.stdout.decode(errors='replace').strip()}"
+        error_message = (
+            result.stderr.decode(errors="replace").strip()
+            or result.stdout.decode(errors="replace").strip()
         )
+        if _has_unwritable_source_error(result):
+            if logger is not None:
+                logger.warning(
+                    "Skipping editable reinstall after pull because source path is not writable "
+                    "for the service user: %s",
+                    error_message,
+                )
+            return
+        raise SelfUpdateError(f"pip install -e failed after pull: {error_message}")
 
 
 def _discover_source_path() -> Path | None:

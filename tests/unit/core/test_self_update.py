@@ -237,3 +237,68 @@ async def test_failed_pre_snapshot_skips_update_and_warns(tmp_path: Path) -> Non
     assert not any("pull" in call for call in calls)
     on_snapshot_warning.assert_awaited_once()
     on_update_start.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reinstall_permission_error_is_skipped_after_pull(tmp_path: Path) -> None:
+    pip_bin = tmp_path / ".venv" / "bin" / "pip"
+    pip_bin.parent.mkdir(parents=True, exist_ok=True)
+    pip_bin.write_text("")
+
+    async def fake_exec(*args: str, **kwargs: Any) -> _FakeProc:
+        if "fetch" in args:
+            return _proc()
+        if args[-2:] == ("rev-parse", "HEAD"):
+            return _proc(stdout="abc")
+        if args[-2:] == ("rev-parse", "origin/main"):
+            return _proc(stdout="def")
+        if "pull" in args:
+            return _proc()
+        if args[0] == str(pip_bin):
+            return _proc(
+                stderr=(
+                    "The directory '/opt/systemsentinel' or its parent directory "
+                    "is not owned or is not writable by the current user"
+                ),
+                returncode=1,
+            )
+        raise AssertionError(f"Unexpected command: {args}")
+
+    monitor = SelfUpdateMonitor(_monitor_config(tmp_path, reinstall=True), MagicMock())
+    with patch(
+        "system_sentinel.core.self_update.asyncio.create_subprocess_exec",
+        side_effect=fake_exec,
+    ):
+        updated = await monitor.check_and_apply_update()
+
+    assert updated is True
+
+
+@pytest.mark.asyncio
+async def test_reinstall_non_permission_error_raises(tmp_path: Path) -> None:
+    pip_bin = tmp_path / ".venv" / "bin" / "pip"
+    pip_bin.parent.mkdir(parents=True, exist_ok=True)
+    pip_bin.write_text("")
+
+    async def fake_exec(*args: str, **kwargs: Any) -> _FakeProc:
+        if "fetch" in args:
+            return _proc()
+        if args[-2:] == ("rev-parse", "HEAD"):
+            return _proc(stdout="abc")
+        if args[-2:] == ("rev-parse", "origin/main"):
+            return _proc(stdout="def")
+        if "pull" in args:
+            return _proc()
+        if args[0] == str(pip_bin):
+            return _proc(stderr="some other pip failure", returncode=1)
+        raise AssertionError(f"Unexpected command: {args}")
+
+    monitor = SelfUpdateMonitor(_monitor_config(tmp_path, reinstall=True), MagicMock())
+    with (
+        patch(
+            "system_sentinel.core.self_update.asyncio.create_subprocess_exec",
+            side_effect=fake_exec,
+        ),
+        pytest.raises(SelfUpdateError, match="pip install -e failed after pull"),
+    ):
+        await monitor.check_and_apply_update()
