@@ -113,7 +113,7 @@ class TestAddSentinelToLogGroupsStep:
     ):
         """Build a mock run_command side-effect for this step's command pattern."""
         if groups_exist is None:
-            groups_exist = {"systemd-journal", "adm"}
+            groups_exist = {"systemd-journal", "adm", "shadow"}
         if already_member is None:
             already_member = set()
 
@@ -145,7 +145,7 @@ class TestAddSentinelToLogGroupsStep:
 
         assert results[0].outcome == StepOutcome.SUCCESS
         usermod_calls = [c for c in mock_cmd.call_args_list if "usermod" in str(c)]
-        assert len(usermod_calls) == 2
+        assert len(usermod_calls) == 3
 
     def test_skips_nonexistent_groups(self) -> None:
         with patch(
@@ -161,7 +161,7 @@ class TestAddSentinelToLogGroupsStep:
     def test_skips_already_member_groups(self) -> None:
         with patch(
             "system_sentinel.setup.systemd_installer.run_command",
-            side_effect=self._make_run(already_member={"systemd-journal", "adm"}),
+            side_effect=self._make_run(already_member={"systemd-journal", "adm", "shadow"}),
         ) as mock_cmd:
             results, _ = _run_step(add_sentinel_to_log_groups_step)
 
@@ -182,7 +182,7 @@ class TestAddSentinelToLogGroupsStep:
     def test_check_only_already_member_succeeds(self) -> None:
         with patch(
             "system_sentinel.setup.systemd_installer.run_command",
-            side_effect=self._make_run(already_member={"systemd-journal", "adm"}),
+            side_effect=self._make_run(already_member={"systemd-journal", "adm", "shadow"}),
         ):
             results, _ = _run_step(add_sentinel_to_log_groups_step, WizardContext(check_only=True))
 

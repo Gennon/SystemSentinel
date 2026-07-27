@@ -119,17 +119,19 @@ def create_sentinel_user_step() -> WizardStep:
     )
 
 
-# Groups that allow the sentinel user to read system logs.
+# Groups that sentinel needs membership of.
 # systemd-journal: read journald entries.
 # adm: read /var/log/auth.log on Debian/Ubuntu systems.
-_LOG_GROUPS = ("systemd-journal", "adm")
+# shadow: read /etc/shadow for file-integrity monitoring.
+_LOG_GROUPS = ("systemd-journal", "adm", "shadow")
 
 
 def add_sentinel_to_log_groups_step() -> WizardStep:
-    """Return a WizardStep that adds sentinel to log-reading groups.
+    """Return a WizardStep that adds sentinel to required system groups.
 
     The sentinel user needs membership of ``systemd-journal`` to query
-    journald and ``adm`` (Debian/Ubuntu) to read ``/var/log/auth.log``.
+    journald, ``adm`` (Debian/Ubuntu) to read ``/var/log/auth.log``, and
+    ``shadow`` to read ``/etc/shadow`` for file-integrity monitoring.
     Groups that do not exist on the current system are skipped gracefully.
     """
 
@@ -186,7 +188,7 @@ def add_sentinel_to_log_groups_step() -> WizardStep:
 
     return WizardStep(
         name="add_sentinel_to_log_groups",
-        description="Add sentinel user to systemd-journal and adm log groups",
+        description="Add sentinel user to systemd-journal, adm, and shadow groups",
         runner=runner,
         check_safe=True,
     )
