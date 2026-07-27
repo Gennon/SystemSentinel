@@ -27,6 +27,7 @@ from system_sentinel.alerts.formatters import (
     _format_storage_report_generated,
     _format_system_daily_digest,
     _format_system_weekly_digest,
+    _format_twofa_audit_warning,
     _format_unknown_connection,
     _format_vulnscan_score_drop,
     _format_vulnscan_summary,
@@ -67,6 +68,7 @@ _EVENT_SEVERITY_KEYS = {
     "alert.storage.report_generated": "storage_report",
     "alert.vulnscan.summary": "vulnscan_summary",
     "alert.vulnscan.score_drop": "vulnscan_score_drop",
+    "alert.security.twofa_audit": "security_twofa_audit",
 }
 
 _SEVERITY_RANK: dict[AlertSeverity, int] = {
@@ -207,6 +209,7 @@ class AlertHandler:
         event_bus.subscribe("alert.hardening.auto_remediated", self._on_hardening_auto_remediated)
         event_bus.subscribe("alert.vulnscan.summary", self._on_vulnscan_summary)
         event_bus.subscribe("alert.vulnscan.score_drop", self._on_vulnscan_score_drop)
+        event_bus.subscribe("alert.security.twofa_audit", self._on_twofa_audit_warning)
         event_bus.subscribe("chat.alerts.mute", self._on_mute_non_critical)
         event_bus.subscribe("chat.alerts.unmute", self._on_unmute_non_critical)
 
@@ -401,6 +404,16 @@ class AlertHandler:
             payload.get("threshold"),
         )
         msg = self._apply_severity(event_type, payload, _format_vulnscan_score_drop(payload))
+        await self._notify_and_record(event_type, payload, msg)
+
+    async def _on_twofa_audit_warning(self, event_type: str, payload: Any) -> None:
+        self._logger.warning(
+            "2FA audit found non-compliant accounts: count=%s",
+            len(payload.get("non_compliant_accounts", []))
+            if isinstance(payload.get("non_compliant_accounts"), list)
+            else 0,
+        )
+        msg = self._apply_severity(event_type, payload, _format_twofa_audit_warning(payload))
         await self._notify_and_record(event_type, payload, msg)
 
     async def _on_mute_non_critical(self, _event_type: str, payload: Any) -> None:

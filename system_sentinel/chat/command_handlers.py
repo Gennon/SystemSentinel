@@ -25,6 +25,7 @@ _HELP_TEXT = (
     "!anomalies - list recent login anomalies\n"
     "!firewall - show effective firewall rules and desired-state drift status\n"
     "!hardening - show hardening audit results\n"
+    "!2fa - show latest 2FA audit status for non-exempt accounts\n"
     "!vulnscan - show latest vulnerability scan summary and full report\n"
     "!audit [--count N] - list recent audit log entries\n"
     "!graph <metric> <period> - graph historical metrics (24h, 7d, 30d, 90d)\n"
@@ -300,6 +301,61 @@ async def handle_vulnscan_command(*, db: Any, message: InboundMessage) -> Outbou
         lines.append("Top findings:")
         lines.extend(f"- {finding}" for finding in top_findings[:5])
     lines.extend(["", "Full Lynis report:", f"```text\n{report_text}\n```"])
+    return OutboundMessage(text="\n".join(lines), reply_to=message)
+
+
+async def handle_twofa_command(*, db: Any, message: InboundMessage) -> OutboundMessage:
+    cursor = await db.connection.execute(
+        """
+        SELECT id, audited_at, pass_count, fail_count, unknown_count
+        FROM twofa_audit_runs
+        ORDER BY audited_at DESC, id DESC
+        LIMIT 1
+        """
+    )
+    run_row = await cursor.fetchone()
+    if run_row is None:
+        return OutboundMessage(text="No 2FA audit results recorded.", reply_to=message)
+
+    run_id = int(run_row[0])
+    cursor = await db.connection.execute(
+        """
+        SELECT username, status, reason, methods_json
+        FROM twofa_audit_accounts
+        WHERE audit_run_id = ?
+          AND is_exempt = 0
+        ORDER BY username ASC
+        """,
+        (run_id,),
+    )
+    account_rows = await cursor.fetchall()
+
+    lines = [
+        (
+            "Latest 2FA audit: "
+            f"{run_row[1]} | pass={int(run_row[2])} | fail={int(run_row[3])} | "
+            f"unknown={int(run_row[4])}"
+        )
+    ]
+    if not account_rows:
+        lines.append("No non-exempt accounts were evaluated.")
+        return OutboundMessage(text="\n".join(lines), reply_to=message)
+
+    for row in account_rows:
+        username = str(row[0])
+        status = str(row[1]).upper()
+        reason = str(row[2])
+        methods_raw = row[3]
+        methods: list[str] = []
+        if isinstance(methods_raw, str):
+            try:
+                parsed = json.loads(methods_raw)
+            except json.JSONDecodeError:
+                parsed = []
+            if isinstance(parsed, list):
+                methods = [str(item) for item in parsed if str(item).strip()]
+        methods_label = ", ".join(methods) if methods else "none"
+        lines.append(f"- {username}: {status} | methods={methods_label} | {reason}")
     return OutboundMessage(text="\n".join(lines), reply_to=message)
 
 

@@ -206,6 +206,10 @@ class TestNoConfigInteractive:
         assert data["tools"]["vulnscan"]["schedule"] == "7d 00:00:00"
         assert data["tools"]["vulnscan"]["score_drop_alert_threshold"] == 10
         assert data["tools"]["vulnscan"]["report_path"] == "/var/log/lynis-report.dat"
+        assert data["tools"]["twofa_audit"]["enabled"] is True
+        assert data["tools"]["twofa_audit"]["run_on_startup"] is False
+        assert data["tools"]["twofa_audit"]["schedule"] == "7d 00:00:00"
+        assert data["tools"]["twofa_audit"]["exempt_accounts"] == []
         assert data["llm"]["remediation"] is False
         assert data["updates"]["self_update"]["source_path"]
 

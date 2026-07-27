@@ -207,6 +207,7 @@ async def test_help_command_returns_supported_commands(tmp_path: Path) -> None:
     assert "!status" in response.text
     assert "!cleanup" in response.text
     assert "!snapshots" in response.text
+    assert "!2fa" in response.text
     assert "!vulnscan" in response.text
     assert "!audit [--count N]" in response.text
     assert "!ask <question>" in response.text
@@ -911,6 +912,88 @@ async def test_vulnscan_command_returns_latest_report(tmp_path: Path) -> None:
     assert "score=74" in response.text
     assert "Full Lynis report:" in response.text
     assert "hardening_index=74" in response.text
+
+
+@pytest.mark.asyncio
+async def test_twofa_command_returns_latest_non_exempt_statuses(tmp_path: Path) -> None:
+    db = DatabaseConnection(tmp_path / "sentinel.db")
+    await db.connect()
+    cursor = await db.connection.execute(
+        """
+        INSERT INTO twofa_audit_runs (
+            audited_at, pass_count, fail_count, unknown_count, exempt_count, non_compliant_count,
+            exempt_accounts_json
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (datetime.now(UTC).isoformat(), 1, 1, 1, 1, 1, json.dumps(["svc-account"])),
+    )
+    run_id = int(cursor.lastrowid or 0)
+    await db.connection.executemany(
+        """
+        INSERT INTO twofa_audit_accounts (
+            audit_run_id, username, status, reason, methods_json, is_exempt
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                run_id,
+                "alice",
+                "pass",
+                "Detected 2FA-compatible method(s): totp_google_authenticator.",
+                json.dumps(["totp_google_authenticator"]),
+                0,
+            ),
+            (
+                run_id,
+                "bob",
+                "fail",
+                "No configured TOTP secret or SSH key-only enforcement detected.",
+                json.dumps([]),
+                0,
+            ),
+            (
+                run_id,
+                "carol",
+                "unknown",
+                "Custom SSH AuthenticationMethods configured; status cannot be inferred reliably.",
+                json.dumps([]),
+                0,
+            ),
+            (
+                run_id,
+                "svc-account",
+                "exempt",
+                "Configured as exempt account.",
+                json.dumps([]),
+                1,
+            ),
+        ],
+    )
+    await db.connection.commit()
+    ctx = AppContext(
+        audit=AsyncMock(),
+        event_bus=AsyncMock(),
+        logger=logging.getLogger("test"),
+    )
+    dispatcher = ChatCommandDispatcher(
+        config={"chat_adapters": {"discord": {"channel_id": "100"}}},
+        app_ctx=ctx,
+        scheduler=_FakeScheduler(),  # type: ignore[arg-type]
+        tools={},
+        monitor_registry=_FakeMonitorRegistry(),  # type: ignore[arg-type]
+        db=db,
+    )
+
+    response = await dispatcher.handle_message(_message("!2fa"), ["!2fa"])
+    assert response is not None
+    assert "Latest 2FA audit" in response.text
+    assert "alice: PASS" in response.text
+    assert "bob: FAIL" in response.text
+    assert "carol: UNKNOWN" in response.text
+    assert "svc-account" not in response.text
+    await db.close()
 
 
 @pytest.mark.asyncio

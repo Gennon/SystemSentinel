@@ -285,7 +285,8 @@ class WeeklyDigestMonitor(BaseMonitor):
         vulnscan = await self._build_vulnerability_delta(
             week_start, previous_week_start, previous_week_end
         )
-        return f"{hardening}; {vulnscan}"
+        twofa = await self._build_twofa_posture(week_start)
+        return f"{hardening}; {vulnscan}; {twofa}"
 
     async def _build_hardening_posture(self, week_start: datetime) -> str:
         db = await self._get_db()
@@ -379,6 +380,46 @@ class WeeklyDigestMonitor(BaseMonitor):
             if isinstance(raw, str) and raw.strip().isdigit():
                 return int(raw.strip())
         return None
+
+    async def _build_twofa_posture(self, week_start: datetime) -> str:
+        db = await self._get_db()
+        cursor = await db.connection.execute(
+            """
+            SELECT id, fail_count, unknown_count
+            FROM twofa_audit_runs
+            WHERE audited_at >= ?
+            ORDER BY audited_at DESC, id DESC
+            LIMIT 1
+            """,
+            (week_start.isoformat(),),
+        )
+        run_row = await cursor.fetchone()
+        if run_row is None:
+            return "2fa: no audit run recorded this week"
+
+        run_id = int(run_row[0])
+        fail_count = int(run_row[1])
+        unknown_count = int(run_row[2])
+
+        cursor = await db.connection.execute(
+            """
+            SELECT username
+            FROM twofa_audit_accounts
+            WHERE audit_run_id = ?
+              AND status = 'fail'
+              AND is_exempt = 0
+            ORDER BY username ASC
+            """,
+            (run_id,),
+        )
+        failing_rows = await cursor.fetchall()
+        failing_accounts = [str(row[0]) for row in failing_rows]
+        if failing_accounts:
+            return (
+                "2fa: non_compliant_accounts="
+                f"{', '.join(failing_accounts)}; fail_count={fail_count}, unknown={unknown_count}"
+            )
+        return f"2fa: all non-exempt accounts compliant; unknown={unknown_count}"
 
     def _disk_used_bytes_delta(self, samples: list[dict[str, Any]]) -> dict[str, int]:
         deltas: dict[str, int] = {}

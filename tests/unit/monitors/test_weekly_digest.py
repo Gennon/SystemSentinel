@@ -192,6 +192,43 @@ async def test_collect_publishes_single_weekly_digest_once_per_week(
             ),
         ),
     )
+    run_cursor = await db.connection.execute(
+        """
+        INSERT INTO twofa_audit_runs (
+            audited_at, pass_count, fail_count, unknown_count, exempt_count, non_compliant_count,
+            exempt_accounts_json
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        ((now - timedelta(days=1)).isoformat(), 2, 1, 1, 1, 1, json.dumps(["backup"])),
+    )
+    run_id = int(run_cursor.lastrowid or 0)
+    await db.connection.executemany(
+        """
+        INSERT INTO twofa_audit_accounts (
+            audit_run_id, username, status, reason, methods_json, is_exempt
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                run_id,
+                "alice",
+                "pass",
+                "Detected 2FA-compatible method(s): totp_google_authenticator.",
+                json.dumps(["totp_google_authenticator"]),
+                0,
+            ),
+            (
+                run_id,
+                "bob",
+                "fail",
+                "No configured TOTP secret or SSH key-only enforcement detected.",
+                json.dumps([]),
+                0,
+            ),
+        ],
+    )
     await db.connection.commit()
 
     ctx = _make_ctx()
@@ -219,6 +256,7 @@ async def test_collect_publishes_single_weekly_digest_once_per_week(
     assert "Update History (7d)" in sections
     assert "File Cleanup Summary (7d)" in sections
     assert "Security Posture (7d)" in sections
+    assert "bob" in sections["Security Posture (7d)"]
     assert "+" in sections["Storage Usage Trend (7d)"]
 
 

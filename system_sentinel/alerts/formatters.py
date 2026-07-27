@@ -29,6 +29,7 @@ from system_sentinel.alerts.formatters_system import (
     _format_storage_report_generated,
     _format_system_daily_digest,
     _format_system_weekly_digest,
+    _format_twofa_audit_warning,
     _format_vulnscan_score_drop,
     _format_vulnscan_summary,
 )
@@ -55,6 +56,7 @@ __all__ = [
     "_format_storage_report_generated",
     "_format_system_daily_digest",
     "_format_system_weekly_digest",
+    "_format_twofa_audit_warning",
     "_format_unknown_connection",
     "_format_vulnscan_score_drop",
     "_format_vulnscan_summary",

@@ -506,6 +506,21 @@ tools:
 
 When enabled, the tool runs Lynis, stores full report + summary in SQLite, emits chat summary/score-drop alerts, and the latest full report is available via the `!vulnscan` chat command. If you enable `vulnscan` via `sentinel setup` optional features, setup installs `lynis` automatically; manual config edits still require `lynis` to be present on the host.
 
+#### `tools.twofa_audit` example
+
+```yaml
+tools:
+  twofa_audit:
+    enabled: true
+    run_on_startup: false
+    schedule: "7d 00:00:00" # weekly default if omitted
+    exempt_accounts:
+      - "backup"
+      - "ci-runner"
+```
+
+When enabled, the tool audits local non-system accounts for detected 2FA posture (Google Authenticator TOTP secret and/or SSH key-only enforcement), stores per-account status in SQLite, exposes the latest status via `!2fa`, and emits a warning-level chat alert when non-exempt accounts are non-compliant.
+
 ### Self-update
 
 ```yaml
@@ -715,6 +730,10 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `tools.vulnscan.score_drop_alert_threshold` | int | `10` | `VulnScanTool` | Sends a score-drop chat alert when score decline is greater than this threshold vs previous scan. |
 | `tools.vulnscan.report_path` | path | `/var/log/lynis-report.dat` | `VulnScanTool` | Lynis report file path read after each run (full report stored in SQLite). |
 | `tools.vulnscan.lynis_args` | list[string] | `["audit","system","--quick","--no-colors"]` | `VulnScanTool` | Arguments passed to the Lynis binary (binary path auto-detected with `which lynis`). |
+| `tools.twofa_audit.enabled` | bool | `true` | `TwoFactorAuditTool` | Enables local-account 2FA posture audits. |
+| `tools.twofa_audit.run_on_startup` | bool | `false` | daemon startup runner | Runs one 2FA audit during daemon startup. |
+| `tools.twofa_audit.schedule` | duration (`HH:MM:SS` or `<days>d HH:MM:SS`) | `7d 00:00:00` | `TwoFactorAuditTool` | Recurring 2FA audit schedule (weekly default). |
+| `tools.twofa_audit.exempt_accounts` | list[string] | `[]` | `TwoFactorAuditTool` | Accounts exempt from 2FA requirement (for example service users). |
 
 ### Update and runtime control keys
 

@@ -24,6 +24,7 @@ from system_sentinel.chat.command_handlers import (
     handle_help_command,
     handle_snapshots_command,
     handle_storage_command,
+    handle_twofa_command,
     handle_vulnscan_command,
 )
 from system_sentinel.chat.command_insights import (
@@ -122,6 +123,7 @@ class ChatCommandDispatcher:
             "!anomalies": self._cmd_anomalies,
             "!firewall": self._cmd_firewall,
             "!hardening": self._cmd_hardening,
+            "!2fa": self._cmd_twofa,
             "!vulnscan": self._cmd_vulnscan,
             "!audit": self._cmd_audit,
             "!graph": self._cmd_graph,
@@ -366,6 +368,9 @@ class ChatCommandDispatcher:
 
     async def _cmd_hardening(self, message: InboundMessage) -> OutboundMessage:
         return await handle_hardening_command(db=self._db, message=message)
+
+    async def _cmd_twofa(self, message: InboundMessage) -> OutboundMessage:
+        return await handle_twofa_command(db=self._db, message=message)
 
     async def _cmd_vulnscan(self, message: InboundMessage) -> OutboundMessage:
         return await handle_vulnscan_command(db=self._db, message=message)

@@ -57,6 +57,7 @@ firewall        = "system_sentinel.tools.firewall.tool:FirewallTool"
 hardening       = "system_sentinel.tools.hardening.tool:HardeningTool"
 vulnscan        = "system_sentinel.tools.vulnscan.tool:VulnScanTool"
 storage         = "system_sentinel.tools.storage.tool:StorageReportTool"
+twofa_audit     = "system_sentinel.tools.twofa_audit.tool:TwoFactorAuditTool"
 
 [project.entry-points."sentinel.monitors"]
 cpu            = "system_sentinel.monitors.cpu:CpuMonitor"

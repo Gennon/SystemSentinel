@@ -29,6 +29,7 @@ from system_sentinel.alerts.handler import (
     _format_storage_report_generated,
     _format_system_daily_digest,
     _format_system_weekly_digest,
+    _format_twofa_audit_warning,
     _format_unknown_connection,
     _format_vulnscan_score_drop,
     _format_vulnscan_summary,
@@ -175,6 +176,13 @@ _VULNSCAN_SCORE_DROP_PAYLOAD = {
     "threshold": 10,
 }
 
+_TWOFA_AUDIT_PAYLOAD = {
+    "event_type": "security_twofa_audit",
+    "generated_at": "2026-07-20T06:00:00+00:00",
+    "non_compliant_accounts": ["bob", "carol"],
+    "unknown_accounts": ["dave"],
+}
+
 
 # ---------------------------------------------------------------------------
 # _format_unknown_connection unit tests
@@ -249,6 +257,12 @@ def test_format_vulnscan_score_drop_is_warning() -> None:
     msg = _format_vulnscan_score_drop(_VULNSCAN_SCORE_DROP_PAYLOAD)
     assert msg.severity == AlertSeverity.WARNING
     assert "drop=12" in msg.text
+
+
+def test_format_twofa_audit_warning_is_warning() -> None:
+    msg = _format_twofa_audit_warning(_TWOFA_AUDIT_PAYLOAD)
+    assert msg.severity == AlertSeverity.WARNING
+    assert "non_compliant=bob, carol" in msg.text
 
 
 # ---------------------------------------------------------------------------
@@ -357,6 +371,19 @@ async def test_handler_broadcasts_on_vulnscan_score_drop_event() -> None:
 
     assert len(calls) == 1
     assert "drop=12" in calls[0].text
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_twofa_audit_warning_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.security.twofa_audit", _TWOFA_AUDIT_PAYLOAD)
+
+    assert len(calls) == 1
+    assert "non_compliant=bob, carol" in calls[0].text
 
 
 _BRUTE_FORCE_PAYLOAD = {

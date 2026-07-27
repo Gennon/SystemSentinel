@@ -242,6 +242,12 @@ _SAFE_DEFAULTS: dict[str, Any] = {
             "score_drop_alert_threshold": 10,
             "report_path": "/var/log/lynis-report.dat",
         },
+        "twofa_audit": {
+            "enabled": True,
+            "run_on_startup": False,
+            "schedule": "7d 00:00:00",
+            "exempt_accounts": [],
+        },
     },
     "llm": {
         "enabled": False,

@@ -24,6 +24,7 @@ _DEFAULT_READONLY_COMMANDS = {
     "!anomalies",
     "!firewall",
     "!hardening",
+    "!2fa",
     "!vulnscan",
 }
 _COMMAND_ALIASES = {

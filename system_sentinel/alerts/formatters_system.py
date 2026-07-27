@@ -126,6 +126,38 @@ def _format_vulnscan_score_drop(payload: dict[str, Any]) -> OutboundMessage:
     )
 
 
+def _format_twofa_audit_warning(payload: dict[str, Any]) -> OutboundMessage:
+    non_compliant_raw = payload.get("non_compliant_accounts", [])
+    non_compliant = (
+        [str(item).strip() for item in non_compliant_raw if str(item).strip()]
+        if isinstance(non_compliant_raw, list)
+        else []
+    )
+    unknown_raw = payload.get("unknown_accounts", [])
+    unknown_accounts = (
+        [str(item).strip() for item in unknown_raw if str(item).strip()]
+        if isinstance(unknown_raw, list)
+        else []
+    )
+    failing_accounts = ", ".join(non_compliant) if non_compliant else "none"
+    unknown_label = ", ".join(unknown_accounts) if unknown_accounts else "none"
+    return OutboundMessage(
+        title="⚠️ 2FA Enforcement Audit",
+        text=(
+            "Accounts without detected 2FA were found.\n"
+            f"non_compliant={failing_accounts}\n"
+            f"unknown={unknown_label}"
+        ),
+        severity=AlertSeverity.WARNING,
+        fields={
+            "Event Type": str(payload.get("event_type", "security_twofa_audit")),
+            "Generated At": str(payload.get("generated_at", "—")),
+            "Non-Compliant Accounts": str(len(non_compliant)),
+            "Unknown Accounts": str(len(unknown_accounts)),
+        },
+    )
+
+
 def _format_file_change_detected(payload: dict[str, Any]) -> OutboundMessage:
     change_type = str(payload.get("change_type", "unknown"))
     file_path = str(payload.get("file_path", "unknown"))

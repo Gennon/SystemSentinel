@@ -100,7 +100,7 @@ A Linux system management daemon that autonomously handles updates, security har
 
 ### Security & Hardening
 - [x] As a user I want periodic vulnerability scanning so I get a security posture report. **(US-026)**
-- [ ] As a user I want 2FA enforcement audit so the system flags accounts that do not have 2FA enabled.
+- [x] As a user I want 2FA enforcement audit so the system flags accounts that do not have 2FA enabled. **(US-027)**
 
 ### Monitoring & Metrics
 - [x] As a user I want a Prometheus-compatible metrics export so I can plug SystemSentinel into an existing Grafana setup. **(US-028)**
