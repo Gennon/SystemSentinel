@@ -22,6 +22,7 @@ from system_sentinel.chat.command_handlers import (
     handle_firewall_command,
     handle_hardening_command,
     handle_help_command,
+    handle_integrity_command,
     handle_snapshots_command,
     handle_storage_command,
     handle_twofa_command,
@@ -48,6 +49,7 @@ from system_sentinel.chat.maintenance_utils import (
 from system_sentinel.core.exceptions import LLMUnavailableError
 from system_sentinel.core.time_config import parse_duration_hhmmss
 from system_sentinel.db.connection_repository import ConnectionRepository
+from system_sentinel.db.file_integrity_repository import FileIntegrityRepository
 from system_sentinel.db.login_repository import LoginRepository
 from system_sentinel.db.metrics_repository import MetricsRepository
 from system_sentinel.db.old_files_repository import OldFilesRepository
@@ -101,6 +103,7 @@ class ChatCommandDispatcher:
         self._connection_repo = ConnectionRepository(db)
         self._login_repo = LoginRepository(db)
         self._metrics_repo = MetricsRepository(db)
+        self._file_integrity_repo = FileIntegrityRepository(db)
         self._chart_renderer = self._load_chart_renderer()
         self._pending_actions: dict[tuple[str, str, str], PendingAction] = {}
 
@@ -128,6 +131,7 @@ class ChatCommandDispatcher:
             "!audit": self._cmd_audit,
             "!graph": self._cmd_graph,
             "!connections": self._cmd_connections,
+            "!integrity": self._cmd_integrity,
             "!mute": self._cmd_mute,
             "!unmute": self._cmd_unmute,
             "!help": self._cmd_help,
@@ -391,6 +395,14 @@ class ChatCommandDispatcher:
     async def _cmd_connections(self, message: InboundMessage) -> OutboundMessage:
         return await handle_connections_command(
             connection_repo=self._connection_repo,
+            message=message,
+        )
+
+    async def _cmd_integrity(self, message: InboundMessage) -> OutboundMessage:
+        return await handle_integrity_command(
+            config=self._config,
+            file_integrity_repo=self._file_integrity_repo,
+            audit=self._ctx.audit,
             message=message,
         )
 

@@ -14,6 +14,7 @@ from system_sentinel.alerts.handler import (
     _format_cpu_threshold_exceeded,
     _format_disk_threshold_exceeded,
     _format_file_change_detected,
+    _format_file_integrity_mismatch,
     _format_firewall_drift,
     _format_gpu_threshold_exceeded,
     _format_hardening_auto_remediated,
@@ -155,6 +156,14 @@ _FILE_CHANGE_PAYLOAD = {
     "destination_path": None,
 }
 
+_FILE_INTEGRITY_MISMATCH_PAYLOAD = {
+    "event_type": "file_integrity_mismatch",
+    "file_path": "/etc/ssh/sshd_config",
+    "expected_hash": "abc123",
+    "actual_hash": "def456",
+    "timestamp": "2026-07-16T10:00:00+00:00",
+}
+
 _VULNSCAN_SUMMARY_PAYLOAD = {
     "event_type": "vulnscan_summary",
     "generated_at": "2026-07-20T05:00:00+00:00",
@@ -242,6 +251,15 @@ def test_format_file_change_detected_fields_present() -> None:
     assert msg.fields["Change Type"] == "modified"
     assert msg.fields["File Path"] == "/etc/ssh/sshd_config"
     assert msg.fields["Process Owner"] == "root"
+
+
+def test_format_file_integrity_mismatch_is_critical() -> None:
+    msg = _format_file_integrity_mismatch(_FILE_INTEGRITY_MISMATCH_PAYLOAD)
+    assert msg.severity == AlertSeverity.CRITICAL
+    assert msg.fields is not None
+    assert msg.fields["File Path"] == "/etc/ssh/sshd_config"
+    assert msg.fields["Expected Hash"] == "abc123"
+    assert msg.fields["Actual Hash"] == "def456"
 
 
 def test_format_vulnscan_summary_includes_score_and_counts() -> None:
@@ -345,6 +363,20 @@ async def test_handler_broadcasts_on_file_change_detected_event() -> None:
 
     assert len(calls) == 1
     assert "sshd_config" in calls[0].text
+
+
+@pytest.mark.asyncio
+async def test_handler_broadcasts_on_file_integrity_mismatch_event() -> None:
+    router, calls = _make_router()
+    handler = AlertHandler(router)
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.files.integrity_mismatch", _FILE_INTEGRITY_MISMATCH_PAYLOAD)
+
+    assert len(calls) == 1
+    assert calls[0].severity == AlertSeverity.CRITICAL
+    assert "Checksum mismatch detected" in calls[0].text
 
 
 @pytest.mark.asyncio

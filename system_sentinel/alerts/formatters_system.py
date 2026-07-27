@@ -184,6 +184,24 @@ def _format_file_change_detected(payload: dict[str, Any]) -> OutboundMessage:
     )
 
 
+def _format_file_integrity_mismatch(payload: dict[str, Any]) -> OutboundMessage:
+    file_path = str(payload.get("file_path", "unknown"))
+    expected_hash = str(payload.get("expected_hash", "unknown"))
+    actual_hash = str(payload.get("actual_hash", "unknown"))
+    return OutboundMessage(
+        title="🔴 File Integrity Mismatch",
+        text=f"Checksum mismatch detected for {file_path}.",
+        severity=AlertSeverity.CRITICAL,
+        fields={
+            "Event Type": str(payload.get("event_type", "file_integrity_mismatch")),
+            "File Path": file_path,
+            "Expected Hash": expected_hash,
+            "Actual Hash": actual_hash,
+            "Timestamp": str(payload.get("timestamp", "—")),
+        },
+    )
+
+
 def _format_cpu_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessage:
     return OutboundMessage(
         title="⚠️ High CPU Usage",

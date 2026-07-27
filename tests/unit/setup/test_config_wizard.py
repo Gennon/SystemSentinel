@@ -183,6 +183,15 @@ class TestNoConfigInteractive:
         assert data["monitors"]["directory_changes"]["enabled"] is True
         assert data["monitors"]["directory_changes"]["watched_directories"] == []
         assert data["monitors"]["directory_changes"]["alert_cooldown"] == "00:05:00"
+        assert data["monitors"]["file_integrity"]["enabled"] is True
+        assert data["monitors"]["file_integrity"]["verify_interval"] == "00:10:00"
+        assert data["monitors"]["file_integrity"]["monitored_paths"] == [
+            "/etc/passwd",
+            "/etc/shadow",
+            "/etc/sudoers",
+            "/etc/ssh/sshd_config",
+            "/etc/crontab",
+        ]
         assert data["tools"]["firewall"]["enabled"] is True
         assert data["tools"]["firewall"]["reconcile_interval"] == "00:10:00"
         assert data["tools"]["firewall"]["run_on_startup"] is True

@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+import hashlib
 import json
+import os
+from pathlib import Path
 import shutil
 from typing import Any, Protocol, runtime_checkable
 
 from system_sentinel.chat.base import InboundMessage, OutboundMessage
+from system_sentinel.file_integrity import expand_monitored_targets, normalize_monitored_paths
 from system_sentinel.tools.firewall.backends import (
     FirewallBackendError,
     UnsupportedFirewallBackendError,
@@ -30,6 +34,8 @@ _HELP_TEXT = (
     "!audit [--count N] - list recent audit log entries\n"
     "!graph <metric> <period> - graph historical metrics (24h, 7d, 30d, 90d)\n"
     "!connections classify - list latest connection intent classifications\n"
+    "!integrity - show monitored file integrity status\n"
+    "!integrity update <path> - update baseline hash for a legitimate change\n"
     "!mute <duration> - temporarily suppress non-critical alerts (e.g. 2h)\n"
     "!unmute - cancel an active mute window\n"
     "!help - show this help"
@@ -391,6 +397,124 @@ async def handle_audit_command(*, db: Any, message: InboundMessage) -> OutboundM
     return OutboundMessage(text="\n".join(lines), reply_to=message)
 
 
+async def handle_integrity_command(
+    *,
+    config: dict[str, Any],
+    file_integrity_repo: Any,
+    audit: Any,
+    message: InboundMessage,
+) -> OutboundMessage:
+    parts = message.text.strip().split(maxsplit=2)
+    if len(parts) == 1:
+        return await _handle_integrity_status(
+            config=config, file_integrity_repo=file_integrity_repo, message=message
+        )
+
+    if len(parts) >= 2 and parts[1].lower() == "update":
+        if len(parts) != 3 or not parts[2].strip():
+            return OutboundMessage(text="Usage: !integrity update <path>", reply_to=message)
+        return await _handle_integrity_update(
+            file_integrity_repo=file_integrity_repo,
+            audit=audit,
+            message=message,
+            raw_path=parts[2].strip(),
+        )
+
+    return OutboundMessage(
+        text="Usage: !integrity OR !integrity update <path>",
+        reply_to=message,
+    )
+
+
+async def _handle_integrity_status(
+    *,
+    config: dict[str, Any],
+    file_integrity_repo: Any,
+    message: InboundMessage,
+) -> OutboundMessage:
+    monitored_paths = normalize_monitored_paths(
+        config.get("monitors", {}).get("file_integrity", {}).get("monitored_paths", [])
+    )
+    targets = expand_monitored_targets(monitored_paths)
+    if not targets:
+        return OutboundMessage(text="No file-integrity targets configured.", reply_to=message)
+
+    statuses = await file_integrity_repo.list_statuses([target.path for target in targets])
+    status_by_path = {str(row["path"]): row for row in statuses}
+    lines = ["File integrity status:"]
+    for target in targets:
+        row = status_by_path.get(target.path)
+        if row is None:
+            lines.append(f"- {target.path} | status=unverified | last_verified=never")
+            continue
+        status = str(row.get("last_status") or "unknown")
+        last_verified = str(row.get("last_verified_at") or "never")
+        lines.append(f"- {target.path} | status={status} | last_verified={last_verified}")
+    return OutboundMessage(text="\n".join(lines), reply_to=message)
+
+
+async def _handle_integrity_update(
+    *,
+    file_integrity_repo: Any,
+    audit: Any,
+    message: InboundMessage,
+    raw_path: str,
+) -> OutboundMessage:
+    requested = _normalize_path(raw_path)
+    requested_path = Path(requested)
+    targets: list[Path]
+    if requested_path.is_dir():
+        targets = sorted(path for path in requested_path.rglob("*") if path.is_file())
+        if not targets:
+            return OutboundMessage(
+                text=f"No files found under directory: {requested}",
+                reply_to=message,
+            )
+    elif requested_path.exists() and requested_path.is_file():
+        targets = [requested_path]
+    else:
+        return OutboundMessage(
+            text=f"Path is not a readable file or directory: {requested}",
+            reply_to=message,
+        )
+
+    updated_paths: list[str] = []
+    checked_at = datetime.now(UTC)
+    for target in targets:
+        sha256 = _sha256_file(target)
+        normalized_path = _normalize_path(str(target))
+        await file_integrity_repo.upsert_baseline(
+            path=normalized_path,
+            source_path=requested,
+            expected_sha256=sha256,
+            observed_at=checked_at,
+        )
+        await file_integrity_repo.record_verification(
+            path=normalized_path,
+            checked_at=checked_at,
+            expected_sha256=sha256,
+            actual_sha256=sha256,
+            status="baseline_updated",
+        )
+        updated_paths.append(normalized_path)
+
+    await audit.append(
+        action_type="file_integrity_baseline_update",
+        source=f"chat:{message.adapter}:{message.user_id}",
+        description=f"Updated file integrity baseline for {requested}.",
+        outcome="success",
+        details={
+            "requested_path": requested,
+            "updated_count": len(updated_paths),
+            "updated_paths": updated_paths[:20],
+        },
+    )
+    return OutboundMessage(
+        text=f"Updated file-integrity baseline for {len(updated_paths)} file(s).",
+        reply_to=message,
+    )
+
+
 def handle_help_command(*, message: InboundMessage) -> OutboundMessage:
     return OutboundMessage(text=_HELP_TEXT, reply_to=message)
 
@@ -425,3 +549,19 @@ async def handle_connections_command(
             f"action={row['recommended_action']} | reasons={reasons_str}"
         )
     return OutboundMessage(text="\n".join(lines), reply_to=message)
+
+
+def _normalize_path(raw_path: str) -> str:
+    expanded = os.path.expandvars(raw_path)
+    return str(Path(expanded).expanduser().resolve(strict=False))
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()

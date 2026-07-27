@@ -212,6 +212,7 @@ async def test_help_command_returns_supported_commands(tmp_path: Path) -> None:
     assert "!audit [--count N]" in response.text
     assert "!ask <question>" in response.text
     assert "!graph <metric> <period>" in response.text
+    assert "!integrity" in response.text
     assert "!mute <duration>" in response.text
     assert "!unmute" in response.text
 
@@ -710,6 +711,40 @@ async def test_connections_classify_returns_latest_classifications(tmp_path: Pat
     assert "8.8.8.8" in response.text
     assert "likely_access_attempt" in response.text
     assert "block" in response.text
+
+
+@pytest.mark.asyncio
+async def test_integrity_command_shows_status_and_updates_baseline(tmp_path: Path) -> None:
+    target = tmp_path / "critical.conf"
+    target.write_text("enabled=true\n")
+    dispatcher = await _dispatcher(
+        tmp_path,
+        {
+            "chat_adapters": {"discord": {"channel_id": "100"}},
+            "monitors": {"file_integrity": {"monitored_paths": [str(target)]}},
+        },
+        {},
+    )
+
+    status_before = await dispatcher.handle_message(_message("!integrity"), ["!integrity"])
+    assert status_before is not None
+    assert "status=unverified" in status_before.text
+
+    update = await dispatcher.handle_message(
+        _message(f"!integrity update {target}"),
+        ["!integrity", "update", str(target)],
+    )
+    assert update is not None
+    assert "Updated file-integrity baseline for 1 file(s)." in update.text
+
+    status_after = await dispatcher.handle_message(_message("!integrity"), ["!integrity"])
+    assert status_after is not None
+    assert "status=baseline_updated" in status_after.text
+    audit_calls = [call.kwargs for call in dispatcher._ctx.audit.append.await_args_list]  # type: ignore[attr-defined]
+    assert any(
+        call_kwargs.get("action_type") == "file_integrity_baseline_update"
+        for call_kwargs in audit_calls
+    )
 
 
 @pytest.mark.asyncio

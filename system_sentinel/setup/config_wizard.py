@@ -193,6 +193,17 @@ _SAFE_DEFAULTS: dict[str, Any] = {
             "watched_directories": [],
             "alert_cooldown": "00:05:00",
         },
+        "file_integrity": {
+            "enabled": True,
+            "verify_interval": "00:10:00",
+            "monitored_paths": [
+                "/etc/passwd",
+                "/etc/shadow",
+                "/etc/sudoers",
+                "/etc/ssh/sshd_config",
+                "/etc/crontab",
+            ],
+        },
     },
     "charts": {
         "renderer": "text",

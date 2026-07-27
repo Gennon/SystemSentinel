@@ -12,6 +12,7 @@ from system_sentinel.alerts.formatters import (
     _format_cpu_threshold_exceeded,
     _format_disk_threshold_exceeded,
     _format_file_change_detected,
+    _format_file_integrity_mismatch,
     _format_firewall_drift,
     _format_gpu_threshold_exceeded,
     _format_hardening_auto_remediated,
@@ -60,6 +61,7 @@ _EVENT_SEVERITY_KEYS = {
     "alert.connection.daily_digest": "network_digest",
     "alert.files.daily_digest": "files_digest",
     "alert.files.change_detected": "files_change",
+    "alert.files.integrity_mismatch": "files_integrity",
     "alert.service.failure_detected": "service_failure",
     "alert.service.restart_result": "service_restart_result",
     "alert.service.restart_exhausted": "service_restart_exhausted",
@@ -191,6 +193,7 @@ class AlertHandler:
         event_bus.subscribe("alert.connection.daily_digest", self._on_connection_daily_digest)
         event_bus.subscribe("alert.files.daily_digest", self._on_old_files_daily_digest)
         event_bus.subscribe("alert.files.change_detected", self._on_file_change_detected)
+        event_bus.subscribe("alert.files.integrity_mismatch", self._on_file_integrity_mismatch)
         event_bus.subscribe("alert.system.daily_digest", self._on_system_daily_digest)
         event_bus.subscribe("alert.system.weekly_digest", self._on_system_weekly_digest)
         event_bus.subscribe("alert.storage.report_generated", self._on_storage_report_generated)
@@ -288,6 +291,14 @@ class AlertHandler:
             payload.get("file_path"),
         )
         msg = self._apply_severity(event_type, payload, _format_file_change_detected(payload))
+        await self._notify_and_record(event_type, payload, msg)
+
+    async def _on_file_integrity_mismatch(self, event_type: str, payload: Any) -> None:
+        self._logger.warning(
+            "File integrity mismatch detected: path=%s",
+            payload.get("file_path"),
+        )
+        msg = self._apply_severity(event_type, payload, _format_file_integrity_mismatch(payload))
         await self._notify_and_record(event_type, payload, msg)
 
     async def _on_system_daily_digest(self, event_type: str, payload: Any) -> None:

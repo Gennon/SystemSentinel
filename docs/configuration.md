@@ -182,6 +182,15 @@ monitors:
       - "/var/log"
     scan_interval: "24:00:00"
     age_threshold: "30d 00:00:00"
+  file_integrity:
+    enabled: true
+    verify_interval: "00:10:00"
+    monitored_paths:
+      - "/etc/passwd"
+      - "/etc/shadow"
+      - "/etc/sudoers"
+      - "/etc/ssh/sshd_config"
+      - "/etc/crontab"
   daily_digest:
     enabled: true
     send_time_local: "08:00"
@@ -377,6 +386,14 @@ monitors:
       - "/srv/backups"
     scan_interval: "12:00:00"
     age_threshold: "14d 00:00:00"
+  file_integrity:
+    enabled: true
+    verify_interval: "00:10:00"
+    monitored_paths:
+      - "/etc/passwd"
+      - "/etc/ssh/sshd_config"
+      - "/etc/sudoers"
+      - "/etc"
   daily_digest:
     enabled: true
     send_time_local: "07:30"
@@ -673,6 +690,9 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `monitors.old_files.watched_directories` | list[path] | `[]` | `OldFilesMonitor` | Empty list disables scanning (with warning). |
 | `monitors.old_files.scan_interval` | duration | `24:00:00` | `OldFilesMonitor` | Time between scans. |
 | `monitors.old_files.age_threshold` | duration | `30d 00:00:00` | `OldFilesMonitor` | Minimum file age to include. |
+| `monitors.file_integrity.data_dir` | path | `/var/lib/sentinel` | `FileIntegrityMonitor` | Used to locate `sentinel.db`. |
+| `monitors.file_integrity.monitored_paths` | list[path] | `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, `/etc/ssh/sshd_config`, `/etc/crontab` | `FileIntegrityMonitor` | Files and/or directories to hash and verify. Directory entries are expanded recursively to files. |
+| `monitors.file_integrity.verify_interval` | duration | `00:10:00` | `FileIntegrityMonitor` | Time between checksum verification passes. |
 | `monitors.directory_changes.data_dir` | path | `/var/lib/sentinel` | `DirectoryChangesMonitor` | Used to locate `sentinel.db`. |
 | `monitors.directory_changes.watched_directories` | list[string/object] | `[]` | `DirectoryChangesMonitor` | List of string paths or objects (`{path, whitelist_globs?, whitelist_regex?}`) to monitor recursively. |
 | `monitors.directory_changes.alert_cooldown` | duration | `00:05:00` | `DirectoryChangesMonitor` | Per-file-path alert cooldown to avoid storming. |
