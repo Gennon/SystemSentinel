@@ -20,6 +20,7 @@ _HELP_TEXT = (
     "Available commands:\n"
     "!status - CPU, RAM, disk, uptime, and service health\n"
     "!ask <question> - ask the configured LLM provider for diagnostics help\n"
+    "!config <request> - update config via natural language (admin only, confirmation required)\n"
     "!update - run security updates (confirmation required)\n"
     "!cleanup - run file cleanup (confirmation required)\n"
     "!files - list old files from latest scan\n"

@@ -14,6 +14,14 @@ import psutil
 from system_sentinel.charts.registry import ChartRendererRegistry
 from system_sentinel.charts.renderers.text import TextChartRenderer
 from system_sentinel.chat.base import InboundMessage, InboundReaction, OutboundMessage
+from system_sentinel.chat.command_config import (
+    ConfigChangeProposal,
+    ConfigClarificationNeeded,
+    PendingConfigChange,
+    apply_config_change,
+    format_config_proposal,
+    interpret_config_request,
+)
 from system_sentinel.chat.command_graph import handle_graph_command
 from system_sentinel.chat.command_handlers import (
     handle_anomalies_command,
@@ -93,6 +101,7 @@ class ChatCommandDispatcher:
         tools: dict[str, BaseTool],
         monitor_registry: MonitorRegistry,
         db: DatabaseConnection,
+        config_path: Path | None = None,
     ) -> None:
         self._config = config
         self._ctx = app_ctx
@@ -100,6 +109,7 @@ class ChatCommandDispatcher:
         self._tools = tools
         self._monitor_registry = monitor_registry
         self._db = db
+        self._config_path = config_path
         self._old_files_repo = OldFilesRepository(db)
         self._connection_repo = ConnectionRepository(db)
         self._login_repo = LoginRepository(db)
@@ -107,6 +117,7 @@ class ChatCommandDispatcher:
         self._file_integrity_repo = FileIntegrityRepository(db)
         self._chart_renderer = self._load_chart_renderer()
         self._pending_actions: dict[tuple[str, str, str], PendingAction] = {}
+        self._pending_config_changes: dict[tuple[str, str, str], PendingConfigChange] = {}
 
     async def handle_message(
         self, message: InboundMessage, args: list[str]
@@ -135,6 +146,7 @@ class ChatCommandDispatcher:
             "!integrity": self._cmd_integrity,
             "!mute": self._cmd_mute,
             "!unmute": self._cmd_unmute,
+            "!config": self._cmd_config,
             "!help": self._cmd_help,
         }
         action_commands = {"!update", "!cleanup"}
@@ -174,6 +186,19 @@ class ChatCommandDispatcher:
         if str(reaction.emoji) != _CONFIRMATION_EMOJI:
             return None
         key = (reaction.adapter, reaction.channel_id, reaction.user_id)
+
+        # Check pending config changes first
+        pending_cfg = self._pending_config_changes.get(key)
+        if pending_cfg is not None:
+            now = datetime.now(UTC)
+            if now > pending_cfg.expires_at:
+                del self._pending_config_changes[key]
+                return OutboundMessage(
+                    text="Config change confirmation expired. Run the command again."
+                )
+            del self._pending_config_changes[key]
+            return await self._execute_config_change(reaction, pending_cfg)
+
         pending = self._pending_actions.get(key)
         if pending is None:
             return None
@@ -390,6 +415,107 @@ class ChatCommandDispatcher:
         return OutboundMessage(
             text=f"[{result.provider}:{result.model_used}]\n{result.text[:2800]}",
             reply_to=message,
+        )
+
+    async def _cmd_config(self, message: InboundMessage) -> OutboundMessage:
+        request = self._extract_prompt_after_command(message.text)
+        if request is None:
+            return OutboundMessage(
+                text="Usage: !config <natural-language request>  e.g. '!config set CPU alert threshold to 90%'",
+                reply_to=message,
+            )
+
+        llm_client = self._ctx.llm
+        if llm_client is None:
+            return OutboundMessage(
+                text=(
+                    "LLM assistant is not configured. "
+                    "Configure `llm` and `llm_providers` in config.yaml."
+                ),
+                reply_to=message,
+            )
+
+        if self._config_path is None:
+            return OutboundMessage(
+                text="Config file path is not available; cannot apply changes.",
+                reply_to=message,
+            )
+
+        try:
+            result = await interpret_config_request(
+                llm_client=llm_client,
+                request=request,
+                current_config=self._config,
+            )
+        except LLMUnavailableError as exc:
+            return OutboundMessage(
+                text=f"LLM assistant unavailable: {exc}",
+                reply_to=message,
+            )
+
+        if isinstance(result, ConfigClarificationNeeded):
+            return OutboundMessage(text=result.question, reply_to=message)
+
+        if isinstance(result, ConfigChangeProposal):
+            pending = PendingConfigChange.from_proposal(result, request)
+            key = (message.adapter, message.channel_id, message.user_id)
+            self._pending_config_changes[key] = pending
+            return OutboundMessage(text=format_config_proposal(result), reply_to=message)
+
+        return OutboundMessage(text="Unexpected response from LLM.", reply_to=message)
+
+    async def _execute_config_change(
+        self,
+        reaction: InboundReaction,
+        pending: PendingConfigChange,
+    ) -> OutboundMessage:
+        if self._config_path is None:
+            return OutboundMessage(text="Config file path is not available; cannot apply changes.")
+
+        try:
+            old_value = await asyncio.to_thread(
+                apply_config_change,
+                self._config_path,
+                pending.key_path,
+                pending.new_value,
+            )
+        except Exception as exc:
+            await self._ctx.audit.append(
+                action_type="config_change",
+                source=f"chat:{reaction.adapter}:{reaction.user_id}",
+                description=f"Config change failed for key '{pending.key_path}'.",
+                outcome="failure",
+                details={
+                    "key_path": pending.key_path,
+                    "new_value": pending.new_value,
+                    "original_request": pending.original_request,
+                    "error": str(exc),
+                },
+            )
+            return OutboundMessage(text=f"Failed to apply config change: {exc}")
+
+        diff = f"{pending.key_path}: {old_value!r} -> {pending.new_value!r}"
+        await self._ctx.audit.append(
+            action_type="config_change",
+            source=f"chat:{reaction.adapter}:{reaction.user_id}",
+            description=f"Config key '{pending.key_path}' updated via chat.",
+            outcome="success",
+            details={
+                "key_path": pending.key_path,
+                "old_value": old_value,
+                "new_value": pending.new_value,
+                "diff": diff,
+                "original_request": pending.original_request,
+                "user_id": reaction.user_id,
+                "username": reaction.username,
+                "adapter": reaction.adapter,
+            },
+        )
+        return OutboundMessage(
+            text=(
+                f"Config updated.\n`{diff}`\n"
+                "Note: restart or reload the daemon for the change to take effect."
+            )
         )
 
     async def _cmd_files(self, message: InboundMessage) -> OutboundMessage:

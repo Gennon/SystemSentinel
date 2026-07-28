@@ -1,0 +1,334 @@
+"""AI-driven configuration update command (US-044).
+
+This module handles the ``!config`` chat command, which lets admins update
+``config.yaml`` settings via natural-language requests interpreted by the LLM.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+import json
+import re
+from typing import TYPE_CHECKING, Any
+import uuid
+
+import yaml
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from system_sentinel.core.context import LLMClient
+
+# ---------------------------------------------------------------------------
+# Settable-key schema
+# ---------------------------------------------------------------------------
+
+_CONFIRMATION_TTL_SECONDS = 300
+
+
+@dataclass(frozen=True)
+class ConfigKeySchema:
+    path: str
+    description: str
+    value_type: str  # "number" | "integer" | "string" | "boolean"
+    keywords: list[str] = field(default_factory=list)
+    min_value: float | None = None
+    max_value: float | None = None
+
+
+SETTABLE_CONFIG_KEYS: list[ConfigKeySchema] = [
+    ConfigKeySchema(
+        path="monitors.cpu.alert_threshold_percent",
+        description="CPU usage alert threshold percentage",
+        value_type="number",
+        keywords=["cpu", "processor", "alert", "threshold"],
+        min_value=0.0,
+        max_value=100.0,
+    ),
+    ConfigKeySchema(
+        path="monitors.cpu.alert_consecutive_intervals",
+        description="Consecutive intervals above threshold before a CPU alert fires",
+        value_type="integer",
+        keywords=["cpu", "consecutive", "intervals"],
+        min_value=1.0,
+    ),
+    ConfigKeySchema(
+        path="monitors.ram.alert_threshold_percent",
+        description="RAM usage alert threshold percentage",
+        value_type="number",
+        keywords=["ram", "memory", "alert", "threshold"],
+        min_value=0.0,
+        max_value=100.0,
+    ),
+    ConfigKeySchema(
+        path="monitors.disk.alert_threshold_percent",
+        description="Disk usage alert threshold percentage",
+        value_type="number",
+        keywords=["disk", "storage", "alert", "threshold"],
+        min_value=0.0,
+        max_value=100.0,
+    ),
+    ConfigKeySchema(
+        path="monitors.network.alert_threshold_mbps",
+        description="Network throughput alert threshold in Mbps",
+        value_type="number",
+        keywords=["network", "bandwidth", "throughput", "alert", "threshold"],
+        min_value=0.0,
+    ),
+]
+
+# ---------------------------------------------------------------------------
+# Result types
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ConfigChangeProposal:
+    key_path: str
+    old_value: Any
+    new_value: Any
+    description: str
+
+
+@dataclass(frozen=True)
+class ConfigClarificationNeeded:
+    question: str
+
+
+ConfigInterpretResult = ConfigChangeProposal | ConfigClarificationNeeded
+
+
+@dataclass(frozen=True)
+class PendingConfigChange:
+    key_path: str
+    old_value: Any
+    new_value: Any
+    original_request: str
+    description: str
+    requested_at: datetime
+    expires_at: datetime
+    request_id: str
+
+    @classmethod
+    def from_proposal(cls, proposal: ConfigChangeProposal, request: str) -> PendingConfigChange:
+        now = datetime.now(UTC)
+        return cls(
+            key_path=proposal.key_path,
+            old_value=proposal.old_value,
+            new_value=proposal.new_value,
+            original_request=request,
+            description=proposal.description,
+            requested_at=now,
+            expires_at=now + timedelta(seconds=_CONFIRMATION_TTL_SECONDS),
+            request_id=uuid.uuid4().hex[:8],
+        )
+
+
+# ---------------------------------------------------------------------------
+# LLM interpretation
+# ---------------------------------------------------------------------------
+
+
+def _build_schema_description() -> str:
+    lines = ["Settable configuration keys:"]
+    for key in SETTABLE_CONFIG_KEYS:
+        constraints = ""
+        if key.min_value is not None and key.max_value is not None:
+            constraints = f" (range: {key.min_value}-{key.max_value})"
+        elif key.min_value is not None:
+            constraints = f" (min: {key.min_value})"
+        lines.append(f"  {key.path}  [{key.value_type}]{constraints} -- {key.description}")
+    return "\n".join(lines)
+
+
+async def interpret_config_request(
+    llm_client: LLMClient,
+    request: str,
+    current_config: dict[str, Any],
+) -> ConfigInterpretResult:
+    """Ask the LLM to map a natural-language request to a config key + value."""
+    schema_desc = _build_schema_description()
+    system_prompt = (
+        "You are a configuration assistant for SystemSentinel, a Linux monitoring daemon.\n"
+        "Given a natural-language config change request, respond ONLY with a JSON object.\n\n"
+        f"{schema_desc}\n\n"
+        'If the request clearly maps to one key, respond: {"action":"change","key_path":"<path>","new_value":<value>}\n\n'
+        'If the request is ambiguous or maps to no known key, respond: {"action":"clarify","question":"<question>"}\n\n'
+        "Respond with ONLY the JSON -- no explanations, no markdown."
+    )
+
+    response = await llm_client.complete(
+        prompt=request,
+        system_prompt=system_prompt,
+        timeout_seconds=15.0,
+    )
+    return _parse_llm_response(response.text, current_config)
+
+
+def _parse_llm_response(
+    text: str,
+    current_config: dict[str, Any],
+) -> ConfigInterpretResult:
+    json_text = _extract_json(text)
+    try:
+        data = json.loads(json_text)
+    except (json.JSONDecodeError, ValueError):
+        return ConfigClarificationNeeded(
+            question=(
+                "I couldn't understand that config change request. "
+                "Try something like: 'set CPU alert threshold to 90'"
+            )
+        )
+
+    if not isinstance(data, dict):
+        return ConfigClarificationNeeded(
+            question="Could you clarify which config setting to change?"
+        )
+
+    action = data.get("action")
+
+    if action == "clarify":
+        question = data.get("question", "Could you clarify which config setting to change?")
+        return ConfigClarificationNeeded(question=str(question))
+
+    if action == "change":
+        key_path = data.get("key_path")
+        new_value = data.get("new_value")
+
+        if not isinstance(key_path, str):
+            return ConfigClarificationNeeded(
+                question="Which configuration key do you want to change?"
+            )
+
+        schema = _find_schema_key(key_path)
+        if schema is None:
+            return ConfigClarificationNeeded(
+                question=f"I don't know the config key '{key_path}'. Could you clarify?"
+            )
+
+        old_value = get_nested_value(current_config, key_path)
+
+        coerced, error = _coerce_and_validate(new_value, schema)
+        if error is not None:
+            return ConfigClarificationNeeded(question=error)
+
+        return ConfigChangeProposal(
+            key_path=key_path,
+            old_value=old_value,
+            new_value=coerced,
+            description=schema.description,
+        )
+
+    return ConfigClarificationNeeded(question="Could you clarify which config setting to change?")
+
+
+def _extract_json(text: str) -> str:
+    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if match:
+        return match.group(1)
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        return match.group(0)
+    return text.strip()
+
+
+def _find_schema_key(path: str) -> ConfigKeySchema | None:
+    for key in SETTABLE_CONFIG_KEYS:
+        if key.path == path:
+            return key
+    return None
+
+
+def _coerce_and_validate(
+    value: Any,
+    schema: ConfigKeySchema,
+) -> tuple[Any, str | None]:
+    """Coerce value to the expected type and validate constraints.
+
+    Returns ``(coerced_value, None)`` on success or ``(None, error_message)`` on failure.
+    """
+    try:
+        coerced: Any
+        if schema.value_type == "integer":
+            coerced = int(value)
+        elif schema.value_type == "number":
+            coerced = float(value)
+        elif schema.value_type == "boolean":
+            if isinstance(value, bool):
+                coerced = value
+            elif isinstance(value, str):
+                coerced = value.lower() in {"true", "yes", "1"}
+            else:
+                coerced = bool(value)
+        else:
+            coerced = str(value)
+    except (ValueError, TypeError):
+        return None, f"Could not convert '{value}' to {schema.value_type}."
+
+    if schema.min_value is not None and float(coerced) < schema.min_value:
+        return None, f"Value must be at least {schema.min_value}."
+    if schema.max_value is not None and float(coerced) > schema.max_value:
+        return None, f"Value must be at most {schema.max_value}."
+
+    return coerced, None
+
+
+# ---------------------------------------------------------------------------
+# Config file helpers
+# ---------------------------------------------------------------------------
+
+
+def get_nested_value(config: dict[str, Any], key_path: str) -> Any:
+    """Return the value at *key_path* (dot-separated) or ``None`` if missing."""
+    parts = key_path.split(".")
+    current: Any = config
+    for part in parts:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
+
+
+def set_nested_value(config: dict[str, Any], key_path: str, value: Any) -> None:
+    """Set the value at *key_path* (dot-separated), creating intermediate dicts as needed."""
+    parts = key_path.split(".")
+    current = config
+    for part in parts[:-1]:
+        if part not in current or not isinstance(current[part], dict):
+            current[part] = {}
+        current = current[part]
+    current[parts[-1]] = value
+
+
+def apply_config_change(
+    config_path: Path,
+    key_path: str,
+    new_value: Any,
+) -> Any:
+    """Write *new_value* at *key_path* in *config_path*.
+
+    Returns the previous value (or ``None`` if the key was absent).
+    """
+    raw: dict[str, Any] = yaml.safe_load(config_path.read_text()) or {}
+    old_value = get_nested_value(raw, key_path)
+    set_nested_value(raw, key_path, new_value)
+    config_path.write_text(yaml.safe_dump(raw, default_flow_style=False, allow_unicode=True))
+    return old_value
+
+
+# ---------------------------------------------------------------------------
+# Formatting
+# ---------------------------------------------------------------------------
+
+
+def format_config_proposal(proposal: ConfigChangeProposal) -> str:
+    old = repr(proposal.old_value) if proposal.old_value is not None else "not set"
+    return (
+        f"**Proposed config change**\n"
+        f"Key: `{proposal.key_path}`\n"
+        f"Description: {proposal.description}\n"
+        f"Current value: `{old}`\n"
+        f"New value: `{proposal.new_value!r}`\n\n"
+        f"React with \u2705 within {_CONFIRMATION_TTL_SECONDS // 60} minutes to apply."
+    )

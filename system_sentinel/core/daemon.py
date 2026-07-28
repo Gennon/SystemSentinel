@@ -278,6 +278,7 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
         tools=tools,
         monitor_registry=monitor_registry,
         db=db,
+        config_path=config_path,
     )
 
     async def _on_self_update_start(remote: str, branch: str) -> None:
