@@ -570,6 +570,106 @@ class TestCreateDataDirStep:
         assert results[0].outcome == StepOutcome.FAILURE
         assert results[0].error is not None
 
+    def test_chowns_and_chmods_existing_config_file(self, tmp_path) -> None:
+        """When config.yaml already exists, step must chown+chmod it for sentinel."""
+        cmds: list[list[str]] = []
+        config_file = tmp_path / "etc-sentinel" / "config.yaml"
+        (tmp_path / "etc-sentinel").mkdir()
+        config_file.write_text("monitors: {}")
+
+        def mock_run(cmd, timeout=300):
+            cmds.append(list(cmd))
+            return CommandResult(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("system_sentinel.setup.systemd_installer.DATA_DIR", tmp_path / "sentinel"),
+            patch("system_sentinel.setup.systemd_installer.CONFIG_DIR", tmp_path / "etc-sentinel"),
+            patch("system_sentinel.setup.systemd_installer.LOG_DIR", tmp_path / "log-sentinel"),
+            patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_file),
+            patch("system_sentinel.setup.systemd_installer.run_command", side_effect=mock_run),
+        ):
+            results, _ = _run_step(create_data_dir_step)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        # Check chown sentinel:sentinel was called for the config file.
+        assert any(
+            any("chown" in s for s in c) and "sentinel:sentinel" in c and "config.yaml" in c[-1]
+            for c in cmds
+        ), "Expected chown sentinel:sentinel for config.yaml"
+        # Check chmod 640 was called for the config file.
+        assert any(
+            any("chmod" in s for s in c) and "640" in c and "config.yaml" in c[-1] for c in cmds
+        ), "Expected chmod 640 for config.yaml"
+
+    def test_config_chown_failure_returns_failure(self, tmp_path) -> None:
+        config_file = tmp_path / "etc-sentinel" / "config.yaml"
+        (tmp_path / "etc-sentinel").mkdir()
+        config_file.write_text("")
+
+        def mock_run(cmd, timeout=300):
+            if any("chown" in s for s in cmd) and str(config_file) in cmd:
+                return CommandResult(returncode=1, stdout="", stderr="permission denied")
+            return CommandResult(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("system_sentinel.setup.systemd_installer.DATA_DIR", tmp_path / "sentinel"),
+            patch("system_sentinel.setup.systemd_installer.CONFIG_DIR", tmp_path / "etc-sentinel"),
+            patch("system_sentinel.setup.systemd_installer.LOG_DIR", tmp_path / "log-sentinel"),
+            patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_file),
+            patch("system_sentinel.setup.systemd_installer.run_command", side_effect=mock_run),
+        ):
+            results, _ = _run_step(create_data_dir_step)
+
+        assert results[0].outcome == StepOutcome.FAILURE
+
+    def test_config_chmod_failure_returns_failure(self, tmp_path) -> None:
+        config_file = tmp_path / "etc-sentinel" / "config.yaml"
+        (tmp_path / "etc-sentinel").mkdir()
+        config_file.write_text("")
+
+        def mock_run(cmd, timeout=300):
+            if any("chmod" in s for s in cmd) and str(config_file) in cmd:
+                return CommandResult(returncode=1, stdout="", stderr="permission denied")
+            return CommandResult(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("system_sentinel.setup.systemd_installer.DATA_DIR", tmp_path / "sentinel"),
+            patch("system_sentinel.setup.systemd_installer.CONFIG_DIR", tmp_path / "etc-sentinel"),
+            patch("system_sentinel.setup.systemd_installer.LOG_DIR", tmp_path / "log-sentinel"),
+            patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_file),
+            patch("system_sentinel.setup.systemd_installer.run_command", side_effect=mock_run),
+        ):
+            results, _ = _run_step(create_data_dir_step)
+
+        assert results[0].outcome == StepOutcome.FAILURE
+
+    def test_check_only_reports_failure_when_config_not_writable(self, tmp_path) -> None:
+        import stat
+
+        config_file = tmp_path / "etc-sentinel" / "config.yaml"
+        (tmp_path / "etc-sentinel").mkdir()
+        config_file.write_text("")
+        config_file.chmod(stat.S_IRUSR | stat.S_IRGRP)  # read-only
+
+        try:
+            with (
+                patch("system_sentinel.setup.systemd_installer.DATA_DIR", tmp_path / "sentinel"),
+                patch(
+                    "system_sentinel.setup.systemd_installer.CONFIG_DIR",
+                    tmp_path / "etc-sentinel",
+                ),
+                patch("system_sentinel.setup.systemd_installer.LOG_DIR", tmp_path / "log-sentinel"),
+                patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_file),
+            ):
+                (tmp_path / "sentinel").mkdir()
+                (tmp_path / "log-sentinel").mkdir()
+                results, _ = _run_step(create_data_dir_step, WizardContext(check_only=True))
+
+            assert results[0].outcome == StepOutcome.FAILURE
+            assert "writable" in results[0].message.lower()
+        finally:
+            config_file.chmod(stat.S_IRUSR | stat.S_IWUSR)  # restore for cleanup
+
 
 # ---------------------------------------------------------------------------
 # install_systemd_service_step

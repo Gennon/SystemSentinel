@@ -349,23 +349,38 @@ def create_data_dir_step() -> WizardStep:
     Creates /var/lib/sentinel, /etc/sentinel, and /var/log/sentinel so the
     daemon can write database and audit logs, and read config without elevated
     privileges at runtime.
+
+    If config.yaml already exists (written as root by an earlier setup step),
+    this step also sets ``sentinel:sentinel`` ownership and ``640`` permissions
+    on the file so the daemon can write config updates at runtime.
     """
 
     def runner(ctx: WizardContext) -> WizardStepResult:
         directories = (DATA_DIR, CONFIG_DIR, LOG_DIR)
         if ctx.check_only:
             missing = [str(d) for d in directories if not d.exists()]
-            if not missing:
+            if missing:
                 return WizardStepResult(
                     step_name="create_data_dir",
-                    outcome=StepOutcome.SUCCESS,
-                    message=f"{DATA_DIR}, {CONFIG_DIR}, and {LOG_DIR} exist.",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Missing directories: {', '.join(missing)}.",
+                    error="Run sentinel setup to create them.",
                 )
+            # Also verify the config file is writable by sentinel when it exists.
+            if CONFIG_PATH.exists():
+                import os
+
+                if not os.access(CONFIG_PATH, os.W_OK):
+                    return WizardStepResult(
+                        step_name="create_data_dir",
+                        outcome=StepOutcome.FAILURE,
+                        message=f"{CONFIG_PATH} is not writable by the sentinel user.",
+                        error="Run sentinel setup to fix config file permissions.",
+                    )
             return WizardStepResult(
                 step_name="create_data_dir",
-                outcome=StepOutcome.FAILURE,
-                message=f"Missing directories: {', '.join(missing)}.",
-                error="Run sentinel setup to create them.",
+                outcome=StepOutcome.SUCCESS,
+                message=f"{DATA_DIR}, {CONFIG_DIR}, and {LOG_DIR} exist.",
             )
 
         for directory in directories:
@@ -384,6 +399,27 @@ def create_data_dir_step() -> WizardStep:
                     outcome=StepOutcome.FAILURE,
                     message=f"Failed to set ownership on {directory}.",
                     error=chown.stderr.strip() or chown.stdout.strip(),
+                )
+
+        # Fix config.yaml ownership and permissions if the file already exists.
+        # It may have been written as root by an earlier setup step (configure_chat,
+        # install_optional_features), so sentinel would not have write access.
+        if CONFIG_PATH.exists():
+            chown_cfg = run_command(["sudo", "/bin/chown", "sentinel:sentinel", str(CONFIG_PATH)])
+            if chown_cfg.returncode != 0:
+                return WizardStepResult(
+                    step_name="create_data_dir",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Failed to set ownership on {CONFIG_PATH}.",
+                    error=chown_cfg.stderr.strip() or chown_cfg.stdout.strip(),
+                )
+            chmod_cfg = run_command(["sudo", "/bin/chmod", "640", str(CONFIG_PATH)])
+            if chmod_cfg.returncode != 0:
+                return WizardStepResult(
+                    step_name="create_data_dir",
+                    outcome=StepOutcome.FAILURE,
+                    message=f"Failed to set permissions on {CONFIG_PATH}.",
+                    error=chmod_cfg.stderr.strip() or chmod_cfg.stdout.strip(),
                 )
 
         return WizardStepResult(
