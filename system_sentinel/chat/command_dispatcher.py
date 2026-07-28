@@ -14,6 +14,7 @@ import psutil
 from system_sentinel.charts.registry import ChartRendererRegistry
 from system_sentinel.charts.renderers.text import TextChartRenderer
 from system_sentinel.chat.base import InboundMessage, InboundReaction, OutboundMessage
+from system_sentinel.chat.command_checkup import handle_checkup_command
 from system_sentinel.chat.command_config import (
     ConfigChangeProposal,
     ConfigClarificationNeeded,
@@ -148,6 +149,7 @@ class ChatCommandDispatcher:
             "!mute": self._cmd_mute,
             "!unmute": self._cmd_unmute,
             "!config": self._cmd_config,
+            "!checkup": self._cmd_checkup,
             "!help": self._cmd_help,
         }
         action_commands = {"!update", "!cleanup"}
@@ -521,6 +523,20 @@ class ChatCommandDispatcher:
                 f"Config updated.\n`{diff}`\n"
                 "Note: restart or reload the daemon for the change to take effect."
             )
+        )
+
+    async def _cmd_checkup(self, message: InboundMessage) -> OutboundMessage:
+        llm_timeout = float(
+            self._config.get("llm", {}).get("timeout_seconds", 60.0)
+            if isinstance(self._config.get("llm"), dict)
+            else 60.0
+        )
+        return await handle_checkup_command(
+            message=message,
+            db=self._db,
+            llm_client=self._ctx.llm,
+            audit=self._ctx.audit,
+            timeout_seconds=llm_timeout,
         )
 
     async def _cmd_files(self, message: InboundMessage) -> OutboundMessage:

@@ -336,3 +336,31 @@ def _format_gpu_threshold_exceeded(payload: dict[str, Any]) -> OutboundMessage:
             "Hostname": str(payload.get("hostname", "—")),
         },
     )
+
+
+def _format_system_checkup(payload: dict[str, Any]) -> OutboundMessage:
+    """Format a scheduled AI full system check report for chat delivery."""
+    report = str(payload.get("report", "No report generated."))
+    generated_at = str(payload.get("generated_at", "—"))
+    provider = str(payload.get("provider", "—"))
+    model = str(payload.get("model", "—"))
+    resources = payload.get("resource_snapshot", {})
+    cpu = str(resources.get("cpu_percent", "—")) if isinstance(resources, dict) else "—"
+    ram = str(resources.get("ram_percent", "—")) if isinstance(resources, dict) else "—"
+    disk = str(resources.get("disk_percent", "—")) if isinstance(resources, dict) else "—"
+
+    has_critical = "[CRITICAL]" in report
+    severity = AlertSeverity.CRITICAL if has_critical else AlertSeverity.INFO
+
+    return OutboundMessage(
+        title="🔍 Scheduled Full System Check",
+        text=report[:3000],
+        severity=severity,
+        fields={
+            "Generated At": generated_at,
+            "LLM Provider": f"{provider}:{model}",
+            "CPU %": cpu,
+            "RAM %": ram,
+            "Disk %": disk,
+        },
+    )

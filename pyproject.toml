@@ -73,6 +73,7 @@ directory_changes = "system_sentinel.monitors.directory_changes:DirectoryChanges
 daily_digest   = "system_sentinel.monitors.daily_digest:DailyDigestMonitor"
 weekly_digest  = "system_sentinel.monitors.weekly_digest:WeeklyDigestMonitor"
 file_integrity = "system_sentinel.monitors.file_integrity:FileIntegrityMonitor"
+system_checkup = "system_sentinel.monitors.system_checkup:SystemCheckupMonitor"
 
 [project.entry-points."sentinel.chat_adapters"]
 discord = "system_sentinel.chat.adapters.discord.adapter:DiscordAdapter"

@@ -129,6 +129,29 @@ class FileIntegrityRepository:
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
+    async def recent_mismatches(self, limit: int = 5) -> list[dict[str, Any]]:
+        """Return baselines whose last verification resulted in a mismatch."""
+        cursor = await self._db.connection.execute(
+            """
+            SELECT path, last_verified_at, last_actual_sha256, last_error
+            FROM file_integrity_baselines
+            WHERE last_status = 'mismatch'
+            ORDER BY last_verified_at DESC
+            LIMIT ?
+            """,
+            (max(1, limit),),
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "file_path": str(row[0]),
+                "checked_at": str(row[1]) if row[1] is not None else "",
+                "actual_sha256": str(row[2]) if row[2] is not None else "",
+                "error": str(row[3]) if row[3] is not None else "",
+            }
+            for row in rows
+        ]
+
     async def get_state(self, key: str) -> str | None:
         cursor = await self._db.connection.execute(
             "SELECT value FROM monitor_state WHERE key = ?",

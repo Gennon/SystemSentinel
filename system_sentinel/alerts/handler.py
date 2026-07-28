@@ -27,6 +27,7 @@ from system_sentinel.alerts.formatters import (
     _format_service_restart_exhausted,
     _format_service_restart_result,
     _format_storage_report_generated,
+    _format_system_checkup,
     _format_system_daily_digest,
     _format_system_weekly_digest,
     _format_twofa_audit_warning,
@@ -73,6 +74,7 @@ _EVENT_SEVERITY_KEYS = {
     "alert.vulnscan.summary": "vulnscan_summary",
     "alert.vulnscan.score_drop": "vulnscan_score_drop",
     "alert.security.twofa_audit": "security_twofa_audit",
+    "alert.system.checkup": "system_checkup",
 }
 
 _SEVERITY_RANK: dict[AlertSeverity, int] = {
@@ -216,6 +218,7 @@ class AlertHandler:
         event_bus.subscribe("alert.vulnscan.summary", self._on_vulnscan_summary)
         event_bus.subscribe("alert.vulnscan.score_drop", self._on_vulnscan_score_drop)
         event_bus.subscribe("alert.security.twofa_audit", self._on_twofa_audit_warning)
+        event_bus.subscribe("alert.system.checkup", self._on_system_checkup)
         event_bus.subscribe("chat.alerts.mute", self._on_mute_non_critical)
         event_bus.subscribe("chat.alerts.unmute", self._on_unmute_non_critical)
 
@@ -437,6 +440,11 @@ class AlertHandler:
             else 0,
         )
         msg = self._apply_severity(event_type, payload, _format_twofa_audit_warning(payload))
+        await self._notify_and_record(event_type, payload, msg)
+
+    async def _on_system_checkup(self, event_type: str, payload: Any) -> None:
+        self._logger.info("Scheduled system checkup report received.")
+        msg = self._apply_severity(event_type, payload, _format_system_checkup(payload))
         await self._notify_and_record(event_type, payload, msg)
 
     async def _on_mute_non_critical(self, _event_type: str, payload: Any) -> None:

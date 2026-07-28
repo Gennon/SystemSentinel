@@ -78,6 +78,63 @@ class SqliteAuditRepository:
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
+    async def recent_by_type(
+        self,
+        action_type: str,
+        limit: int = 20,
+        *,
+        since: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return the most recent *limit* entries filtered by *action_type*, newest first.
+
+        Optionally restricted to entries on or after *since*.
+        """
+        if since is not None:
+            cursor = await self._db.connection.execute(
+                """
+                SELECT timestamp, action_type, source, description, outcome, details_json
+                FROM audit_log
+                WHERE action_type = ?
+                  AND timestamp >= ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (action_type, since.isoformat(), max(1, limit)),
+            )
+        else:
+            cursor = await self._db.connection.execute(
+                """
+                SELECT timestamp, action_type, source, description, outcome, details_json
+                FROM audit_log
+                WHERE action_type = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (action_type, max(1, limit)),
+            )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def latest_hardening_audit(self) -> dict[str, Any] | None:
+        """Return the most recent hardening audit entry from the audit log, or None."""
+        cursor = await self._db.connection.execute(
+            """
+            SELECT timestamp, outcome, details_json
+            FROM audit_log
+            WHERE action_type = 'tool_run'
+              AND (
+                details_json LIKE '%"tool": "hardening"%'
+                OR description LIKE 'Hardening audit%'
+              )
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return {"timestamp": str(row[0]), "outcome": str(row[1]), "details_json": row[2]}
+
     def _append_text_log_line(
         self,
         *,
