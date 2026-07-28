@@ -18,7 +18,7 @@ The following keys use duration parsing from `system_sentinel.core.time_config`:
 Tool schedules accept:
 
 - `HH:MM` (daily at local time), example: `"02:00"`
-- Cron expression, example: `"0 */6 * * *"`
+- `HH:MM:SS` or `<days>d HH:MM:SS` (recurring interval), example: `"06:00:00"` for every 6 hours
 
 ### Environment variable references
 
@@ -209,7 +209,7 @@ tools:
     reboot_policy: "notify"
   packages:
     enabled: true
-    schedule: "0 */6 * * *"
+    schedule: "06:00:00"
     required:
       - curl
       - git
@@ -426,7 +426,7 @@ tools:
 tools:
   packages:
     enabled: true
-    schedule: "0 */6 * * *"
+    schedule: "06:00:00"
     required:
       - curl
       - git
@@ -717,7 +717,7 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | Key | Type | Default | Used by | Notes |
 |---|---|---|---|---|
 | `tools.<tool>.enabled` | bool | `true` | `Tool` base | Per-tool enable/disable switch. |
-| `tools.<tool>.schedule` | `HH:MM`, `HH:MM:SS`, `<days>d HH:MM:SS`, or cron | none | `Scheduler` | Optional recurring schedule (duration expressions use interval triggers). |
+| `tools.<tool>.schedule` | `HH:MM`, `HH:MM:SS`, or `<days>d HH:MM:SS` | none | `Scheduler` | Optional recurring schedule (HH:MM fires daily at that time; HH:MM:SS and days expressions use interval triggers). |
 | `tools.security_update.dry_run` | bool | `false` | `SecurityUpdateTool` | Simulate updates without changing packages. |
 | `tools.security_update.reboot_policy` | string | `notify` | `SecurityUpdateTool` | If not `never`, reboot-required events are emitted when needed. |
 | `tools.packages.required` | list[string] | `[]` | `RequiredPackagesTool` | Package list that must stay installed. |
