@@ -1,6 +1,6 @@
 # US-033 — Policy-based model routing for LLM explanations
 
-**Release:** 3 — Observability & Polish
+**Release:** 4 — AI-Powered Operations
 **Area:** AI / LLM Assistant
 
 ## Description

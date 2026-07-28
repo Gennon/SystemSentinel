@@ -114,8 +114,20 @@ A Linux system management daemon that autonomously handles updates, security har
 - [x] As a user I want weekly trend summaries (storage growth, login patterns) sent via chat so I can spot slow-moving problems. **(US-031)**
 - [x] As a user I want configurable quiet hours for non-urgent alerts so I am not woken up by low-priority notifications. **(US-032)**
 
+---
+
+## Release 4 — AI-Powered Operations
+
 ### AI / LLM Assistant
-- [ ] As a user I want policy-based model routing (by command type/severity) so I can tune cost, latency, and quality automatically.
+- [ ] As a user I want policy-based model routing (by command type/severity) so I can tune cost, latency, and quality automatically. **(US-033)**
+- [ ] As an admin I want to ask the AI to update configurations as needed so I can manage system settings through natural language commands without manually editing config files. **(US-044)**
+- [ ] As a user I want the AI to perform a full system check using all sentinel tools and suggest how to improve the system so I get a comprehensive, actionable health report. **(US-045)**
+- [ ] As a user I want the AI to determine whether remediation suggestions are still relevant before sending them, based on current system state, so I only receive alerts about issues that have not yet been addressed. **(US-046)**
+- [ ] As an admin I want the AI to analyze the latest sentinel logs and report on improvements we can make to SystemSentinel itself when it has errors or warnings, so the sentinel continuously improves its own reliability. **(US-047)**
+- [ ] As a user I want the AI to group related simultaneous alerts and suggest a single root cause so I get focused, actionable insight instead of a flood of separate remediations. **(US-048)**
+- [ ] As a user I want the AI to analyze historical metric data and recommend more accurate alert thresholds so my alerts reflect real usage patterns rather than generic defaults. **(US-049)**
+- [ ] As a user I want periodic AI-written narrative health summaries so I understand the system's health trajectory in plain English rather than just raw numbers. **(US-050)**
+- [ ] As a user I want to reply to any alert in chat with `!explain` and get a full AI-powered contextual explanation so I understand what triggered it, why it matters, and what to do without SSHing in. **(US-051)**
 
 ---
 
