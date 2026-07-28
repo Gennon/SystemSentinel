@@ -136,6 +136,7 @@ class AlertHandler:
         self._mute_until: datetime | None = None
         self._llm_remediation_enabled = False
         self._llm_timeout_seconds = 30.0
+        self._llm_relevance_check_enabled = True
         self._load_config(config or {})
         self._llm_remediation = AlertLLMRemediationService(
             router=self._router,
@@ -144,19 +145,21 @@ class AlertHandler:
             logger=self._logger,
             enabled=self._llm_remediation_enabled,
             timeout_seconds=self._llm_timeout_seconds,
+            relevance_check_enabled=self._llm_relevance_check_enabled,
         )
 
     def _load_config(self, config: dict[str, Any]) -> None:
         llm_cfg = config.get("llm", {})
         if isinstance(llm_cfg, dict):
-            self._llm_remediation_enabled = bool(
-                llm_cfg.get("remediation", config.get("llm_remediation", False))
-            )
+            remediation_cfg = llm_cfg.get("remediation", {})
+            if isinstance(remediation_cfg, dict):
+                self._llm_remediation_enabled = bool(remediation_cfg.get("enabled", False))
+                self._llm_relevance_check_enabled = bool(
+                    remediation_cfg.get("relevance_check", True)
+                )
             self._llm_timeout_seconds = _coerce_positive_float(
                 llm_cfg.get("timeout_seconds"), default=30.0
             )
-        else:
-            self._llm_remediation_enabled = bool(config.get("llm_remediation", False))
         self._load_alert_config(config)
 
     def _load_alert_config(self, config: dict[str, Any]) -> None:

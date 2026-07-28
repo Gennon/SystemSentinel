@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from time import monotonic
 from typing import Any
 
@@ -20,6 +21,7 @@ class AlertLLMRemediationService:
         logger: Any,
         enabled: bool,
         timeout_seconds: float,
+        relevance_check_enabled: bool = True,
     ) -> None:
         self._router = router
         self._audit = audit
@@ -27,6 +29,7 @@ class AlertLLMRemediationService:
         self._logger = logger
         self._enabled = enabled
         self._timeout_seconds = timeout_seconds
+        self._relevance_check_enabled = relevance_check_enabled
         self._background_tasks: set[asyncio.Task[None]] = set()
 
     async def maybe_send(
@@ -42,6 +45,17 @@ class AlertLLMRemediationService:
             return
         if llm_client is None or not llm_client.is_enabled:
             return
+
+        if self._relevance_check_enabled:
+            still_relevant, suppression_reason = self._check_relevance(
+                event_type=event_type, payload=payload
+            )
+            if not still_relevant:
+                self._logger.info(
+                    "Suppressing AI remediation for %s: %s", event_type, suppression_reason
+                )
+                await self._record_suppressed(event_type=event_type, reason=suppression_reason)
+                return
 
         system_prompt = (
             "You are SystemSentinel's remediation assistant. "
@@ -169,6 +183,69 @@ class AlertLLMRemediationService:
             alert_title=alert_title,
         )
 
+    def _check_relevance(self, *, event_type: str, payload: Any) -> tuple[bool, str]:
+        """Check if the alert issue still persists based on current system state.
+
+        Returns (is_still_relevant, suppression_reason). When the issue has been
+        resolved, is_still_relevant is False and suppression_reason explains why.
+        For event types that cannot be checked deterministically, returns True.
+        """
+        if not isinstance(payload, dict):
+            return True, ""
+
+        threshold_str = payload.get("threshold", "")
+        threshold_num = _parse_threshold_percent(str(threshold_str)) if threshold_str else None
+
+        if event_type == "alert.disk.threshold_exceeded":
+            mountpoint = payload.get("mountpoint", "/")
+            try:
+                current = psutil.disk_usage(mountpoint).percent
+                if threshold_num is not None and current <= threshold_num:
+                    return (
+                        False,
+                        f"already_resolved: disk usage on {mountpoint} is now {current:.1f}% "
+                        f"(threshold {threshold_num:.1f}%)",
+                    )
+            except (psutil.Error, OSError):
+                pass
+
+        elif event_type == "alert.cpu.threshold_exceeded":
+            try:
+                current = psutil.cpu_percent(interval=None)
+                if threshold_num is not None and current <= threshold_num:
+                    return (
+                        False,
+                        f"already_resolved: CPU usage is now {current:.1f}% "
+                        f"(threshold {threshold_num:.1f}%)",
+                    )
+            except psutil.Error:
+                pass
+
+        elif event_type == "alert.ram.threshold_exceeded":
+            try:
+                current = psutil.virtual_memory().percent
+                if threshold_num is not None and current <= threshold_num:
+                    return (
+                        False,
+                        f"already_resolved: RAM usage is now {current:.1f}% "
+                        f"(threshold {threshold_num:.1f}%)",
+                    )
+            except psutil.Error:
+                pass
+
+        return True, ""
+
+    async def _record_suppressed(self, *, event_type: str, reason: str) -> None:
+        if self._audit is None:
+            return
+        await self._audit.append(
+            action_type="llm_remediation",
+            source=event_type,
+            description="AI remediation suggestion suppressed: issue no longer present.",
+            outcome="suppressed",
+            details={"reason": reason},
+        )
+
     def _build_prompt(self, *, event_type: str, payload: Any, alert: OutboundMessage) -> str:
         lines = [
             "You are generating remediation advice for a critical SystemSentinel alert.",
@@ -260,3 +337,14 @@ def runtime_context_summary() -> str:
     except (OSError, AttributeError):
         lines.append("- Load average: unavailable")
     return "\n".join(lines)
+
+
+def _parse_threshold_percent(threshold_str: str) -> float | None:
+    """Extract the first numeric value from a threshold string like '>85.0%' or '>90.0% for 2 intervals'.
+
+    Returns None if no numeric value can be found.
+    """
+    match = re.search(r"(\d+(?:\.\d+)?)", threshold_str)
+    if match:
+        return float(match.group(1))
+    return None
