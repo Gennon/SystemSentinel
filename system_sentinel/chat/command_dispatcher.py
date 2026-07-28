@@ -19,6 +19,7 @@ from system_sentinel.chat.command_config import (
     ConfigClarificationNeeded,
     PendingConfigChange,
     apply_config_change,
+    check_config_writable,
     format_config_proposal,
     interpret_config_request,
 )
@@ -440,6 +441,10 @@ class ChatCommandDispatcher:
                 text="Config file path is not available; cannot apply changes.",
                 reply_to=message,
             )
+
+        write_error = check_config_writable(self._config_path)
+        if write_error is not None:
+            return OutboundMessage(text=write_error, reply_to=message)
 
         try:
             result = await interpret_config_request(

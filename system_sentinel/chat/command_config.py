@@ -6,10 +6,13 @@ This module handles the ``!config`` chat command, which lets admins update
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import json
+import os
 import re
+import tempfile
 from typing import TYPE_CHECKING, Any
 import uuid
 
@@ -301,19 +304,46 @@ def set_nested_value(config: dict[str, Any], key_path: str, value: Any) -> None:
     current[parts[-1]] = value
 
 
+def check_config_writable(config_path: Path) -> str | None:
+    """Return an error message if *config_path* cannot be written, else ``None``."""
+    if not config_path.exists():
+        return f"Config file not found: {config_path}"
+    if not os.access(config_path, os.W_OK):
+        return (
+            f"Permission denied: cannot write to {config_path}. "
+            "The daemon process does not have write access to the config file."
+        )
+    return None
+
+
 def apply_config_change(
     config_path: Path,
     key_path: str,
     new_value: Any,
 ) -> Any:
-    """Write *new_value* at *key_path* in *config_path*.
+    """Atomically write *new_value* at *key_path* in *config_path*.
 
+    Uses a temp file + rename so the config is never left in a partial state.
     Returns the previous value (or ``None`` if the key was absent).
+    Raises ``PermissionError`` if the file is not writable.
     """
     raw: dict[str, Any] = yaml.safe_load(config_path.read_text()) or {}
     old_value = get_nested_value(raw, key_path)
     set_nested_value(raw, key_path, new_value)
-    config_path.write_text(yaml.safe_dump(raw, default_flow_style=False, allow_unicode=True))
+    new_content = yaml.safe_dump(raw, default_flow_style=False, allow_unicode=True)
+
+    # Write atomically: temp file in the same directory → rename
+    config_dir = config_path.parent
+    fd, tmp_path = tempfile.mkstemp(dir=config_dir, prefix=".sentinel-config-", suffix=".yaml.tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(new_content)
+        os.replace(tmp_path, config_path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
+
     return old_value
 
 

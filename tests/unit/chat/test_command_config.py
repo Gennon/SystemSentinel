@@ -20,6 +20,7 @@ from system_sentinel.chat.command_config import (
     _find_schema_key,
     _parse_llm_response,
     apply_config_change,
+    check_config_writable,
     format_config_proposal,
     get_nested_value,
     set_nested_value,
@@ -195,6 +196,52 @@ def test_apply_config_change_returns_old_value(tmp_path: Path) -> None:
 
     old = apply_config_change(config_file, "monitors.disk.alert_threshold_percent", 85.0)
     assert old == 70
+
+
+def test_apply_config_change_is_atomic(tmp_path: Path) -> None:
+    """Verify the write goes through a temp file (no partial state)."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml.safe_dump({"monitors": {"cpu": {"alert_threshold_percent": 80}}}))
+
+    apply_config_change(config_file, "monitors.cpu.alert_threshold_percent", 95.0)
+
+    # Only the final config file should exist; no .tmp files left behind
+    tmp_files = list(tmp_path.glob("*.tmp"))
+    assert tmp_files == []
+    saved = yaml.safe_load(config_file.read_text())
+    assert saved["monitors"]["cpu"]["alert_threshold_percent"] == 95.0
+
+
+# ---------------------------------------------------------------------------
+# Unit: check_config_writable
+# ---------------------------------------------------------------------------
+
+
+def test_check_config_writable_returns_none_for_writable_file(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("")
+    assert check_config_writable(config_file) is None
+
+
+def test_check_config_writable_returns_error_for_missing_file(tmp_path: Path) -> None:
+    config_file = tmp_path / "nonexistent.yaml"
+    error = check_config_writable(config_file)
+    assert error is not None
+    assert "not found" in error.lower()
+
+
+def test_check_config_writable_returns_error_for_readonly_file(tmp_path: Path) -> None:
+    import stat
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("")
+    config_file.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)  # read-only
+    try:
+        error = check_config_writable(config_file)
+        assert error is not None
+        assert "permission" in error.lower() or "denied" in error.lower()
+    finally:
+        config_file.chmod(stat.S_IRUSR | stat.S_IWUSR)  # restore for cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -482,3 +529,33 @@ async def test_config_command_in_help_output(tmp_path: Path) -> None:
     response = await dispatcher.handle_message(_message("!help"), ["!help"])
     assert response is not None
     assert "!config" in response.text
+
+
+@pytest.mark.asyncio
+async def test_config_command_permission_denied_reported_at_proposal(tmp_path: Path) -> None:
+    import stat
+
+    llm = _FakeLLMClient(
+        json.dumps(
+            {
+                "action": "change",
+                "key_path": "monitors.cpu.alert_threshold_percent",
+                "new_value": 90,
+            }
+        )
+    )
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml.safe_dump({"monitors": {"cpu": {"alert_threshold_percent": 80}}}))
+    config_file.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)  # read-only
+    try:
+        dispatcher = await _make_dispatcher(tmp_path, _cfg(), llm=llm, config_path=config_file)
+        response = await dispatcher.handle_message(
+            _message("!config set cpu threshold to 90"), ["!config"]
+        )
+        assert response is not None
+        assert "permission" in response.text.lower() or "denied" in response.text.lower()
+        # Config must not have been touched
+        saved = yaml.safe_load(config_file.read_text())
+        assert saved["monitors"]["cpu"]["alert_threshold_percent"] == 80
+    finally:
+        config_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
