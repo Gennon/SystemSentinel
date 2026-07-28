@@ -1218,12 +1218,22 @@ async def test_handler_mute_suppresses_non_critical_until_unmuted() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handler_adds_ai_remediation_follow_up_for_critical_alerts() -> None:
+async def test_handler_adds_ai_remediation_follow_up_for_critical_alerts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from collections import namedtuple
+
     router, calls = _make_router()
     llm = _FakeRemediationLLMClient()
-    handler = AlertHandler(router, llm=llm, config={"llm": {"remediation": True}})
+    handler = AlertHandler(router, llm=llm, config={"llm": {"remediation": {"enabled": True}}})
     bus = InProcessEventBus()
     handler.register(bus)
+
+    _DiskUsage = namedtuple("sdiskusage", ["total", "used", "free", "percent"])
+    monkeypatch.setattr(
+        "system_sentinel.alerts.remediation.psutil.disk_usage",
+        lambda _: _DiskUsage(total=1000, used=920, free=80, percent=92.0),
+    )
 
     await bus.publish("alert.disk.threshold_exceeded", _DISK_THRESHOLD_PAYLOAD)
 
@@ -1243,7 +1253,7 @@ async def test_handler_adds_ai_remediation_follow_up_for_critical_alerts() -> No
 async def test_handler_does_not_call_llm_when_remediation_disabled() -> None:
     router, calls = _make_router()
     llm = _FakeRemediationLLMClient()
-    handler = AlertHandler(router, llm=llm, config={"llm": {"remediation": False}})
+    handler = AlertHandler(router, llm=llm, config={"llm": {"remediation": {"enabled": False}}})
     bus = InProcessEventBus()
     handler.register(bus)
 
@@ -1257,7 +1267,7 @@ async def test_handler_does_not_call_llm_when_remediation_disabled() -> None:
 async def test_handler_does_not_call_llm_for_non_critical_alerts() -> None:
     router, calls = _make_router()
     llm = _FakeRemediationLLMClient()
-    handler = AlertHandler(router, llm=llm, config={"llm": {"remediation": True}})
+    handler = AlertHandler(router, llm=llm, config={"llm": {"remediation": {"enabled": True}}})
     bus = InProcessEventBus()
     handler.register(bus)
 
@@ -1272,12 +1282,20 @@ async def test_handler_does_not_call_llm_for_non_critical_alerts() -> None:
 async def test_handler_sends_delayed_ai_follow_up_when_generation_exceeds_15_seconds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from collections import namedtuple
+
     router, calls = _make_router()
     gate = asyncio.Event()
     llm = _DelayedRemediationLLMClient(gate)
-    handler = AlertHandler(router, llm=llm, config={"llm": {"remediation": True}})
+    handler = AlertHandler(router, llm=llm, config={"llm": {"remediation": {"enabled": True}}})
     bus = InProcessEventBus()
     handler.register(bus)
+
+    _DiskUsage = namedtuple("sdiskusage", ["total", "used", "free", "percent"])
+    monkeypatch.setattr(
+        "system_sentinel.alerts.remediation.psutil.disk_usage",
+        lambda _: _DiskUsage(total=1000, used=920, free=80, percent=92.0),
+    )
 
     original_wait_for = asyncio.wait_for
 
@@ -1298,3 +1316,241 @@ async def test_handler_sends_delayed_ai_follow_up_when_generation_exceeds_15_sec
     assert llm.calls == 1
     assert len(calls) == 2
     assert calls[1].title == "🤖 AI remediation suggestion (delayed)"
+
+
+# ---------------------------------------------------------------------------
+# US-046: AI remediation relevance check
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_relevance_check_suppresses_disk_suggestion_when_issue_resolved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When disk usage drops below threshold before sending, suggestion is suppressed."""
+
+    router, calls = _make_router()
+    audit = AsyncMock()
+    audit.append = AsyncMock()
+    llm = _FakeRemediationLLMClient()
+    handler = AlertHandler(
+        router,
+        llm=llm,
+        audit=audit,
+        config={"llm": {"remediation": {"enabled": True, "relevance_check": True}}},
+    )
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    from collections import namedtuple
+
+    _DiskUsage = namedtuple("sdiskusage", ["total", "used", "free", "percent"])
+    fake_disk = _DiskUsage(total=1000, used=800, free=200, percent=80.0)
+    monkeypatch.setattr("system_sentinel.alerts.remediation.psutil.disk_usage", lambda _: fake_disk)
+
+    await bus.publish("alert.disk.threshold_exceeded", _DISK_THRESHOLD_PAYLOAD)
+
+    assert llm.calls == 0
+    assert len(calls) == 1  # only the original alert, no remediation follow-up
+    suppression_call = next(
+        (
+            c
+            for c in audit.append.call_args_list
+            if c.kwargs.get("action_type") == "llm_remediation"
+        ),
+        None,
+    )
+    assert suppression_call is not None
+    assert suppression_call.kwargs["outcome"] == "suppressed"
+    assert "already_resolved" in suppression_call.kwargs["details"]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_relevance_check_sends_disk_suggestion_when_issue_persists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When disk usage is still above threshold, suggestion is sent normally."""
+
+    router, calls = _make_router()
+    llm = _FakeRemediationLLMClient()
+    handler = AlertHandler(
+        router,
+        llm=llm,
+        config={"llm": {"remediation": {"enabled": True, "relevance_check": True}}},
+    )
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    from collections import namedtuple
+
+    _DiskUsage = namedtuple("sdiskusage", ["total", "used", "free", "percent"])
+    fake_disk = _DiskUsage(total=1000, used=920, free=80, percent=92.0)
+    monkeypatch.setattr("system_sentinel.alerts.remediation.psutil.disk_usage", lambda _: fake_disk)
+
+    await bus.publish("alert.disk.threshold_exceeded", _DISK_THRESHOLD_PAYLOAD)
+
+    assert llm.calls == 1
+    assert len(calls) == 2
+    assert calls[1].title == "🤖 AI remediation suggestion"
+
+
+@pytest.mark.asyncio
+async def test_relevance_check_suppresses_ram_suggestion_when_resolved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+
+    router, _calls = _make_router()
+    audit = AsyncMock()
+    audit.append = AsyncMock()
+    llm = _FakeRemediationLLMClient()
+    # Trigger via disk since RAM alert is WARNING; use a custom severity config
+    handler = AlertHandler(
+        router,
+        llm=llm,
+        audit=audit,
+        config={
+            "llm": {"remediation": {"enabled": True, "relevance_check": True}},
+            "alerts": {"severity_levels": {"ram": "critical"}},
+        },
+    )
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    from collections import namedtuple
+
+    fake_mem = namedtuple(
+        "svmem", ["total", "available", "percent", "used", "free", "active", "inactive", "wired"]
+    )(
+        total=8000,
+        available=5000,
+        percent=37.5,
+        used=3000,
+        free=5000,
+        active=1000,
+        inactive=500,
+        wired=200,
+    )
+    monkeypatch.setattr(
+        "system_sentinel.alerts.remediation.psutil.virtual_memory", lambda: fake_mem
+    )
+
+    await bus.publish("alert.ram.threshold_exceeded", _RAM_THRESHOLD_PAYLOAD)
+
+    assert llm.calls == 0
+    suppression_call = next(
+        (
+            c
+            for c in audit.append.call_args_list
+            if c.kwargs.get("action_type") == "llm_remediation"
+        ),
+        None,
+    )
+    assert suppression_call is not None
+    assert suppression_call.kwargs["outcome"] == "suppressed"
+
+
+@pytest.mark.asyncio
+async def test_relevance_check_suppresses_cpu_suggestion_when_resolved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    router, _calls = _make_router()
+    audit = AsyncMock()
+    audit.append = AsyncMock()
+    llm = _FakeRemediationLLMClient()
+    handler = AlertHandler(
+        router,
+        llm=llm,
+        audit=audit,
+        config={
+            "llm": {"remediation": {"enabled": True, "relevance_check": True}},
+            "alerts": {"severity_levels": {"cpu": "critical"}},
+        },
+    )
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    monkeypatch.setattr(
+        "system_sentinel.alerts.remediation.psutil.cpu_percent", lambda interval=None: 45.0
+    )
+
+    await bus.publish("alert.cpu.threshold_exceeded", _CPU_THRESHOLD_PAYLOAD)
+
+    assert llm.calls == 0
+    suppression_call = next(
+        (
+            c
+            for c in audit.append.call_args_list
+            if c.kwargs.get("action_type") == "llm_remediation"
+        ),
+        None,
+    )
+    assert suppression_call is not None
+    assert suppression_call.kwargs["outcome"] == "suppressed"
+
+
+@pytest.mark.asyncio
+async def test_relevance_check_disabled_always_sends_suggestion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When relevance_check is disabled, suggestion is always sent regardless of current state."""
+
+    router, calls = _make_router()
+    llm = _FakeRemediationLLMClient()
+    handler = AlertHandler(
+        router,
+        llm=llm,
+        config={"llm": {"remediation": {"enabled": True, "relevance_check": False}}},
+    )
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    # Disk is resolved (below threshold), but relevance_check is disabled
+    from collections import namedtuple
+
+    _DiskUsage = namedtuple("sdiskusage", ["total", "used", "free", "percent"])
+    fake_disk = _DiskUsage(total=1000, used=700, free=300, percent=70.0)
+    monkeypatch.setattr("system_sentinel.alerts.remediation.psutil.disk_usage", lambda _: fake_disk)
+
+    await bus.publish("alert.disk.threshold_exceeded", _DISK_THRESHOLD_PAYLOAD)
+
+    assert llm.calls == 1
+    assert len(calls) == 2
+    assert calls[1].title == "🤖 AI remediation suggestion"
+
+
+@pytest.mark.asyncio
+async def test_relevance_check_non_metric_alerts_are_always_relevant() -> None:
+    """Non-metric alerts (e.g. brute force) are always treated as still relevant."""
+    router, calls = _make_router()
+    llm = _FakeRemediationLLMClient()
+    handler = AlertHandler(
+        router,
+        llm=llm,
+        config={
+            "llm": {"remediation": {"enabled": True, "relevance_check": True}},
+            "alerts": {"severity_levels": {"login": "critical"}},
+        },
+    )
+    bus = InProcessEventBus()
+    handler.register(bus)
+
+    await bus.publish("alert.login.brute_force_detected", _BRUTE_FORCE_PAYLOAD)
+
+    assert llm.calls == 1
+    assert len(calls) == 2
+    assert calls[1].title == "🤖 AI remediation suggestion"
+
+
+@pytest.mark.asyncio
+async def test_handler_loads_remediation_dict_config() -> None:
+    """Handler correctly parses llm.remediation as a dict with enabled and relevance_check."""
+    router, _ = _make_router()
+    llm = _FakeRemediationLLMClient()
+    handler = AlertHandler(
+        router,
+        llm=llm,
+        config={"llm": {"remediation": {"enabled": True, "relevance_check": False}}},
+    )
+    # Inspect internal state
+    assert handler._llm_remediation._enabled is True
+    assert handler._llm_remediation._relevance_check_enabled is False

@@ -49,7 +49,9 @@ chat_adapters:
 llm:
   enabled: true
   provider: "ollama" # ollama | openai | anthropic | mistral
-  remediation: false
+  remediation:
+    enabled: false
+    relevance_check: true
   timeout_seconds: 30
 
 alerts:
@@ -262,7 +264,9 @@ Use `llm` for active-provider selection and defaults, and `llm_providers.<provid
 llm:
   enabled: true
   provider: "anthropic"
-  remediation: true
+  remediation:
+    enabled: true
+    relevance_check: true
   timeout_seconds: 30
 
 llm_providers:
@@ -605,7 +609,9 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 |---|---|---|---|---|
 | `llm.enabled` | bool | `false` | `LLMClient` | Global LLM enable flag. |
 | `llm.provider` | string | first loaded provider | `LLMClient` | Active provider key (must match an enabled `llm_providers.<name>`). |
-| `llm.remediation` | bool | `false` | `AlertHandler` | When `true`, critical alert notifications trigger an advisory-only AI follow-up message. |
+| `llm.remediation` | bool or map | `false` | `AlertHandler` | When `true` (or `{enabled: true}`), critical alert notifications trigger an advisory-only AI follow-up message. Can also be a dict with sub-keys `enabled` and `relevance_check`. |
+| `llm.remediation.enabled` | bool | `false` | `AlertHandler` | Enables AI remediation suggestions when `llm.remediation` is specified as a map. |
+| `llm.remediation.relevance_check` | bool | `true` | `AlertHandler` | When `true`, the AI verifies the issue still persists before sending a remediation suggestion. Suppressed suggestions are recorded in the audit log with reason `already_resolved`. |
 | `llm.timeout_seconds` | int/float | `30` | callers (e.g. chat `!ask`, alert remediation) | Request timeout preference; call sites may override. |
 | `llm_providers.<provider>.enabled` | bool | `false` | `LLMRegistry` | Must be `true` to load provider plugin. |
 | `llm_providers.ollama.endpoint` | string | `http://localhost:11434` | `OllamaProvider` | Ollama base URL. |

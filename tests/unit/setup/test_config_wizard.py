@@ -219,7 +219,7 @@ class TestNoConfigInteractive:
         assert data["tools"]["twofa_audit"]["run_on_startup"] is False
         assert data["tools"]["twofa_audit"]["schedule"] == "7d 00:00:00"
         assert data["tools"]["twofa_audit"]["exempt_accounts"] == []
-        assert data["llm"]["remediation"] is False
+        assert data["llm"]["remediation"] == {"enabled": False, "relevance_check": True}
         assert data["updates"]["self_update"]["source_path"]
 
     def test_auto_update_can_be_disabled(self, tmp_path: Path) -> None:

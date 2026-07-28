@@ -263,7 +263,10 @@ _SAFE_DEFAULTS: dict[str, Any] = {
     "llm": {
         "enabled": False,
         "provider": "ollama",
-        "remediation": False,
+        "remediation": {
+            "enabled": False,
+            "relevance_check": True,
+        },
         "timeout_seconds": 30,
     },
     "llm_providers": {
