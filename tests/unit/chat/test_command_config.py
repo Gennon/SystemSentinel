@@ -378,10 +378,126 @@ def test_format_config_proposal_shows_not_set_for_none_old_value() -> None:
 
 
 def test_settable_config_keys_all_have_required_fields() -> None:
+    valid_types = {"number", "integer", "string", "boolean", "duration"}
     for key in SETTABLE_CONFIG_KEYS:
         assert key.path
         assert key.description
-        assert key.value_type in {"number", "integer", "string", "boolean"}
+        assert key.value_type in valid_types
+
+
+def test_settable_config_keys_include_all_monitor_enabled_flags() -> None:
+    monitor_names = {
+        "cpu",
+        "ram",
+        "disk",
+        "network",
+        "gpu",
+        "services",
+        "logins",
+        "connections",
+        "old_files",
+        "directory_changes",
+        "file_integrity",
+    }
+    enabled_paths = {
+        key.path
+        for key in SETTABLE_CONFIG_KEYS
+        if key.value_type == "boolean" and key.path.endswith(".enabled")
+    }
+    for monitor in monitor_names:
+        assert f"monitors.{monitor}.enabled" in enabled_paths, (
+            f"monitors.{monitor}.enabled missing from SETTABLE_CONFIG_KEYS"
+        )
+
+
+def test_coerce_valid_duration_string() -> None:
+    schema = _find_schema_key("monitors.cpu.alert_cooldown")
+    assert schema is not None
+    val, err = _coerce_and_validate("01:00:00", schema)
+    assert err is None
+    assert val == "01:00:00"
+
+
+def test_coerce_valid_duration_with_days() -> None:
+    schema = _find_schema_key("monitors.cpu.alert_cooldown")
+    assert schema is not None
+    val, err = _coerce_and_validate("7d 00:00:00", schema)
+    assert err is None
+    assert val == "7d 00:00:00"
+
+
+def test_coerce_invalid_duration_returns_error() -> None:
+    schema = _find_schema_key("monitors.cpu.alert_cooldown")
+    assert schema is not None
+    val, err = _coerce_and_validate("30 minutes", schema)
+    assert err is not None
+    assert "HH:MM:SS" in err
+    assert val is None
+
+
+def test_coerce_duration_rejects_non_string() -> None:
+    schema = _find_schema_key("monitors.cpu.alert_cooldown")
+    assert schema is not None
+    val, err = _coerce_and_validate(3600, schema)
+    assert err is not None
+    assert val is None
+
+
+def test_coerce_boolean_true_variants() -> None:
+    schema = _find_schema_key("monitors.cpu.enabled")
+    assert schema is not None
+    for truthy in [True, "true", "yes", "1"]:
+        val, err = _coerce_and_validate(truthy, schema)
+        assert err is None
+        assert val is True, f"Expected True for {truthy!r}"
+
+
+def test_coerce_boolean_false_variants() -> None:
+    schema = _find_schema_key("monitors.cpu.enabled")
+    assert schema is not None
+    for falsy in [False, "false", "no", "0"]:
+        val, err = _coerce_and_validate(falsy, schema)
+        assert err is None
+        assert val is False, f"Expected False for {falsy!r}"
+
+
+def test_parse_llm_response_duration_key() -> None:
+    response = json.dumps(
+        {
+            "action": "change",
+            "key_path": "monitors.cpu.alert_cooldown",
+            "new_value": "00:30:00",
+        }
+    )
+    result = _parse_llm_response(response, {})
+    assert isinstance(result, ConfigChangeProposal)
+    assert result.new_value == "00:30:00"
+
+
+def test_parse_llm_response_invalid_duration_returns_clarification() -> None:
+    response = json.dumps(
+        {
+            "action": "change",
+            "key_path": "monitors.cpu.alert_cooldown",
+            "new_value": "30m",
+        }
+    )
+    result = _parse_llm_response(response, {})
+    assert isinstance(result, ConfigClarificationNeeded)
+    assert "HH:MM:SS" in result.question
+
+
+def test_parse_llm_response_boolean_key() -> None:
+    response = json.dumps(
+        {
+            "action": "change",
+            "key_path": "monitors.gpu.enabled",
+            "new_value": False,
+        }
+    )
+    result = _parse_llm_response(response, {})
+    assert isinstance(result, ConfigChangeProposal)
+    assert result.new_value is False
 
 
 # ---------------------------------------------------------------------------
