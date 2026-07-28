@@ -410,6 +410,55 @@ def test_settable_config_keys_include_all_monitor_enabled_flags() -> None:
         )
 
 
+def test_settable_config_keys_include_all_tool_enabled_flags() -> None:
+    tool_names = {
+        "update",
+        "hardening",
+        "storage",
+        "firewall",
+        "vulnscan",
+        "twofa_audit",
+        "packages",
+    }
+    enabled_paths = {
+        key.path
+        for key in SETTABLE_CONFIG_KEYS
+        if key.value_type == "boolean" and key.path.endswith(".enabled")
+    }
+    for tool in tool_names:
+        assert f"tools.{tool}.enabled" in enabled_paths, (
+            f"tools.{tool}.enabled missing from SETTABLE_CONFIG_KEYS"
+        )
+
+
+def test_find_schema_key_for_tool_keys() -> None:
+    assert _find_schema_key("tools.update.dry_run") is not None
+    assert _find_schema_key("tools.update.reboot_policy") is not None
+    assert _find_schema_key("tools.hardening.auto_remediate") is not None
+    assert _find_schema_key("tools.storage.alert_threshold_percent") is not None
+    assert _find_schema_key("tools.firewall.enforce") is not None
+    assert _find_schema_key("tools.vulnscan.score_drop_alert_threshold") is not None
+
+
+def test_parse_llm_response_tool_boolean_key() -> None:
+    response = json.dumps(
+        {"action": "change", "key_path": "tools.update.dry_run", "new_value": True}
+    )
+    result = _parse_llm_response(response, {})
+    assert isinstance(result, ConfigChangeProposal)
+    assert result.new_value is True
+    assert result.key_path == "tools.update.dry_run"
+
+
+def test_parse_llm_response_tool_string_key() -> None:
+    response = json.dumps(
+        {"action": "change", "key_path": "tools.update.reboot_policy", "new_value": "never"}
+    )
+    result = _parse_llm_response(response, {})
+    assert isinstance(result, ConfigChangeProposal)
+    assert result.new_value == "never"
+
+
 def test_coerce_valid_duration_string() -> None:
     schema = _find_schema_key("monitors.cpu.alert_cooldown")
     assert schema is not None

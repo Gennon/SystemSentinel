@@ -291,6 +291,97 @@ SETTABLE_CONFIG_KEYS: list[ConfigKeySchema] = [
         value_type="boolean",
         keywords=["file_integrity", "file", "integrity", "enabled", "disable", "enable"],
     ),
+    # =========================================================================
+    # Tools
+    # =========================================================================
+    # ---- Update tool --------------------------------------------------------
+    ConfigKeySchema(
+        path="tools.update.enabled",
+        description="Enable or disable the automated security-update tool",
+        value_type="boolean",
+        keywords=["update", "updates", "enabled", "disable", "enable"],
+    ),
+    ConfigKeySchema(
+        path="tools.update.dry_run",
+        description="Run the update tool in dry-run mode (simulate without applying changes)",
+        value_type="boolean",
+        keywords=["update", "dry", "run", "simulate"],
+    ),
+    ConfigKeySchema(
+        path="tools.update.reboot_policy",
+        description="Reboot policy after updates: 'notify' (send alert) or 'never' (never reboot)",
+        value_type="string",
+        keywords=["update", "reboot", "policy"],
+    ),
+    # ---- Hardening tool -----------------------------------------------------
+    ConfigKeySchema(
+        path="tools.hardening.enabled",
+        description="Enable or disable the system-hardening tool",
+        value_type="boolean",
+        keywords=["hardening", "harden", "enabled", "disable", "enable"],
+    ),
+    ConfigKeySchema(
+        path="tools.hardening.auto_remediate",
+        description="Automatically remediate hardening findings (instead of just reporting)",
+        value_type="boolean",
+        keywords=["hardening", "auto", "remediate", "fix"],
+    ),
+    # ---- Storage tool -------------------------------------------------------
+    ConfigKeySchema(
+        path="tools.storage.enabled",
+        description="Enable or disable the storage-management tool",
+        value_type="boolean",
+        keywords=["storage", "enabled", "disable", "enable"],
+    ),
+    ConfigKeySchema(
+        path="tools.storage.alert_threshold_percent",
+        description="Disk usage percentage at which the storage tool sends an alert",
+        value_type="number",
+        keywords=["storage", "disk", "alert", "threshold"],
+        min_value=0.0,
+        max_value=100.0,
+    ),
+    # ---- Firewall tool ------------------------------------------------------
+    ConfigKeySchema(
+        path="tools.firewall.enabled",
+        description="Enable or disable the firewall-management tool",
+        value_type="boolean",
+        keywords=["firewall", "enabled", "disable", "enable"],
+    ),
+    ConfigKeySchema(
+        path="tools.firewall.enforce",
+        description="Enforce the desired firewall state (apply changes automatically)",
+        value_type="boolean",
+        keywords=["firewall", "enforce", "apply"],
+    ),
+    # ---- Vulnerability scan tool --------------------------------------------
+    ConfigKeySchema(
+        path="tools.vulnscan.enabled",
+        description="Enable or disable the vulnerability-scan tool",
+        value_type="boolean",
+        keywords=["vulnscan", "vulnerability", "scan", "enabled", "disable", "enable"],
+    ),
+    ConfigKeySchema(
+        path="tools.vulnscan.score_drop_alert_threshold",
+        description="Lynis score drop (points) that triggers a vulnerability alert",
+        value_type="number",
+        keywords=["vulnscan", "score", "drop", "alert", "threshold"],
+        min_value=0.0,
+    ),
+    # ---- 2FA audit tool -----------------------------------------------------
+    ConfigKeySchema(
+        path="tools.twofa_audit.enabled",
+        description="Enable or disable the two-factor authentication audit tool",
+        value_type="boolean",
+        keywords=["twofa", "2fa", "audit", "enabled", "disable", "enable"],
+    ),
+    # ---- Packages tool ------------------------------------------------------
+    ConfigKeySchema(
+        path="tools.packages.enabled",
+        description="Enable or disable the required-packages tool",
+        value_type="boolean",
+        keywords=["packages", "enabled", "disable", "enable"],
+    ),
 ]
 
 # ---------------------------------------------------------------------------
