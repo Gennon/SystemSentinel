@@ -7,7 +7,7 @@ an ``alert.system.checkup`` event for the alert handler to forward to chat.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from system_sentinel.chat.command_checkup import (
@@ -16,6 +16,8 @@ from system_sentinel.chat.command_checkup import (
     build_checkup_prompt,
     gather_checkup_context,
 )
+from system_sentinel.core.time_config import parse_duration_from_config
+from system_sentinel.db.connection_repository import ConnectionRepository
 from system_sentinel.monitors.base import BaseMonitor
 
 if TYPE_CHECKING:
@@ -23,6 +25,7 @@ if TYPE_CHECKING:
     from system_sentinel.db.connection import DatabaseConnection
 
 _LAST_SENT_KEY = "system_checkup.last_sent_at_utc"
+_DEFAULT_INTERVAL_SECONDS = 24 * 60 * 60  # 24 hours
 
 
 class SystemCheckupMonitor(BaseMonitor):
@@ -38,6 +41,7 @@ class SystemCheckupMonitor(BaseMonitor):
     ) -> None:
         super().__init__(config, app_ctx)
         self._db = db if db is not None else app_ctx.db
+        self._connection_repo: ConnectionRepository | None = None
 
     async def collect(self) -> None:
         llm_client = self.ctx.llm
@@ -49,6 +53,24 @@ class SystemCheckupMonitor(BaseMonitor):
         if db is None:
             self.logger.warning("No database connection — skipping scheduled system checkup.")
             return
+
+        if self._connection_repo is None:
+            self._connection_repo = ConnectionRepository(db)
+
+        interval = self._interval_seconds()
+        last_sent_raw = await self._connection_repo.get_state(_LAST_SENT_KEY)
+        if last_sent_raw is not None:
+            try:
+                last_sent = datetime.fromisoformat(last_sent_raw)
+                if datetime.now(UTC) - last_sent < timedelta(seconds=interval):
+                    self.logger.debug(
+                        "Skipping system checkup — last ran %s, interval is %ds.",
+                        last_sent_raw,
+                        int(interval),
+                    )
+                    return
+            except ValueError:
+                pass  # malformed timestamp — proceed with checkup
 
         try:
             vuln_repo, login_repo, integrity_repo, audit_repo = _make_repos(db)
@@ -71,6 +93,7 @@ class SystemCheckupMonitor(BaseMonitor):
             return
 
         generated_at = datetime.now(UTC).isoformat()
+        await self._connection_repo.set_state(_LAST_SENT_KEY, generated_at)
 
         await self.ctx.audit.append(
             action_type="system_checkup",
@@ -98,6 +121,14 @@ class SystemCheckupMonitor(BaseMonitor):
                 "model": result.model_used,
                 "resource_snapshot": context.get("resources", {}),
             },
+        )
+
+    def _interval_seconds(self) -> float:
+        return parse_duration_from_config(
+            self.config,
+            key="interval",
+            default_seconds=_DEFAULT_INTERVAL_SECONDS,
+            logger=self.logger,
         )
 
     def _timeout_seconds(self) -> float:
