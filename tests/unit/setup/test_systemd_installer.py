@@ -889,6 +889,22 @@ class TestInstallSudoersRulesStep:
         assert "sentinel ALL=(root) NOPASSWD: /usr/sbin/ufw *" in rules
         assert not any("/nft " in rule for rule in rules)
 
+    def test_vulnscan_enabled_requires_lynis_rules(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("tools:\n  vulnscan:\n    enabled: true\n")
+        with patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_path):
+            rules = _required_sudoers_rules()
+        assert "sentinel ALL=(root) NOPASSWD: /usr/bin/lynis audit system *" in rules
+        assert "sentinel ALL=(root) NOPASSWD: /usr/sbin/lynis audit system *" in rules
+        assert "sentinel ALL=(root) NOPASSWD: /bin/lynis audit system *" in rules
+
+    def test_vulnscan_disabled_requires_no_lynis_rules(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("tools:\n  vulnscan:\n    enabled: false\n")
+        with patch("system_sentinel.setup.systemd_installer.CONFIG_PATH", config_path):
+            rules = _required_sudoers_rules()
+        assert not any("lynis" in rule for rule in rules)
+
 
 # ---------------------------------------------------------------------------
 # enable_systemd_service_step

@@ -206,12 +206,26 @@ def select_features_step() -> WizardStep:
 
 
 # Config keys that each feature maps to for enabling in config.yaml
+_LYNIS_REPORT_PATH = "/var/lib/sentinel/lynis-report.dat"
+_LYNIS_ARGS = [
+    "audit", "system", "--quick", "--no-colors",
+    "--report-file", _LYNIS_REPORT_PATH,
+]
+
 _FEATURE_CONFIG: dict[str, dict[str, object]] = {
     "firewall": {"tools": {"firewall": {"enabled": True}}},
     "gpu": {"monitors": {"gpu": {"enabled": True}}},
     "harden": {"tools": {"hardening": {"enabled": True, "benchmarks": {"cis_level_1": True}}}},
     "snapshot": {"updates": {"self_update": {"snapshots": {"backend": "auto"}}}},
-    "vulnscan": {"tools": {"vulnscan": {"enabled": True}}},
+    "vulnscan": {
+        "tools": {
+            "vulnscan": {
+                "enabled": True,
+                "report_path": _LYNIS_REPORT_PATH,
+                "lynis_args": _LYNIS_ARGS,
+            }
+        }
+    },
     "prometheus": {"metrics_export": {"prometheus": {"enabled": True}}},
 }
 

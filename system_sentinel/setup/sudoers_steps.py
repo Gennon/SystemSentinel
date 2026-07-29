@@ -17,6 +17,7 @@ def required_sudoers_rules(
     timeshift_rules: tuple[str, ...],
     ufw_rules: tuple[str, ...],
     nft_rules: tuple[str, ...],
+    lynis_rules: tuple[str, ...] = (),
 ) -> list[str]:
     if not config_path.exists():
         return []
@@ -35,6 +36,7 @@ def required_sudoers_rules(
         )
     )
     rules.extend(_firewall_rules(config=raw, ufw_rules=ufw_rules, nft_rules=nft_rules))
+    rules.extend(_lynis_rules(config=raw, lynis_rules=lynis_rules))
     return rules
 
 
@@ -58,6 +60,7 @@ def install_sudoers_rules_runner(
     timeshift_rules: tuple[str, ...],
     ufw_rules: tuple[str, ...],
     nft_rules: tuple[str, ...],
+    lynis_rules: tuple[str, ...] = (),
 ) -> WizardStepResult:
     required_rules = required_sudoers_rules(
         config_path=config_path,
@@ -66,6 +69,7 @@ def install_sudoers_rules_runner(
         timeshift_rules=timeshift_rules,
         ufw_rules=ufw_rules,
         nft_rules=nft_rules,
+        lynis_rules=lynis_rules,
     )
     if not required_rules:
         return WizardStepResult(
@@ -211,3 +215,20 @@ def _firewall_rules(
     if backend in {"nft", "nftables"}:
         return list(nft_rules)
     return [*list(ufw_rules), *list(nft_rules)]
+
+
+def _lynis_rules(
+    *,
+    config: dict[str, object],
+    lynis_rules: tuple[str, ...],
+) -> list[str]:
+    """Return lynis sudoers rules when the vulnscan tool is enabled."""
+    tools = config.get("tools")
+    if not isinstance(tools, dict):
+        return []
+    vulnscan = tools.get("vulnscan")
+    if not isinstance(vulnscan, dict):
+        return []
+    if not bool(vulnscan.get("enabled", False)):
+        return []
+    return list(lynis_rules)

@@ -56,6 +56,11 @@ _NFT_RULES = (
     "sentinel ALL=(root) NOPASSWD: /usr/sbin/nft *",
     "sentinel ALL=(root) NOPASSWD: /usr/bin/nft *",
 )
+_LYNIS_RULES = (
+    "sentinel ALL=(root) NOPASSWD: /usr/bin/lynis audit system *",
+    "sentinel ALL=(root) NOPASSWD: /usr/sbin/lynis audit system *",
+    "sentinel ALL=(root) NOPASSWD: /bin/lynis audit system *",
+)
 
 
 def create_sentinel_user_step() -> WizardStep:
@@ -444,6 +449,7 @@ def _required_sudoers_rules() -> list[str]:
         timeshift_rules=_TIMESHIFT_RULES,
         ufw_rules=_UFW_RULES,
         nft_rules=_NFT_RULES,
+        lynis_rules=_LYNIS_RULES,
     )
 
 
@@ -461,6 +467,7 @@ def install_sudoers_rules_step() -> WizardStep:
             timeshift_rules=_TIMESHIFT_RULES,
             ufw_rules=_UFW_RULES,
             nft_rules=_NFT_RULES,
+            lynis_rules=_LYNIS_RULES,
         )
 
     return WizardStep(

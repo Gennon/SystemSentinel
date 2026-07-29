@@ -416,6 +416,34 @@ class TestInstallOptionalFeaturesStep:
         calls = [str(c) for c in mock_run.call_args_list]
         assert any("apt-get" in c and "lynis" in c for c in calls)
 
+    def test_vulnscan_writes_report_path_and_lynis_args_to_config(self, tmp_path: Path) -> None:
+        """vulnscan setup should configure lynis to write the report to /var/lib/sentinel/."""
+        config_path = tmp_path / "config.yaml"
+        ctx = WizardContext(enabled_features=["vulnscan"])
+
+        with (
+            patch(
+                "system_sentinel.setup.optional_features.CONFIG_PATH",
+                config_path,
+            ),
+            patch(
+                "system_sentinel.setup.optional_features.shutil.which",
+                return_value="/usr/bin/lynis",
+            ),
+            patch(
+                "system_sentinel.setup.optional_features.subprocess.run",
+                side_effect=_make_sudo_run(),
+            ),
+        ):
+            results, _ = _run_install_step(ctx)
+
+        assert results[0].outcome == StepOutcome.SUCCESS
+        written = yaml.safe_load(config_path.read_text())
+        vulnscan_cfg = written["tools"]["vulnscan"]
+        assert vulnscan_cfg["report_path"] == "/var/lib/sentinel/lynis-report.dat"
+        assert "--report-file" in vulnscan_cfg["lynis_args"]
+        assert "/var/lib/sentinel/lynis-report.dat" in vulnscan_cfg["lynis_args"]
+
     def test_vulnscan_fails_when_package_manager_is_unknown(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config.yaml"
         ctx = WizardContext(enabled_features=["vulnscan"])

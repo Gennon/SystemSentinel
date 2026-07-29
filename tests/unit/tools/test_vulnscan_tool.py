@@ -51,6 +51,59 @@ async def _make_tool(
     return tool, db
 
 
+@pytest.mark.asyncio
+async def test_run_uses_sudo_when_not_root(tmp_path: Path) -> None:
+    """When running as non-root, lynis command should be prefixed with sudo."""
+    report_path = tmp_path / "lynis-report.dat"
+    report_path.write_text("hardening_index=75\n")
+    runner = _FakeRunner(
+        result=CommandResult(returncode=0, stdout="ok", stderr=""),
+        calls=[],
+    )
+    tool, db = await _make_tool(
+        tmp_path,
+        config={"report_path": str(report_path)},
+        runner=runner,
+    )
+    tool._lynis_path = "/usr/bin/lynis"
+
+    from unittest.mock import patch
+
+    with patch("os.getuid", return_value=1000):
+        await tool.run()
+
+    assert runner.calls, "Expected at least one command invocation"
+    assert runner.calls[0][0] == "sudo", "Expected command to start with sudo"
+    assert "/usr/bin/lynis" in runner.calls[0]
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_run_does_not_use_sudo_when_root(tmp_path: Path) -> None:
+    """When running as root, lynis command should not include sudo."""
+    report_path = tmp_path / "lynis-report.dat"
+    report_path.write_text("hardening_index=80\n")
+    runner = _FakeRunner(
+        result=CommandResult(returncode=0, stdout="ok", stderr=""),
+        calls=[],
+    )
+    tool, db = await _make_tool(
+        tmp_path,
+        config={"report_path": str(report_path)},
+        runner=runner,
+    )
+    tool._lynis_path = "/usr/bin/lynis"
+
+    from unittest.mock import patch
+
+    with patch("os.getuid", return_value=0):
+        await tool.run()
+
+    assert runner.calls, "Expected at least one command invocation"
+    assert runner.calls[0][0] != "sudo", "Expected command to not start with sudo when root"
+    await db.close()
+
+
 def test_default_schedule_is_weekly(tmp_path: Path) -> None:
     ctx = AppContext(
         audit=AsyncMock(),

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import os
 from pathlib import Path
 import re
 import shutil
@@ -132,7 +133,11 @@ class VulnScanTool(BaseTool):
 
         scan_time = datetime.now(UTC)
         report_path = self._report_path()
-        command = [lynis_path, *self._lynis_args()]
+        lynis_args = self._lynis_args()
+        if os.getuid() != 0:
+            command = ["sudo", lynis_path, *lynis_args]
+        else:
+            command = [lynis_path, *lynis_args]
         command_result = await self._runner.run(command)
         if command_result.returncode != 0:
             result = ToolResult(
@@ -153,7 +158,23 @@ class VulnScanTool(BaseTool):
             await self._record(result)
             return result
 
-        report_text = await self._read_report(report_path)
+        try:
+            report_text = await self._read_report(report_path)
+        except PermissionError as exc:
+            result = ToolResult(
+                tool_name=self.name,
+                outcome=ToolOutcome.FAILURE,
+                summary=(
+                    f"Permission denied reading Lynis report {report_path}. "
+                    "Ensure sentinel runs as root or grant read access to the report file."
+                ),
+                started_at=started_at,
+                finished_at=datetime.now(UTC),
+                error=str(exc),
+                details={"tool": self.name, "report_path": str(report_path)},
+            )
+            await self._record(result)
+            return result
         parsed = self._parse_lynis_report(report_text=report_text, stdout=command_result.stdout)
         db = self.ctx.db
         if db is None:
@@ -249,6 +270,8 @@ class VulnScanTool(BaseTool):
             return await asyncio.to_thread(report_path.read_text)
         except FileNotFoundError:
             return ""
+        except PermissionError:
+            raise
         except OSError as exc:
             self.ctx.logger.getChild("tool.vulnscan").warning(
                 "Failed to read Lynis report file %s: %s",
