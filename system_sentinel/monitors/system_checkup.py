@@ -37,7 +37,7 @@ class SystemCheckupMonitor(BaseMonitor):
         db: DatabaseConnection | None = None,
     ) -> None:
         super().__init__(config, app_ctx)
-        self._db = db
+        self._db = db if db is not None else app_ctx.db
 
     async def collect(self) -> None:
         llm_client = self.ctx.llm
