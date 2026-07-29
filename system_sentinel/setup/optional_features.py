@@ -208,8 +208,12 @@ def select_features_step() -> WizardStep:
 # Config keys that each feature maps to for enabling in config.yaml
 _LYNIS_REPORT_PATH = "/var/lib/sentinel/lynis-report.dat"
 _LYNIS_ARGS = [
-    "audit", "system", "--quick", "--no-colors",
-    "--report-file", _LYNIS_REPORT_PATH,
+    "audit",
+    "system",
+    "--quick",
+    "--no-colors",
+    "--report-file",
+    _LYNIS_REPORT_PATH,
 ]
 
 _FEATURE_CONFIG: dict[str, dict[str, object]] = {
