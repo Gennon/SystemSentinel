@@ -115,6 +115,25 @@ class SqliteAuditRepository:
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
+    async def recent_since(
+        self,
+        since: datetime,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Return up to *limit* entries on or after *since*, newest first."""
+        cursor = await self._db.connection.execute(
+            """
+            SELECT timestamp, action_type, source, description, outcome, details_json
+            FROM audit_log
+            WHERE timestamp >= ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (since.isoformat(), max(1, limit)),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
     async def latest_hardening_audit(self) -> dict[str, Any] | None:
         """Return the most recent hardening audit entry from the audit log, or None."""
         cursor = await self._db.connection.execute(

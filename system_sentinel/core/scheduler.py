@@ -11,6 +11,8 @@ from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import
 from system_sentinel.core.time_config import parse_duration_hhmmss
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from system_sentinel.core.context import AppContext
     from system_sentinel.tools.base import BaseTool
 
@@ -77,6 +79,28 @@ class Scheduler:
             misfire_grace_time=60,
         )
         self._logger.info("Registered schedule for tool %r: %s", tool.name, schedule_expr)
+
+    def register_job(
+        self,
+        job_id: str,
+        func: Callable[[], Awaitable[None]],
+        schedule_expr: str,
+    ) -> None:
+        """Register a recurring job with an arbitrary async callable.
+
+        Unlike :py:meth:`register_tool`, this method accepts any coroutine
+        function (no tool wrapper needed) and is intended for first-party
+        scheduled tasks such as log analysis.
+        """
+        trigger = self._parse_trigger(schedule_expr)
+        self._scheduler.add_job(
+            func,
+            trigger=trigger,
+            id=job_id,
+            replace_existing=True,
+            misfire_grace_time=60,
+        )
+        self._logger.info("Registered schedule for job %r: %s", job_id, schedule_expr)
 
     async def schedule_once(self, tool_name: str, delay_seconds: float = 0) -> None:
         """Schedule a one-off run of *tool_name*, optionally after a delay.

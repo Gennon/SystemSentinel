@@ -44,6 +44,7 @@ from system_sentinel.chat.command_insights import (
     build_status_text,
     extract_prompt_after_command,
 )
+from system_sentinel.chat.command_log_analysis import handle_log_analysis_command
 from system_sentinel.chat.command_metrics import get_active_alert_conditions
 from system_sentinel.chat.command_support import (
     command_prefix_for_adapter,
@@ -150,6 +151,7 @@ class ChatCommandDispatcher:
             "!unmute": self._cmd_unmute,
             "!config": self._cmd_config,
             "!checkup": self._cmd_checkup,
+            "!analyze-logs": self._cmd_analyze_logs,
             "!help": self._cmd_help,
         }
         action_commands = {"!update", "!cleanup"}
@@ -536,6 +538,25 @@ class ChatCommandDispatcher:
             db=self._db,
             llm_client=self._ctx.llm,
             audit=self._ctx.audit,
+            timeout_seconds=llm_timeout,
+        )
+
+    async def _cmd_analyze_logs(self, message: InboundMessage) -> OutboundMessage:
+        llm_timeout = float(
+            self._config.get("llm", {}).get("timeout_seconds", 60.0)
+            if isinstance(self._config.get("llm"), dict)
+            else 60.0
+        )
+        log_analysis_cfg = self._config.get("log_analysis", {})
+        look_back_days = int(
+            log_analysis_cfg.get("look_back_days", 7) if isinstance(log_analysis_cfg, dict) else 7
+        )
+        return await handle_log_analysis_command(
+            message=message,
+            db=self._db,
+            llm_client=self._ctx.llm,
+            audit=self._ctx.audit,
+            look_back_days=look_back_days,
             timeout_seconds=llm_timeout,
         )
 

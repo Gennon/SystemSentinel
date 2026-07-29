@@ -21,6 +21,7 @@ _HELP_TEXT = (
     "!status - CPU, RAM, disk, uptime, and service health\n"
     "!ask <question> - ask the configured LLM provider for diagnostics help\n"
     "!checkup - AI-powered full system check with prioritized improvement suggestions (admin only)\n"
+    "!analyze-logs - AI analysis of sentinel audit logs for improvement suggestions (admin only)\n"
     "!config <request> - update config via natural language (admin only, confirmation required)\n"
     "!update - run security updates (confirmation required)\n"
     "!cleanup - run file cleanup (confirmation required)\n"

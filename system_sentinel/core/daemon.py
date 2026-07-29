@@ -155,6 +155,64 @@ async def _run_tools_on_startup(tools: dict[str, Any]) -> None:
         await tool.run()
 
 
+def _register_log_analysis_schedule(
+    *,
+    config: dict[str, Any],
+    scheduler: Scheduler,
+    db: DatabaseConnection,
+    app_ctx: AppContext,
+    chat_router: Any,
+) -> None:
+    """Register the scheduled log analysis job if configured."""
+    from system_sentinel.chat.command_log_analysis import perform_log_analysis
+
+    log_analysis_cfg_raw = config.get("log_analysis", {})
+    log_analysis_cfg = log_analysis_cfg_raw if isinstance(log_analysis_cfg_raw, dict) else {}
+    schedule_expr_raw = log_analysis_cfg.get("schedule")
+    if not isinstance(schedule_expr_raw, str) or not schedule_expr_raw.strip():
+        return
+
+    schedule_expr = schedule_expr_raw.strip()
+    look_back_days = int(log_analysis_cfg.get("look_back_days", 7))
+
+    async def _run_scheduled_log_analysis() -> None:
+        llm = app_ctx.llm
+        if llm is None or not llm.is_enabled:
+            app_ctx.logger.info("Skipping scheduled log analysis: LLM not configured or disabled.")
+            return
+        try:
+            report = await perform_log_analysis(
+                db=db,
+                llm_client=llm,
+                audit=app_ctx.audit,
+                look_back_days=look_back_days,
+                source="scheduler",
+            )
+        except Exception as exc:
+            app_ctx.logger.error("Scheduled log analysis failed: %s", exc)
+            return
+
+        from system_sentinel.chat.base import OutboundMessage
+
+        await chat_router.broadcast(
+            OutboundMessage(
+                title="Scheduled Log Analysis",
+                text=f"📋 **Scheduled Log Analysis (last {look_back_days}d)**\n\n{report[:3000]}",
+            )
+        )
+
+    scheduler.register_job(
+        job_id="log_analysis.scheduled",
+        func=_run_scheduled_log_analysis,
+        schedule_expr=schedule_expr,
+    )
+    app_ctx.logger.info(
+        "Scheduled log analysis registered with schedule: %s (look_back_days=%d)",
+        schedule_expr,
+        look_back_days,
+    )
+
+
 async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH) -> None:
     """Wire all components and run the daemon until SIGINT or SIGTERM."""
     _configure_logging()
@@ -270,6 +328,14 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
     tools_config = tools_raw if isinstance(tools_raw, dict) else {}
     tools = _discover_tools(tools_config, app_ctx, scheduler)
     _register_tool_event_handlers(event_bus, tools)
+
+    _register_log_analysis_schedule(
+        config=config,
+        scheduler=scheduler,
+        db=db,
+        app_ctx=app_ctx,
+        chat_router=chat_router,
+    )
 
     command_dispatcher = ChatCommandDispatcher(
         config=config,
