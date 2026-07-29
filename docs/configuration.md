@@ -202,6 +202,19 @@ monitors:
     send_day_local: "monday"
     send_time_local: "08:00"
     expected_collection_interval: "00:01:00"
+  directory_changes:
+    enabled: true
+    watched_directories:
+      - "/etc"
+      - "/home"
+    alert_cooldown: "00:05:00"
+  system_checkup:
+    enabled: true
+    interval: "24:00:00"
+    timeout_seconds: 60
+
+charts:
+  renderer: "text"
 
 tools:
   security_update:
@@ -407,6 +420,29 @@ monitors:
     send_day_local: "monday"
     send_time_local: "08:00"
     expected_collection_interval: "00:01:00"
+  directory_changes:
+    enabled: true
+    watched_directories:
+      - "/etc"
+      - path: "/home"
+        whitelist_globs:
+          - "*.log"
+          - ".cache/*"
+        whitelist_regex:
+          - "\\.swp$"
+    alert_cooldown: "00:05:00"
+```
+
+#### `monitors.system_checkup` example
+
+Requires LLM to be enabled. Runs a scheduled AI-powered full system health check and posts a prioritized report to chat.
+
+```yaml
+monitors:
+  system_checkup:
+    enabled: true
+    interval: "24:00:00"  # how often to run the checkup
+    timeout_seconds: 60   # LLM request timeout per run
 ```
 
 ### Tools
@@ -709,6 +745,9 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `monitors.weekly_digest.send_day_local` | weekday name | `monday` | `WeeklyDigestMonitor` | Weekly digest day (local timezone). Supported values: `monday`..`sunday`. |
 | `monitors.weekly_digest.send_time_local` | `HH:MM` | `08:00` | `WeeklyDigestMonitor` | Weekly digest send time (local timezone). |
 | `monitors.weekly_digest.expected_collection_interval` | duration | `00:01:00` | `WeeklyDigestMonitor` | Used for offline gap detection sensitivity in weekly aggregate summaries. |
+| `monitors.system_checkup.enabled` | bool | `true` | `MonitorRegistry`/`SystemCheckupMonitor` | Enable/disable the scheduled AI full system health check. Requires LLM to be configured. |
+| `monitors.system_checkup.interval` | duration | `24:00:00` | `SystemCheckupMonitor` | How often the scheduled checkup runs. |
+| `monitors.system_checkup.timeout_seconds` | float | `60.0` | `SystemCheckupMonitor` | Per-run LLM request timeout. |
 
 ### Alert routing keys
 
