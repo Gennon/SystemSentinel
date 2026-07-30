@@ -212,6 +212,9 @@ monitors:
     enabled: true
     interval: "24:00:00"
     timeout_seconds: 60
+  threshold_tuning:
+    look_back_days: 30
+    schedule: "30d 00:00:00"
 
 charts:
   renderer: "text"
@@ -443,6 +446,19 @@ monitors:
     enabled: true
     interval: "24:00:00"  # how often to run the checkup
     timeout_seconds: 60   # LLM request timeout per run
+```
+
+#### `monitors.threshold_tuning` example
+
+Requires LLM to be enabled. Analyzes stored metric history (CPU, RAM, disk, GPU) and recommends improved alert thresholds based on real usage patterns. Recommendations are delivered to chat and written to the audit log. Admins can accept them with ✅ to apply config changes immediately (follows the same confirmation flow as `!config`).
+
+Trigger on demand with `!tune-thresholds` or configure a schedule for automatic monthly analysis.
+
+```yaml
+monitors:
+  threshold_tuning:
+    look_back_days: 30       # metric history window for analysis (default: 30)
+    schedule: "30d 00:00:00" # optional: run automatically every 30 days
 ```
 
 ### Tools
@@ -748,6 +764,8 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `monitors.system_checkup.enabled` | bool | `true` | `MonitorRegistry`/`SystemCheckupMonitor` | Enable/disable the scheduled AI full system health check. Requires LLM to be configured. |
 | `monitors.system_checkup.interval` | duration | `24:00:00` | `SystemCheckupMonitor` | How often the scheduled checkup runs. |
 | `monitors.system_checkup.timeout_seconds` | float | `60.0` | `SystemCheckupMonitor` | Per-run LLM request timeout. |
+| `monitors.threshold_tuning.look_back_days` | int | `30` | `ChatCommandDispatcher`, daemon scheduler | Number of days of metric history to analyze for threshold recommendations. |
+| `monitors.threshold_tuning.schedule` | duration | unset | daemon scheduler | If set, runs threshold tuning automatically on this interval (e.g. `30d 00:00:00` for monthly). Requires LLM. |
 
 ### Alert routing keys
 

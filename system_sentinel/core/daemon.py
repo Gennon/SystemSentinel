@@ -213,6 +213,71 @@ def _register_log_analysis_schedule(
     )
 
 
+def _register_threshold_tuning_schedule(
+    *,
+    config: dict[str, Any],
+    scheduler: Scheduler,
+    db: DatabaseConnection,
+    app_ctx: AppContext,
+    chat_router: Any,
+) -> None:
+    """Register the scheduled threshold tuning job if configured (US-049)."""
+    from system_sentinel.chat.command_tune_thresholds import perform_threshold_analysis
+
+    monitors_cfg_raw = config.get("monitors", {})
+    monitors_cfg = monitors_cfg_raw if isinstance(monitors_cfg_raw, dict) else {}
+    tune_cfg_raw = monitors_cfg.get("threshold_tuning", {})
+    tune_cfg = tune_cfg_raw if isinstance(tune_cfg_raw, dict) else {}
+    schedule_expr_raw = tune_cfg.get("schedule")
+    if not isinstance(schedule_expr_raw, str) or not schedule_expr_raw.strip():
+        return
+
+    schedule_expr = schedule_expr_raw.strip()
+    look_back_days = int(tune_cfg.get("look_back_days", 30))
+
+    async def _run_scheduled_threshold_tuning() -> None:
+        llm = app_ctx.llm
+        if llm is None or not llm.is_enabled:
+            app_ctx.logger.info(
+                "Skipping scheduled threshold tuning: LLM not configured or disabled."
+            )
+            return
+        try:
+            recommendations = await perform_threshold_analysis(
+                db=db,
+                llm_client=llm,
+                config=config,
+                audit=app_ctx.audit,
+                look_back_days=look_back_days,
+                source="scheduler",
+            )
+        except Exception as exc:
+            app_ctx.logger.error("Scheduled threshold tuning failed: %s", exc)
+            return
+
+        from system_sentinel.chat.base import OutboundMessage
+        from system_sentinel.chat.command_tune_thresholds import format_recommendations
+
+        report = format_recommendations(recommendations, look_back_days)
+        await chat_router.broadcast(
+            OutboundMessage(
+                title="Scheduled Threshold Tuning",
+                text=f"\U0001f4ca **Scheduled Threshold Tuning**\n\n{report[:3000]}",
+            )
+        )
+
+    scheduler.register_job(
+        job_id="threshold_tuning.scheduled",
+        func=_run_scheduled_threshold_tuning,
+        schedule_expr=schedule_expr,
+    )
+    app_ctx.logger.info(
+        "Scheduled threshold tuning registered with schedule: %s (look_back_days=%d)",
+        schedule_expr,
+        look_back_days,
+    )
+
+
 async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH) -> None:
     """Wire all components and run the daemon until SIGINT or SIGTERM."""
     _configure_logging()
@@ -330,6 +395,14 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
     _register_tool_event_handlers(event_bus, tools)
 
     _register_log_analysis_schedule(
+        config=config,
+        scheduler=scheduler,
+        db=db,
+        app_ctx=app_ctx,
+        chat_router=chat_router,
+    )
+
+    _register_threshold_tuning_schedule(
         config=config,
         scheduler=scheduler,
         db=db,

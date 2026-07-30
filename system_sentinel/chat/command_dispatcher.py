@@ -53,6 +53,11 @@ from system_sentinel.chat.command_support import (
     record_command,
     record_reaction_command,
 )
+from system_sentinel.chat.command_tune_thresholds import (
+    ThresholdRecommendation,
+    format_recommendations,
+    perform_threshold_analysis,
+)
 from system_sentinel.chat.maintenance_utils import (
     CleanupCandidate,
     build_storage_report,
@@ -92,6 +97,14 @@ class PendingAction:
     request_id: str
 
 
+@dataclass(frozen=True)
+class PendingThresholdTuning:
+    recommendations: list[ThresholdRecommendation]
+    requested_at: datetime
+    expires_at: datetime
+    request_id: str
+
+
 class ChatCommandDispatcher:
     """Parses chat commands and executes supported command handlers."""
 
@@ -121,6 +134,7 @@ class ChatCommandDispatcher:
         self._chart_renderer = self._load_chart_renderer()
         self._pending_actions: dict[tuple[str, str, str], PendingAction] = {}
         self._pending_config_changes: dict[tuple[str, str, str], PendingConfigChange] = {}
+        self._pending_threshold_tunings: dict[tuple[str, str, str], PendingThresholdTuning] = {}
 
     async def handle_message(
         self, message: InboundMessage, args: list[str]
@@ -152,6 +166,7 @@ class ChatCommandDispatcher:
             "!config": self._cmd_config,
             "!checkup": self._cmd_checkup,
             "!analyze-logs": self._cmd_analyze_logs,
+            "!tune-thresholds": self._cmd_tune_thresholds,
             "!help": self._cmd_help,
         }
         action_commands = {"!update", "!cleanup"}
@@ -203,6 +218,18 @@ class ChatCommandDispatcher:
                 )
             del self._pending_config_changes[key]
             return await self._execute_config_change(reaction, pending_cfg)
+
+        # Check pending threshold tunings
+        pending_tuning = self._pending_threshold_tunings.get(key)
+        if pending_tuning is not None:
+            now = datetime.now(UTC)
+            if now > pending_tuning.expires_at:
+                del self._pending_threshold_tunings[key]
+                return OutboundMessage(
+                    text="Threshold tuning confirmation expired. Run !tune-thresholds again."
+                )
+            del self._pending_threshold_tunings[key]
+            return await self._execute_threshold_tuning(reaction, pending_tuning)
 
         pending = self._pending_actions.get(key)
         if pending is None:
@@ -559,6 +586,131 @@ class ChatCommandDispatcher:
             look_back_days=look_back_days,
             timeout_seconds=llm_timeout,
         )
+
+    async def _cmd_tune_thresholds(self, message: InboundMessage) -> OutboundMessage:
+        llm_client = self._ctx.llm
+        if llm_client is None:
+            return OutboundMessage(
+                text=(
+                    "LLM assistant is not configured. "
+                    "Configure `llm` and `llm_providers` in config.yaml."
+                ),
+                reply_to=message,
+            )
+
+        if self._config_path is None:
+            return OutboundMessage(
+                text="Config file path is not available; cannot apply changes.",
+                reply_to=message,
+            )
+
+        write_error = check_config_writable(self._config_path)
+        if write_error is not None:
+            return OutboundMessage(text=write_error, reply_to=message)
+
+        llm_timeout = float(
+            self._config.get("llm", {}).get("timeout_seconds", 60.0)
+            if isinstance(self._config.get("llm"), dict)
+            else 60.0
+        )
+        monitors_cfg_raw = self._config.get("monitors", {})
+        monitors_cfg = monitors_cfg_raw if isinstance(monitors_cfg_raw, dict) else {}
+        tune_cfg_raw = monitors_cfg.get("threshold_tuning", {})
+        tune_cfg = tune_cfg_raw if isinstance(tune_cfg_raw, dict) else {}
+        look_back_days = int(tune_cfg.get("look_back_days", 30))
+
+        try:
+            recommendations = await perform_threshold_analysis(
+                db=self._db,
+                llm_client=llm_client,
+                config=self._config,
+                audit=self._ctx.audit,
+                look_back_days=look_back_days,
+                source=f"chat:{message.adapter}:{message.user_id}",
+                timeout_seconds=llm_timeout,
+            )
+        except LLMUnavailableError as exc:
+            return OutboundMessage(
+                text=f"LLM assistant unavailable: {exc}",
+                reply_to=message,
+            )
+
+        text = format_recommendations(recommendations, look_back_days)
+
+        if recommendations:
+            now = datetime.now(UTC)
+            request_id = uuid.uuid4().hex[:8]
+            key = (message.adapter, message.channel_id, message.user_id)
+            self._pending_threshold_tunings[key] = PendingThresholdTuning(
+                recommendations=list(recommendations),
+                requested_at=now,
+                expires_at=now + timedelta(seconds=_CONFIRMATION_TTL_SECONDS),
+                request_id=request_id,
+            )
+
+        return OutboundMessage(text=text[:3000], reply_to=message)
+
+    async def _execute_threshold_tuning(
+        self,
+        reaction: InboundReaction,
+        pending: PendingThresholdTuning,
+    ) -> OutboundMessage:
+        if self._config_path is None:
+            return OutboundMessage(text="Config file path is not available; cannot apply changes.")
+
+        applied: list[str] = []
+        failed: list[str] = []
+
+        for rec in pending.recommendations:
+            try:
+                old_value = await asyncio.to_thread(
+                    apply_config_change,
+                    self._config_path,
+                    rec.key_path,
+                    rec.recommended_value,
+                )
+                applied.append(f"{rec.key_path}: {old_value!r} \u2192 {rec.recommended_value!r}")
+                await self._ctx.audit.append(
+                    action_type="config_change",
+                    source=f"chat:{reaction.adapter}:{reaction.user_id}",
+                    description=f"Threshold tuning applied '{rec.key_path}'.",
+                    outcome="success",
+                    details={
+                        "key_path": rec.key_path,
+                        "old_value": old_value,
+                        "new_value": rec.recommended_value,
+                        "metric": rec.metric,
+                        "rationale": rec.rationale,
+                        "user_id": reaction.user_id,
+                        "username": reaction.username,
+                        "adapter": reaction.adapter,
+                    },
+                )
+            except Exception as exc:
+                failed.append(f"{rec.key_path}: {exc}")
+                await self._ctx.audit.append(
+                    action_type="config_change",
+                    source=f"chat:{reaction.adapter}:{reaction.user_id}",
+                    description=f"Threshold tuning failed for '{rec.key_path}'.",
+                    outcome="failure",
+                    details={
+                        "key_path": rec.key_path,
+                        "new_value": rec.recommended_value,
+                        "error": str(exc),
+                    },
+                )
+
+        lines: list[str] = ["\u2705 **Threshold tuning applied.**\n"]
+        if applied:
+            lines.append("Changes applied:")
+            lines.extend(f"  `{diff}`" for diff in applied)
+        if failed:
+            lines.append("\nFailed:")
+            lines.extend(f"  \u274c {f}" for f in failed)
+        if applied:
+            lines.append("\nNote: restart or reload the daemon for changes to take effect.")
+
+        return OutboundMessage(text="\n".join(lines))
 
     async def _cmd_files(self, message: InboundMessage) -> OutboundMessage:
         return await handle_files_command(
