@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import logging
 from typing import TYPE_CHECKING, Any
 
+from system_sentinel.alerts.correlation import AlertCorrelationService
 from system_sentinel.alerts.formatters import (
     _format_brute_force,
     _format_cleanup_delete_failed,
@@ -42,6 +43,7 @@ from system_sentinel.alerts.quiet_hours import (
 )
 from system_sentinel.alerts.remediation import AlertLLMRemediationService
 from system_sentinel.chat.base import AlertSeverity, OutboundMessage
+from system_sentinel.core.time_config import parse_duration_from_config
 
 if TYPE_CHECKING:
     from system_sentinel.chat.router import ChatRouter
@@ -137,6 +139,8 @@ class AlertHandler:
         self._llm_remediation_enabled = False
         self._llm_timeout_seconds = 30.0
         self._llm_relevance_check_enabled = True
+        self._llm_correlation_enabled = False
+        self._llm_correlation_window_seconds = 300.0
         self._load_config(config or {})
         self._llm_remediation = AlertLLMRemediationService(
             router=self._router,
@@ -147,6 +151,15 @@ class AlertHandler:
             timeout_seconds=self._llm_timeout_seconds,
             relevance_check_enabled=self._llm_relevance_check_enabled,
         )
+        self._correlation = AlertCorrelationService(
+            router=self._router,
+            audit=self._audit,
+            llm=self._llm,
+            logger=self._logger,
+            enabled=self._llm_correlation_enabled,
+            window_seconds=self._llm_correlation_window_seconds,
+            timeout_seconds=self._llm_timeout_seconds,
+        )
 
     def _load_config(self, config: dict[str, Any]) -> None:
         llm_cfg = config.get("llm", {})
@@ -156,6 +169,15 @@ class AlertHandler:
                 self._llm_remediation_enabled = bool(remediation_cfg.get("enabled", False))
                 self._llm_relevance_check_enabled = bool(
                     remediation_cfg.get("relevance_check", True)
+                )
+            correlation_cfg = llm_cfg.get("alert_correlation", {})
+            if isinstance(correlation_cfg, dict):
+                self._llm_correlation_enabled = bool(correlation_cfg.get("enabled", False))
+                self._llm_correlation_window_seconds = parse_duration_from_config(
+                    correlation_cfg,
+                    key="window",
+                    default_seconds=300.0,
+                    logger=self._logger,
                 )
             self._llm_timeout_seconds = _coerce_positive_float(
                 llm_cfg.get("timeout_seconds"), default=30.0
@@ -488,6 +510,10 @@ class AlertHandler:
             suppressed = True
             self._quiet_alert_queue.append(msg)
             self._ensure_quiet_alert_flush_scheduled()
+        if not suppressed and self._correlation.enabled:
+            await self._record_alert(event_type, msg, suppressed=False)
+            await self._correlation.submit(event_type, payload, msg)
+            return
         if not suppressed:
             await self._router.broadcast(msg)
         await self._record_alert(event_type, msg, suppressed=suppressed)
