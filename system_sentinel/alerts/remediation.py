@@ -69,6 +69,7 @@ class AlertLLMRemediationService:
                 prompt=prompt,
                 system_prompt=system_prompt,
                 timeout_seconds=self._timeout_seconds,
+                command_type="remediation",
             )
         )
         try:

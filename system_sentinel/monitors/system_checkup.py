@@ -86,6 +86,7 @@ class SystemCheckupMonitor(BaseMonitor):
                 prompt=prompt,
                 system_prompt=_CHECKUP_SYSTEM_PROMPT,
                 timeout_seconds=self._timeout_seconds(),
+                command_type="system_checkup",
             )
             report = str(result.text).strip()
         except Exception as exc:
@@ -109,6 +110,7 @@ class SystemCheckupMonitor(BaseMonitor):
                 "anomaly_count": len(context.get("login_anomalies", [])),
                 "alert_count": len(context.get("recent_alerts", [])),
                 "integrity_mismatches": len(context.get("integrity_mismatches", [])),
+                "matched_rule": result.matched_rule,
             },
         )
 

@@ -195,6 +195,7 @@ async def perform_log_analysis(
         prompt=prompt,
         system_prompt=_LOG_ANALYSIS_SYSTEM_PROMPT,
         timeout_seconds=timeout_seconds,
+        command_type="log_analysis",
     )
 
     report: str = str(result.text).strip()
@@ -213,6 +214,7 @@ async def perform_log_analysis(
                 "look_back_days": look_back_days,
                 "total_entries_analysed": context.get("total_entries", 0),
                 "failure_count": len(context.get("failures", [])),
+                "matched_rule": result.matched_rule,
             },
         )
 

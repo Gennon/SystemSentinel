@@ -473,6 +473,7 @@ async def interpret_config_request(
         prompt=request,
         system_prompt=system_prompt,
         timeout_seconds=15.0,
+        command_type="config",
     )
     return _parse_llm_response(response.text, current_config)
 

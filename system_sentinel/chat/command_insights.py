@@ -50,7 +50,9 @@ def build_status_text(
     text = f"{text}\nQuiet hours: {quiet_status}"
     if llm_client is not None and llm_client.is_enabled:
         provider = llm_client.active_provider_name or "unknown"
-        return f"{text}\nLLM: enabled ({provider})"
+        model = getattr(llm_client, "active_model", None)
+        label = f"{provider}:{model}" if model else provider
+        return f"{text}\nLLM: enabled ({label})"
     return f"{text}\nLLM: disabled"
 
 

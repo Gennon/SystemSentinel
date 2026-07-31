@@ -282,6 +282,7 @@ async def perform_checkup(
         prompt=prompt,
         system_prompt=_CHECKUP_SYSTEM_PROMPT,
         timeout_seconds=timeout_seconds,
+        command_type="checkup",
     )
 
     report: str = str(result.text).strip()
@@ -301,6 +302,7 @@ async def perform_checkup(
                 "anomaly_count": len(context.get("login_anomalies", [])),
                 "alert_count": len(context.get("recent_alerts", [])),
                 "integrity_mismatches": len(context.get("integrity_mismatches", [])),
+                "matched_rule": result.matched_rule,
             },
         )
 

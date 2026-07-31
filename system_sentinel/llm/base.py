@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from system_sentinel.core.context import AppContext
@@ -23,6 +23,8 @@ class LLMResponse:
     provider: str
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    matched_rule: dict[str, Any] | None = None
+    """Routing rule that was selected, or ``None`` when the default was used."""
 
 
 class BaseLLMProvider(ABC):

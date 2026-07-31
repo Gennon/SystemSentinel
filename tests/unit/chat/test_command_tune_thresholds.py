@@ -59,7 +59,16 @@ class _FakeLLMClient:
     def __init__(self, response_text: str = "[]") -> None:
         self._response_text = response_text
 
-    async def complete(self, *, prompt, system_prompt=None, model=None, timeout_seconds=None):
+    async def complete(
+        self,
+        *,
+        prompt,
+        system_prompt=None,
+        model=None,
+        timeout_seconds=None,
+        command_type=None,
+        severity=None,
+    ):
         return LLMResponse(
             text=self._response_text,
             model_used="llama3.2",

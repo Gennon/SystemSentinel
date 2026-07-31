@@ -284,6 +284,7 @@ async def perform_health_story(
         prompt=prompt,
         system_prompt=_NARRATIVE_SYSTEM_PROMPT,
         timeout_seconds=timeout_seconds,
+        command_type="health_story",
     )
 
     report: str = str(result.text).strip()
@@ -303,6 +304,7 @@ async def perform_health_story(
                 "alert_count": len(context.get("notable_alerts", [])),
                 "service_event_count": len(context.get("service_events", [])),
                 "resource_trends": context.get("resource_trends", {}),
+                "matched_rule": result.matched_rule,
             },
         )
 

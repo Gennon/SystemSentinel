@@ -65,6 +65,7 @@ async def handle_explain_command(
             prompt=prompt,
             system_prompt=system_prompt,
             timeout_seconds=timeout_seconds,
+            command_type="explain_alert",
         )
     except LLMUnavailableError as exc:
         return OutboundMessage(
@@ -93,6 +94,7 @@ async def handle_explain_command(
         provider=result.provider,
         model=result.model_used,
         elapsed_seconds=elapsed,
+        matched_rule=result.matched_rule,
     )
 
     return OutboundMessage(
@@ -191,6 +193,7 @@ async def _record_success(
     provider: str,
     model: str,
     elapsed_seconds: float,
+    matched_rule: dict[str, Any] | None = None,
 ) -> None:
     if audit is None:
         return
@@ -207,6 +210,7 @@ async def _record_success(
             "provider": provider,
             "model": model,
             "elapsed_seconds": round(elapsed_seconds, 3),
+            "matched_rule": matched_rule,
         },
     )
 

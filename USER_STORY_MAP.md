@@ -119,7 +119,7 @@ A Linux system management daemon that autonomously handles updates, security har
 ## Release 4 — AI-Powered Operations
 
 ### AI / LLM Assistant
-- [ ] As a user I want policy-based model routing (by command type/severity) so I can tune cost, latency, and quality automatically. [**(US-033)**](user_stories/US-033-choose-ollama-model.md)
+- [x] As a user I want policy-based model routing (by command type/severity) so I can tune cost, latency, and quality automatically. [**(US-033)**](user_stories/US-033-choose-ollama-model.md)
 - [x] As an admin I want to ask the AI to update configurations as needed so I can manage system settings through natural language commands without manually editing config files. [**(US-044)**](user_stories/US-044-ai-update-configuration.md)
 - [x] As a user I want the AI to perform a full system check using all sentinel tools and suggest how to improve the system so I get a comprehensive, actionable health report. [**(US-045)**](user_stories/US-045-ai-full-system-check.md)
 - [x] As a user I want the AI to determine whether remediation suggestions are still relevant before sending them, based on current system state, so I only receive alerts about issues that have not yet been addressed. [**(US-046)**](user_stories/US-046-ai-remediation-relevance-check.md)

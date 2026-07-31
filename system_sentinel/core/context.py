@@ -31,6 +31,9 @@ class LLMClient(Protocol):
     def active_provider_name(self) -> str | None: ...
 
     @property
+    def active_model(self) -> str | None: ...
+
+    @property
     def is_enabled(self) -> bool: ...
 
     async def complete(
@@ -40,6 +43,8 @@ class LLMClient(Protocol):
         system_prompt: str | None = None,
         model: str | None = None,
         timeout_seconds: float | None = None,
+        command_type: str | None = None,
+        severity: str | None = None,
     ) -> Any: ...
 
     async def list_models(self) -> list[str]: ...

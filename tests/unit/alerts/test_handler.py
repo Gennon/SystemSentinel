@@ -83,8 +83,10 @@ class _FakeRemediationLLMClient:
         system_prompt: str | None = None,
         model: str | None = None,
         timeout_seconds: float | None = None,
+        command_type: str | None = None,
+        severity: str | None = None,
     ) -> LLMResponse:
-        _ = system_prompt, model
+        _ = system_prompt, model, command_type, severity
         self.calls += 1
         self.last_prompt = prompt
         self.last_timeout_seconds = timeout_seconds
@@ -113,6 +115,8 @@ class _DelayedRemediationLLMClient(_FakeRemediationLLMClient):
         system_prompt: str | None = None,
         model: str | None = None,
         timeout_seconds: float | None = None,
+        command_type: str | None = None,
+        severity: str | None = None,
     ) -> LLMResponse:
         await self._gate.wait()
         return await super().complete(
@@ -120,6 +124,8 @@ class _DelayedRemediationLLMClient(_FakeRemediationLLMClient):
             system_prompt=system_prompt,
             model=model,
             timeout_seconds=timeout_seconds,
+            command_type=command_type,
+            severity=severity,
         )
 
 

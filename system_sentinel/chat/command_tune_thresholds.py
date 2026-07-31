@@ -378,6 +378,7 @@ async def perform_threshold_analysis(
         prompt=prompt,
         system_prompt=_TUNE_SYSTEM_PROMPT,
         timeout_seconds=timeout_seconds,
+        command_type="tune_thresholds",
     )
 
     recommendations = parse_threshold_recommendations(result.text, current_thresholds)
@@ -395,6 +396,7 @@ async def perform_threshold_analysis(
                 "completion_tokens": result.completion_tokens,
                 "look_back_days": look_back_days,
                 "recommendation_count": len(recommendations),
+                "matched_rule": result.matched_rule,
                 "recommendations": [
                     {
                         "metric": r.metric,

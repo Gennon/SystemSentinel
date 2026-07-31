@@ -52,7 +52,10 @@ class _FakeLLM:
         system_prompt: str | None = None,
         model: str | None = None,
         timeout_seconds: float | None = None,
+        command_type: str | None = None,
+        severity: str | None = None,
     ) -> LLMResponse:
+        _ = command_type, severity
         self.calls.append(prompt)
         return LLMResponse(text=self.response_text, model_used="test-model", provider="test")
 

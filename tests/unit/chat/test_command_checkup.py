@@ -63,7 +63,16 @@ class _FakeLLMClient:
     is_enabled = True
     active_provider_name = "ollama"
 
-    async def complete(self, *, prompt, system_prompt=None, model=None, timeout_seconds=None):
+    async def complete(
+        self,
+        *,
+        prompt,
+        system_prompt=None,
+        model=None,
+        timeout_seconds=None,
+        command_type=None,
+        severity=None,
+    ):
         return LLMResponse(
             text=(
                 "1. [INFO] CPU at 12%, all good.\n"

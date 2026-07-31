@@ -111,6 +111,7 @@ class AlertCorrelationService:
                     prompt=self._build_prompt(batch),
                     system_prompt=self._system_prompt(),
                     timeout_seconds=self._timeout_seconds,
+                    command_type="correlation",
                 ),
                 self._timeout_seconds,
             )

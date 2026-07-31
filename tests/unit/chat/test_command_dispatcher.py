@@ -47,8 +47,10 @@ class _FakeLLMClient:
         system_prompt: str | None = None,
         model: str | None = None,
         timeout_seconds: float | None = None,
+        command_type: str | None = None,
+        severity: str | None = None,
     ) -> LLMResponse:
-        _ = system_prompt, model, timeout_seconds
+        _ = system_prompt, model, timeout_seconds, command_type, severity
         self.last_prompt = prompt
         return LLMResponse(
             text="Likely high load from package updates.",
@@ -73,8 +75,10 @@ class _FailingLLMClient(_FakeLLMClient):
         system_prompt: str | None = None,
         model: str | None = None,
         timeout_seconds: float | None = None,
+        command_type: str | None = None,
+        severity: str | None = None,
     ) -> LLMResponse:
-        _ = prompt, system_prompt, model, timeout_seconds
+        _ = prompt, system_prompt, model, timeout_seconds, command_type, severity
         raise LLMUnavailableError("provider offline")
 
 

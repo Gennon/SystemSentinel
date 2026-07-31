@@ -421,6 +421,7 @@ class ChatCommandDispatcher:
                 prompt=prompt,
                 system_prompt=system_prompt,
                 timeout_seconds=30.0,
+                command_type="ask",
             )
         except LLMUnavailableError as exc:
             return OutboundMessage(
@@ -445,6 +446,7 @@ class ChatCommandDispatcher:
                 "completion_tokens": result.completion_tokens,
                 "context": context,
                 "response": result.text,
+                "matched_rule": result.matched_rule,
             },
         )
 
