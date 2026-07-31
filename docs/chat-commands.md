@@ -15,6 +15,7 @@ For Discord and other adapter configuration, see [chat-adapters.md](chat-adapter
 | `!explain` | admin | AI explanation of the most recent alert, including context and next steps |
 | `!checkup` | admin | AI-powered full system check with prioritized improvements |
 | `!analyze-logs` | admin | AI analysis of recent sentinel audit logs |
+| `!health-story` | admin | AI narrative health summary interpreting trends over the configured look-back window |
 | `!config <request>` | admin | Natural-language config update (requires confirmation) |
 | `!update` | admin | Run security updates (requires confirmation) |
 | `!cleanup` | admin | Run cleanup rules (requires confirmation) |
@@ -55,3 +56,23 @@ sudo -u sentinel .venv/bin/pip install 'system-sentinel[graphs]'
 ```
 
 Then set `charts.renderer: image` in `config.yaml` and restart the daemon.
+
+---
+
+## Scheduled narrative health reports (`!health-story`)
+
+`!health-story` can be triggered on demand or run automatically on a schedule.
+It generates a plain-English summary of health trends over a configurable look-back window,
+covering resource trends, security posture, service stability, and notable alerts.
+
+Configure under `llm.narrative_report` in `config.yaml`:
+
+```yaml
+llm:
+  narrative_report:
+    schedule: "7d 00:00:00"   # how often to auto-generate (e.g. weekly)
+    look_back_days: 7         # window of data to analyse
+```
+
+Reports are broadcast to all configured chat adapters and written to the audit log under action type `narrative_health_report`.
+If no `schedule` is set, only on-demand `!health-story` invocations are available.

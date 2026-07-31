@@ -284,6 +284,9 @@ llm:
     enabled: true
     relevance_check: true
   timeout_seconds: 30
+  narrative_report:
+    schedule: "7d 00:00:00"   # auto-generate weekly; omit to disable scheduled reports
+    look_back_days: 7         # window of data to analyse
 
 llm_providers:
   ollama:
@@ -665,6 +668,8 @@ If enrichment is enabled but lookups fail (or dependencies are missing), enrichm
 | `llm.remediation.enabled` | bool | `false` | `AlertHandler` | Enables AI remediation suggestions when `llm.remediation` is specified as a map. |
 | `llm.remediation.relevance_check` | bool | `true` | `AlertHandler` | When `true`, the AI verifies the issue still persists before sending a remediation suggestion. Suppressed suggestions are recorded in the audit log with reason `already_resolved`. |
 | `llm.timeout_seconds` | int/float | `30` | callers (e.g. chat `!ask`, alert remediation) | Request timeout preference; call sites may override. |
+| `llm.narrative_report.schedule` | duration | unset | daemon scheduler | If set, generates a narrative health report automatically on this interval (e.g. `7d 00:00:00` for weekly). Requires LLM enabled. |
+| `llm.narrative_report.look_back_days` | int | `7` | `ChatCommandDispatcher`, daemon scheduler | Number of days of history to include when building the narrative report (on-demand and scheduled). |
 | `llm_providers.<provider>.enabled` | bool | `false` | `LLMRegistry` | Must be `true` to load provider plugin. |
 | `llm_providers.ollama.endpoint` | string | `http://localhost:11434` | `OllamaProvider` | Ollama base URL. |
 | `llm_providers.ollama.model` | string | unset | `OllamaProvider` | Fallback model when request/model default is absent. |
