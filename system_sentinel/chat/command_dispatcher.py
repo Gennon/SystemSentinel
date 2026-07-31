@@ -40,6 +40,7 @@ from system_sentinel.chat.command_handlers import (
     handle_twofa_command,
     handle_vulnscan_command,
 )
+from system_sentinel.chat.command_health_story import handle_health_story_command
 from system_sentinel.chat.command_insights import (
     build_llm_context_summary,
     build_status_text,
@@ -169,6 +170,7 @@ class ChatCommandDispatcher:
             "!analyze-logs": self._cmd_analyze_logs,
             "!tune-thresholds": self._cmd_tune_thresholds,
             "!explain": self._cmd_explain,
+            "!health-story": self._cmd_health_story,
             "!help": self._cmd_help,
         }
         action_commands = {"!update", "!cleanup"}
@@ -595,6 +597,26 @@ class ChatCommandDispatcher:
             log_analysis_cfg.get("look_back_days", 7) if isinstance(log_analysis_cfg, dict) else 7
         )
         return await handle_log_analysis_command(
+            message=message,
+            db=self._db,
+            llm_client=self._ctx.llm,
+            audit=self._ctx.audit,
+            look_back_days=look_back_days,
+            timeout_seconds=llm_timeout,
+        )
+
+    async def _cmd_health_story(self, message: InboundMessage) -> OutboundMessage:
+        llm_timeout = float(
+            self._config.get("llm", {}).get("timeout_seconds", 60.0)
+            if isinstance(self._config.get("llm"), dict)
+            else 60.0
+        )
+        nr_cfg_raw = self._config.get("llm", {})
+        nr_cfg = nr_cfg_raw if isinstance(nr_cfg_raw, dict) else {}
+        narrative_cfg_raw = nr_cfg.get("narrative_report", {})
+        narrative_cfg = narrative_cfg_raw if isinstance(narrative_cfg_raw, dict) else {}
+        look_back_days = int(narrative_cfg.get("look_back_days", 7))
+        return await handle_health_story_command(
             message=message,
             db=self._db,
             llm_client=self._ctx.llm,

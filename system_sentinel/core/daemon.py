@@ -278,6 +278,68 @@ def _register_threshold_tuning_schedule(
     )
 
 
+def _register_narrative_report_schedule(
+    *,
+    config: dict[str, Any],
+    scheduler: Scheduler,
+    db: DatabaseConnection,
+    app_ctx: AppContext,
+    chat_router: Any,
+) -> None:
+    """Register the scheduled narrative health report job if configured (US-050)."""
+    from system_sentinel.chat.command_health_story import perform_health_story
+
+    llm_cfg_raw = config.get("llm", {})
+    llm_cfg = llm_cfg_raw if isinstance(llm_cfg_raw, dict) else {}
+    nr_cfg_raw = llm_cfg.get("narrative_report", {})
+    nr_cfg = nr_cfg_raw if isinstance(nr_cfg_raw, dict) else {}
+    schedule_expr_raw = nr_cfg.get("schedule")
+    if not isinstance(schedule_expr_raw, str) or not schedule_expr_raw.strip():
+        return
+
+    schedule_expr = schedule_expr_raw.strip()
+    look_back_days = int(nr_cfg.get("look_back_days", 7))
+
+    async def _run_scheduled_narrative_report() -> None:
+        llm = app_ctx.llm
+        if llm is None or not llm.is_enabled:
+            app_ctx.logger.info(
+                "Skipping scheduled narrative report: LLM not configured or disabled."
+            )
+            return
+        try:
+            report = await perform_health_story(
+                db=db,
+                llm_client=llm,
+                audit=app_ctx.audit,
+                look_back_days=look_back_days,
+                source="scheduler",
+            )
+        except Exception as exc:
+            app_ctx.logger.error("Scheduled narrative report failed: %s", exc)
+            return
+
+        from system_sentinel.chat.base import OutboundMessage
+
+        await chat_router.broadcast(
+            OutboundMessage(
+                title="Scheduled Narrative Health Report",
+                text=f"Health Story (last {look_back_days}d)\n\n{report[:3000]}",
+            )
+        )
+
+    scheduler.register_job(
+        job_id="narrative_report.scheduled",
+        func=_run_scheduled_narrative_report,
+        schedule_expr=schedule_expr,
+    )
+    app_ctx.logger.info(
+        "Scheduled narrative report registered with schedule: %s (look_back_days=%d)",
+        schedule_expr,
+        look_back_days,
+    )
+
+
 async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH) -> None:
     """Wire all components and run the daemon until SIGINT or SIGTERM."""
     _configure_logging()
@@ -403,6 +465,14 @@ async def run_daemon(config_path: Path = _CONFIG_PATH, db_path: Path = _DB_PATH)
     )
 
     _register_threshold_tuning_schedule(
+        config=config,
+        scheduler=scheduler,
+        db=db,
+        app_ctx=app_ctx,
+        chat_router=chat_router,
+    )
+
+    _register_narrative_report_schedule(
         config=config,
         scheduler=scheduler,
         db=db,
