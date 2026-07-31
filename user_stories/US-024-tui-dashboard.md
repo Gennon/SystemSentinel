@@ -5,7 +5,7 @@
 **Status:** Done
 
 ## Description
-As a user I want a TUI or web dashboard for system status so I have a single pane of glass view.
+As a user I want a TUI dashboard for system status so I have a single pane of glass view.
 
 ## Acceptance Criteria
 - [x] Running `sentinel dashboard` (or `sentinel-tui`) launches a terminal UI in the current shell session

@@ -2,7 +2,6 @@
 
 **Release:** 4 — AI-Powered Operations
 **Area:** AI / LLM Assistant
-
 **Status:** Done
 
 ## Description

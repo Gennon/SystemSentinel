@@ -1,7 +1,7 @@
 # US-038 — Guided configuration during setup
 
 **Release:** 1 — Core / MVP
-**Area:** Communication & Alerts
+**Area:** System Maintenance
 **Status:** Done
 
 ## Description

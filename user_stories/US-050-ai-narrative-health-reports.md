@@ -1,8 +1,8 @@
 # US-050 — AI-generated narrative health reports
 
-**Status:** Done
 **Release:** 4 — AI-Powered Operations
 **Area:** AI / LLM Assistant
+**Status:** Done
 
 ## Description
 As a user I want periodic AI-written narrative health summaries so I understand the system's health trajectory in plain English rather than just raw numbers.

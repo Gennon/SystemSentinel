@@ -1,8 +1,8 @@
 # US-045 — AI-powered full system check with improvement suggestions
 
-**Status:** Done
 **Release:** 4 — AI-Powered Operations
 **Area:** AI / LLM Assistant
+**Status:** Done
 
 ## Description
 As a user I want the AI to perform a full system check using all sentinel tools and suggest how to improve the system so I get a comprehensive, actionable health report.

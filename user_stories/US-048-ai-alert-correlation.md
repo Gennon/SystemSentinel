@@ -1,8 +1,8 @@
 # US-048 — AI correlates multiple alerts into a single root cause
 
-**Status:** Done
 **Release:** 4 — AI-Powered Operations
 **Area:** AI / LLM Assistant
+**Status:** Done
 
 ## Description
 As a user I want the AI to group related simultaneous alerts and suggest a single root cause so I get focused, actionable insight instead of a flood of separate remediations.
