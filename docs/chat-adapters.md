@@ -116,21 +116,9 @@ The bot should reply with current CPU, RAM, disk usage, uptime, and service heal
 
 ---
 
-## Supported commands (Release 2)
+## Command reference
 
-| Command | Access | Description |
-|---------|--------|-------------|
-| `!help` | readonly | Lists all available commands |
-| `!status` | readonly | Current CPU, RAM, disk, uptime, and service health |
-| `!alerts` | readonly | Currently active alert conditions |
-| `!graph <metric> <period>` | readonly | Historical chart for cpu/ram/disk/network/gpu over 24h/7d/30d/90d |
-| `!files` | readonly | Lists old files flagged for cleanup |
-| `!storage` | readonly | Triggers a storage report |
-| `!anomalies` | readonly | Recent login anomalies |
-| `!firewall` | readonly | Firewall status |
-| `!hardening` | readonly | Hardening audit results |
-| `!update` | admin | Triggers an immediate security update (requires ✅ confirmation) |
-| `!cleanup` | admin | Triggers an immediate file cleanup (requires ✅ confirmation) |
+See [Chat Commands Guide](chat-commands.md) for the command catalog, default access, and command-specific notes.
 
 ---
 
@@ -143,21 +131,8 @@ The bot should reply with current CPU, RAM, disk usage, uptime, and service heal
 | `ImportError: discord.py is required` | Optional dependency missing | Run `pip install "system-sentinel[discord]"` |
 | Commands ignored silently | User not in `allowed_users` | Add your Discord user ID to the list |
 | Bot times out on start | Firewall blocking outbound WebSocket | Allow outbound HTTPS/WSS on port 443 |
-| `!graph` shows only text bars | Default renderer — image renderer not enabled | Set `charts.renderer: image` and install `matplotlib` (see below) |
-| `Permission denied` when installing `matplotlib` | The `.venv` is owned by the `sentinel` service user | Run `sudo -u sentinel .venv/bin/pip install 'system-sentinel[graphs]'` |
-
----
-
-## Image renderer for `!graph`
-
-By default `!graph` returns an ASCII bar chart that works in any chat client.
-For a PNG image chart, install the optional extra **as the sentinel service user** (the venv owner):
-
-```bash
-sudo -u sentinel .venv/bin/pip install 'system-sentinel[graphs]'
-```
-
-Then set `charts.renderer: image` in `config.yaml` and restart the daemon.
+| `!graph` shows only text bars | Default renderer — image renderer not enabled | See [Chat Commands Guide](chat-commands.md#image-renderer-for-graph) |
+| `Permission denied` when installing `matplotlib` | The `.venv` is owned by the `sentinel` service user | Install extras as the `sentinel` service user (see [Chat Commands Guide](chat-commands.md#image-renderer-for-graph)) |
 
 ---
 

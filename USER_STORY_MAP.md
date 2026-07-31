@@ -127,7 +127,7 @@ A Linux system management daemon that autonomously handles updates, security har
 - [x] As a user I want the AI to group related simultaneous alerts and suggest a single root cause so I get focused, actionable insight instead of a flood of separate remediations. [**(US-048)**](user_stories/US-048-ai-alert-correlation.md)
 - [x] As a user I want the AI to analyze historical metric data and recommend more accurate alert thresholds so my alerts reflect real usage patterns rather than generic defaults. [**(US-049)**](user_stories/US-049-ai-threshold-tuning.md)
 - [ ] As a user I want periodic AI-written narrative health summaries so I understand the system's health trajectory in plain English rather than just raw numbers. [**(US-050)**](user_stories/US-050-ai-narrative-health-reports.md)
-- [ ] As a user I want to reply to any alert in chat with `!explain` and get a full AI-powered contextual explanation so I understand what triggered it, why it matters, and what to do without SSHing in. [**(US-051)**](user_stories/US-051-ai-explain-alert-on-demand.md)
+- [x] As a user I want to reply to any alert in chat with `!explain` and get a full AI-powered contextual explanation so I understand what triggered it, why it matters, and what to do without SSHing in. [**(US-051)**](user_stories/US-051-ai-explain-alert-on-demand.md)
 
 ---
 

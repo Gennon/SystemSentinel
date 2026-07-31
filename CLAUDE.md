@@ -19,4 +19,5 @@ Specific User Stories will define the detailed requirements for each feature or 
 # Important notes
 
 - For time values like intervals use the defined values like "30d 24:60:60" instead of cron expressions. 
+- Never create scripts to change code, always use the Edit operation.
 

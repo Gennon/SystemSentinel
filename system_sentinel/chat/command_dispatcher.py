@@ -24,6 +24,7 @@ from system_sentinel.chat.command_config import (
     format_config_proposal,
     interpret_config_request,
 )
+from system_sentinel.chat.command_explain import handle_explain_command
 from system_sentinel.chat.command_graph import handle_graph_command
 from system_sentinel.chat.command_handlers import (
     handle_anomalies_command,
@@ -167,6 +168,7 @@ class ChatCommandDispatcher:
             "!checkup": self._cmd_checkup,
             "!analyze-logs": self._cmd_analyze_logs,
             "!tune-thresholds": self._cmd_tune_thresholds,
+            "!explain": self._cmd_explain,
             "!help": self._cmd_help,
         }
         action_commands = {"!update", "!cleanup"}
@@ -561,6 +563,20 @@ class ChatCommandDispatcher:
             else 60.0
         )
         return await handle_checkup_command(
+            message=message,
+            db=self._db,
+            llm_client=self._ctx.llm,
+            audit=self._ctx.audit,
+            timeout_seconds=llm_timeout,
+        )
+
+    async def _cmd_explain(self, message: InboundMessage) -> OutboundMessage:
+        llm_timeout = float(
+            self._config.get("llm", {}).get("timeout_seconds", 30.0)
+            if isinstance(self._config.get("llm"), dict)
+            else 30.0
+        )
+        return await handle_explain_command(
             message=message,
             db=self._db,
             llm_client=self._ctx.llm,
